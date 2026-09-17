@@ -46,3 +46,83 @@ export interface Submission {
   created_at: string;
   updated_at: string;
 }
+
+// --- Phase 2: judging ------------------------------------------------------
+
+export interface Criterion {
+  key: string;
+  label: string;
+  weight: number;
+  max_score: number;
+}
+
+export interface Rubric {
+  id: number;
+  event_id: number;
+  name: string;
+  criteria: Criterion[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Assignment {
+  id: number;
+  submission_id: number;
+  judge_id: number;
+  submission_title: string;
+  scored: boolean;
+}
+
+export interface JudgeProgress {
+  completed: number;
+  total: number;
+  pending: Assignment[];
+  done: Assignment[];
+}
+
+export interface CoverageWarning {
+  submission_id: number;
+  submission_title: string;
+  judges_short: number;
+}
+
+export interface AssignmentSummary {
+  created: number;
+  existing: number;
+  judges_per_submission: number;
+  coverage_warnings: CoverageWarning[];
+  rubric_id: number | null;
+}
+
+export interface ScoringSheet {
+  assignment_id: number;
+  submission_id: number;
+  submission_title: string;
+  submission_description: string;
+  submission_track: string;
+  rubric_name: string;
+  criteria: Criterion[];
+  my_values: Record<string, number> | null;
+  my_comment: string;
+  my_raw_total: number | null;
+}
+
+export interface Score {
+  id: number;
+  assignment_id: number;
+  submission_id: number;
+  values: Record<string, number>;
+  comment: string;
+  raw_total: number;
+}
+
+export interface ResultRow {
+  rank: number;
+  submission_id: number;
+  submission_title: string;
+  team_name: string;
+  judges: number;
+  raw_mean: number;
+  z_bar: number;
+  display: number;
+}

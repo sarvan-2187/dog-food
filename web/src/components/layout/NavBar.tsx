@@ -17,6 +17,9 @@ export function NavBar() {
   if (user?.role === 'participant') {
     links.push({ to: '/teams/mine', label: 'My teams' });
   }
+  if (user?.role === 'judge') {
+    links.push({ to: '/judge', label: 'Judging' });
+  }
 
   async function onLogout() {
     await logout();

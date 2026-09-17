@@ -1,7 +1,7 @@
 """Idempotent fixture seeding, run automatically on app startup.
 
-Ordered pipeline (users -> events -> teams -> submissions) because each step
-needs the previous step's generated ids. Every insert is guarded by a lookup
+Ordered pipeline (users -> events -> teams -> submissions -> rubrics) because
+each step needs the previous step's generated ids. Every insert is guarded by a lookup
 on the row's natural key, so re-running on an already-seeded database is a
 no-op.
 """
@@ -123,12 +123,23 @@ def _seed_submissions(session: Session, slug_to_id: dict[str, int], name_to_id: 
         )
 
 
+def _seed_rubrics(session: Session, slug_to_id: dict[str, int]) -> None:
+    from .judging.models import Rubric
+
+    for row in load_fixture("rubrics.json"):
+        event_id = slug_to_id[row["event_slug"]]
+        if session.exec(select(Rubric).where(Rubric.event_id == event_id)).first():
+            continue
+        session.add(Rubric(event_id=event_id, name=row["name"], criteria=row["criteria"]))
+
+
 def run_seed() -> None:
     with Session(engine) as session:
         email_to_id = _seed_users(session)
         slug_to_id = _seed_events(session, email_to_id)
         name_to_id = _seed_teams(session, email_to_id, slug_to_id)
         _seed_submissions(session, slug_to_id, name_to_id)
+        _seed_rubrics(session, slug_to_id)
         session.commit()
     log.info("seeding complete")
 
