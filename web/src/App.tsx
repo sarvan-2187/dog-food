@@ -14,6 +14,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { RubricBuilderPage } from './pages/RubricBuilderPage';
 import { ScorePage } from './pages/ScorePage';
+import { SubmissionDetailPage } from './pages/SubmissionDetailPage';
 import { SubmissionPage } from './pages/SubmissionPage';
 import { TeamsMinePage } from './pages/TeamsMinePage';
 
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/judge" element={<JudgeDashboardPage />} />
             <Route path="/assignments/:assignmentId/score" element={<ScorePage />} />
             <Route path="/gallery" element={<GalleryPage />} />
+            <Route path="/submissions/:submissionId" element={<SubmissionDetailPage />} />
             <Route path="/join/:code" element={<JoinTeamPage />} />
             <Route
               path="/teams/mine"

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
+from ..audit.log import record
 from ..auth import Role, User, require_role
 from ..db import get_session
 from ..submissions.models import Submission
@@ -21,6 +22,8 @@ def create_event(
         raise HTTPException(status.HTTP_409_CONFLICT, "An event with this slug already exists.")
     event = Event(**payload.model_dump(), created_by_id=user.id)
     session.add(event)
+    session.flush()
+    record(session, "event.created", actor=user, entity_type="event", entity_id=event.id, slug=event.slug)
     session.commit()
     session.refresh(event)
     return event
@@ -54,7 +57,7 @@ def get_event(slug: str, session: Session = Depends(get_session)) -> Event:
 def update_event(
     event_id: int,
     payload: EventUpdate,
-    _: User = Depends(require_role(Role.organizer, Role.admin)),
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> Event:
     event = session.get(Event, event_id)
@@ -71,6 +74,14 @@ def update_event(
     for key, value in changes.items():
         setattr(event, key, value)
     session.add(event)
+    record(
+        session,
+        "event.updated",
+        actor=user,
+        entity_type="event",
+        entity_id=event.id,
+        changed=sorted(changes),
+    )
     session.commit()
     session.refresh(event)
     return event
@@ -79,7 +90,7 @@ def update_event(
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_event(
     event_id: int,
-    _: User = Depends(require_role(Role.organizer, Role.admin)),
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> None:
     event = session.get(Event, event_id)
@@ -96,5 +107,6 @@ def delete_event(
             f"This event has {teams} team(s) and {submissions} submission(s). "
             "Deleting it would destroy their work, so it cannot be deleted while they exist.",
         )
+    record(session, "event.deleted", actor=user, entity_type="event", entity_id=event_id, slug=event.slug)
     session.delete(event)
     session.commit()

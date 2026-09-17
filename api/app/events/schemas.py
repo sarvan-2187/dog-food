@@ -62,13 +62,15 @@ class EventUpdate(BaseModel):
     end_at: Optional[datetime] = None
     tracks: Optional[List[str]] = None
     prize_config: Optional[Dict[str, Any]] = None
+    voting_enabled: Optional[bool] = None
+    results_hidden_until: Optional[datetime] = None
 
     @field_validator("name")
     @classmethod
     def name_len(cls, v: Optional[str]) -> Optional[str]:
         return v if v is None else _name_len(v)
 
-    @field_validator("start_at", "end_at")
+    @field_validator("start_at", "end_at", "results_hidden_until")
     @classmethod
     def as_utc(cls, v: Optional[datetime]) -> Optional[datetime]:
         return v if v is None else ensure_utc(v)

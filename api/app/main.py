@@ -20,6 +20,8 @@ from .teams import models as _team_models  # noqa: F401
 from .submissions import models as _submission_models  # noqa: F401
 from .judging import models as _judging_models  # noqa: F401
 from .scoring import models as _scoring_models  # noqa: F401
+from .voting import models as _voting_models  # noqa: F401
+from .audit import models as _audit_models  # noqa: F401
 
 from .auth.router import router as auth_router
 from .events.router import router as events_router
@@ -27,6 +29,8 @@ from .teams.router import router as teams_router
 from .submissions.router import router as submissions_router
 from .judging.router import router as judging_router
 from .scoring.router import router as scoring_router
+from .voting.router import router as voting_router
+from .audit.router import router as audit_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -54,6 +58,8 @@ app.include_router(teams_router)
 app.include_router(submissions_router)
 app.include_router(judging_router)
 app.include_router(scoring_router)
+app.include_router(voting_router)
+app.include_router(audit_router)
 
 if (STATIC_DIR / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")

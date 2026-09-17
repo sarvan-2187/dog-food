@@ -152,6 +152,9 @@ MATRIX = [
     ("get", "/api/assignments/{assignment_id}/sheet", None,
      [Role.participant, Role.organizer, Role.admin, Role.judge]),
 
+    # --- audit log (organizer/admin only) ---------------------------------
+    ("get", "/api/audit", None, [Role.participant, Role.judge]),
+
     # --- results + exports (organizer/admin only) -------------------------
     ("get", "/api/events/{event_id}/results", None, [Role.participant, Role.judge]),
     ("get", "/api/events/{event_id}/export/users.csv", None, [Role.participant, Role.judge]),
@@ -235,3 +238,62 @@ def test_a_non_member_cannot_touch_another_teams_submission(client, session, wor
     assert client.get(f"/api/teams/{team_id}/submission").status_code == 403
     assert client.patch(f"/api/teams/{team_id}/submission", json={"title": "Hijack"}).status_code == 403
     assert client.post(f"/api/teams/{team_id}/submission/submit").status_code == 403
+
+
+# --- Phase 3: voting and comments -----------------------------------------
+
+def test_voting_requires_a_signed_in_user_but_any_role_may_take_part(client, session, world):
+    """Voting is a community action, not a privileged one: every signed-in role
+    can vote. Only anonymity is refused."""
+    from app.events.models import Event
+
+    event = session.get(Event, world["event"].id)
+    event.voting_enabled = True
+    session.add(event)
+    session.commit()
+    submission_id = world["submission"].id
+
+    client.post("/api/auth/logout")
+    assert client.post(f"/api/submissions/{submission_id}/vote").status_code == 401
+    assert client.post(f"/api/submissions/{submission_id}/comments", json={"body": "Anon"}).status_code == 401
+
+    for role in (Role.participant, Role.judge, Role.organizer):
+        _become(client, session, role)
+        r = client.post(f"/api/submissions/{submission_id}/vote")
+        assert r.status_code in (200, 409), f"{role.value} could not vote: {r.status_code} {r.text}"
+
+
+def test_one_user_cannot_delete_another_users_comment(client, session, world):
+    submission_id = world["submission"].id
+    author = _become(client, session, Role.participant)
+    comment_id = client.post(
+        f"/api/submissions/{submission_id}/comments", json={"body": "Written by the author."}
+    ).json()["id"]
+    assert author is not None
+
+    _become(client, session, Role.judge)
+    assert client.delete(f"/api/comments/{comment_id}").status_code == 403
+
+
+def test_hidden_results_are_withheld_from_every_non_organizer_role(client, session, world):
+    """The check is on the response body, not on whether the UI drew a control."""
+    from datetime import timedelta
+
+    from app.events.models import Event
+    from app.timeutil import utcnow
+
+    event = session.get(Event, world["event"].id)
+    event.voting_enabled = True
+    event.results_hidden_until = utcnow() + timedelta(days=1)
+    session.add(event)
+    session.commit()
+
+    for role in (Role.participant, Role.judge):
+        _become(client, session, role)
+        assert client.get(f"/api/events/{event.id}/public-results").status_code == 425
+        gallery = client.get(f"/api/gallery?event_id={event.id}").json()
+        for row in gallery:
+            assert row["votes"] is None, f"{role.value} received a vote count during the hidden window"
+
+    _become(client, session, Role.organizer)
+    assert client.get(f"/api/events/{event.id}/public-results").status_code == 200

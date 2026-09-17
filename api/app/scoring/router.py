@@ -6,6 +6,7 @@ from typing import Iterable
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session, select
 
+from ..audit.log import record
 from ..auth import Role, User, require_role
 from ..db import get_session
 from ..events.models import Event
@@ -90,6 +91,15 @@ def submit_score(
     score.raw_total = _weighted_total(criteria, payload.values)
     score.updated_at = utcnow()
     session.add(score)
+    record(
+        session,
+        "score.submitted",
+        actor=user,
+        entity_type="submission",
+        entity_id=assignment.submission_id,
+        assignment_id=assignment_id,
+        raw_total=score.raw_total,
+    )
     session.commit()
     session.refresh(score)
     return ScorePublic(**score.model_dump())

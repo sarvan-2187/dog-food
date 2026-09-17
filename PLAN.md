@@ -252,25 +252,39 @@ it came from.
 ## Phase 3 — Public (T3)
 
 ### Functional checklist
-- [ ] `Event.voting_enabled` toggle + `Vote` model with unique constraint `(user_id, submission_id)`
-- [ ] `Event.results_hidden_until` + enforce hiding at the **API response** level — test that the raw endpoint returns no score/vote data during the hidden window, not just that the UI hides it
-- [ ] Randomized project ordering, seeded per-session
-- [ ] `Comment` model + endpoints
-- [ ] Rate limiting on vote/comment endpoints (in-process token bucket, no external service)
-- [ ] Duplicate-vote detection: unique constraint as the hard guard, `fingerprint_hash` column flags (doesn't silently block) suspicious repeats
-- [ ] Wire remaining actions into the `audit` module
-- [ ] `api/tests/test_voting.py` passing
-- [ ] **If time is tight:** fall back to the smaller "community interest" thumbs-up variant (PDF Section 9) rather than leaving full voting half-built — log this in `## Open Questions`
-- [ ] Run the acceptance suite against T3
+- [x] `Event.voting_enabled` toggle + `Vote` model with unique constraint `(user_id, submission_id)` — organizer toggles it from the results page
+- [x] `Event.results_hidden_until` + enforce hiding at the **API response** level — `GalleryItem.votes` is `null` during the window and `/public-results` returns `425`; asserted against the raw payload, not the rendered UI
+- [x] Randomized project ordering, seeded per-session — server shuffles with `random.Random(seed)`; the client holds one seed per browser session in `sessionStorage`
+- [x] `Comment` model + endpoints (list/add/delete, with author-or-moderator deletion)
+- [x] Rate limiting on vote/comment endpoints — in-process token bucket in `api/app/voting/ratelimit.py`, time-injectable so refill is tested without sleeping
+- [x] Duplicate-vote detection: the unique constraint is the hard guard (an `IntegrityError` is caught rather than a pre-`SELECT` that a concurrent request could race past); `fingerprint_hash` flags suspicious repeats into the audit log without blocking
+- [x] Wire remaining actions into the `audit` module — the module did not exist (see Open Questions); built here and wired into register/login, event CRUD, team create/join, submission submit, rubric save/delete, assignment runs, score submission, votes and comments
+- [x] `api/tests/test_voting.py` passing
+- [x] **If time is tight:** fall back to the smaller "community interest" thumbs-up variant — *not needed; full voting shipped*
+- [ ] Run the acceptance suite against T3 — *still blocked: no acceptance suite has been published*
 
 ### UX checklist
-- [ ] Voting UI clearly communicates *why* results are hidden during the voting window (e.g., "Results are hidden until voting closes on [date]") rather than just disabling a control with no explanation
-- [ ] Voting/comment rate limiting shows a clear, friendly message when a limit is hit ("You've reached the voting limit for now — try again shortly"), not a raw 429
-- [ ] Comment submission: inline validation, optimistic append with rollback-on-failure, visible pending/sent state
-- [ ] Randomized ordering doesn't cause layout jank on repeated visits within the same session (stable shuffle per session, as specified)
-- [ ] All Phase 3 screens verified at mobile/tablet/desktop breakpoints and via keyboard-only navigation
+- [x] Voting UI clearly communicates *why* results are hidden during the voting window — a banner naming the reveal time and the reason ("everyone sees the totals at the same time, so early counts cannot sway the vote"), plus a per-card labelled placeholder instead of a wrong number
+- [x] Voting/comment rate limiting shows a clear, friendly message when a limit is hit — "You've reached the voting limit for now - try again in about N seconds", with `Retry-After` still set for well-behaved clients
+- [x] Comment submission: inline validation, optimistic append with rollback-on-failure, visible "Sending..." state, and the typed text is restored rather than lost if the post fails
+- [x] Randomized ordering doesn't cause layout jank on repeated visits within the same session — asserted by navigating away and back and comparing the rendered order
+- [x] All Phase 3 screens verified at mobile/tablet/desktop breakpoints and via keyboard-only navigation
 
 **Definition of Done — Phase 3 gate:** acceptance suite reports T3 checks green (full scope or the documented fallback scope), and the Phase 3 UX checklist is fully checked.
+
+**Gate status:** green apart from the unpublished acceptance suite. Verification standing:
+
+| Suite | Command | Result |
+|---|---|---|
+| Backend | `docker compose exec api pytest tests/ -v` | 158 passed |
+| Frontend unit | `cd web && npm test` | 9 passed |
+| Browser E2E | `cd web && npx playwright test` | 61 passed |
+
+Verified live against the seeded stack: during the hidden window the raw gallery payload carries
+`votes: null` for a participant while the organizer sees real counts on the same endpoint;
+`/public-results` returns `425` with the reveal time for participants and anonymous callers alike;
+a second vote from the same user returns `409`; the vote limiter engages with a readable message;
+and a shared client fingerprint is recorded in the audit log **without** blocking the vote.
 
 ---
 
@@ -516,6 +530,44 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   coverage-shortfall test pass for the wrong reason. `conftest.py` now points `FIXTURES_DIR` at an
   empty path and truncates every table once per run, so the suite cannot inherit state. Worth
   knowing before writing Phase 3's voting tests, which will also query global tables.
+
+- **The `audit/` module did not exist before Phase 3 (Phase 3).** Section 2's repo layout lists
+  `api/app/audit/`, but Phases 0-2 never built it, and Phase 3's "wire *remaining* actions into the
+  audit module" presupposes it already exists. Built here, then wired into the earlier actions too:
+  register, login, event create/update/delete, team create, invite redemption, submission submit,
+  rubric save/delete, assignment runs, score submission, votes and comments. Entries are staged on
+  the caller's session so an action and its audit row commit or roll back together -- a logged
+  action that did not actually happen would be worse than no log.
+
+- **Append-only is enforced by absence, not by the database (Phase 3).** There is no update or
+  delete path to `audit_log` anywhere in the app, and `GET /api/audit` is the only endpoint that
+  touches it. A `REVOKE`-based or trigger-based guarantee would be stronger; it is not in scope for
+  a single-container demo, and is worth flagging before anyone treats this log as tamper-evident
+  rather than merely append-only by construction.
+
+- **Organizers see vote counts during the hidden window (Phase 3, judgment call).** PLAN.md says to
+  enforce `results_hidden_until` at the API response level but does not say for whom. Implemented in
+  one predicate, `may_see_results()`: organizers and admins see counts throughout because they are
+  running the event and need them; participants, judges and anonymous visitors all wait. Judges
+  deliberately wait too -- community vote counts are not judging input and should not colour a
+  judge's scoring.
+
+- **`425 Too Early` for hidden results (Phase 3).** Not `403`: the caller is not forbidden, just
+  early, and the distinction is what lets the UI say "results become visible on <date>" rather than
+  "you can't see this". The response body names the moment.
+
+- **Fingerprinting is coarse and flags loudly (Phase 3).** `fingerprint_hash` is
+  `sha256(client-ip | user-agent)`, truncated, and is *only* ever a flag. Anyone behind one office
+  NAT or one mobile network shares a fingerprint, so blocking on it would lock out legitimate
+  voters; the unique constraint is what actually prevents duplicates. The consequence is that the
+  flag is noisy by design -- on the seeded demo, where every request comes from one host, nearly
+  every vote raises one. An organizer reading the log should treat it as "worth a look", never as
+  proof.
+
+- **Voting fixtures (Phase 3).** `fixtures/events.json` now sets `voting_enabled: true` and
+  `results_hidden_until: 2026-09-21T20:00:00` (two hours after the submission deadline) so a fresh
+  `docker compose up` demonstrates the hidden-window behaviour rather than needing an organizer to
+  configure it first. Same expiry caveat as the event dates themselves -- see the note above.
 
 - **Test data accumulates in the dev database (Phase 1, audit).** The Playwright suite runs against
   the live `docker compose` stack and creates real users/teams/submissions in `dogfood`. Seeding
