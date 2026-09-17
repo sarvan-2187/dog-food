@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app.auth.models import Role, User
 from app.events.models import Event
+from app.timeutil import utcnow
 
 
 def _setup_event(session, slug: str, *, past: bool = False) -> Event:
@@ -10,11 +11,11 @@ def _setup_event(session, slug: str, *, past: bool = False) -> Event:
     session.commit()
     session.refresh(organizer)
     if past:
-        start = datetime.utcnow() - timedelta(days=5)
-        end = datetime.utcnow() - timedelta(days=1)
+        start = utcnow() - timedelta(days=5)
+        end = utcnow() - timedelta(days=1)
     else:
-        start = datetime.utcnow() + timedelta(days=1)
-        end = datetime.utcnow() + timedelta(days=3)
+        start = utcnow() + timedelta(days=1)
+        end = utcnow() + timedelta(days=3)
     event = Event(slug=slug, name="Sub Event", start_at=start, end_at=end, created_by_id=organizer.id)
     session.add(event)
     session.commit()
@@ -59,7 +60,7 @@ def test_deadline_enforced_on_write(client, session):
     _register(client, "late@example.com")
     team_id = _create_team(client, event.id, name="Late Team")
 
-    event.end_at = datetime.utcnow() - timedelta(days=1)
+    event.end_at = utcnow() - timedelta(days=1)
     session.add(event)
     session.commit()
 

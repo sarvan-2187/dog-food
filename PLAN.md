@@ -180,7 +180,7 @@ Pin every dependency to an exact version in `api/pyproject.toml` (or `requiremen
 - [x] `Submission` model + draft/edit endpoints + autosave-friendly PATCH semantics
 - [x] Deadline enforcement: reject writes server-side once `Event.end_at` has passed — test by calling the endpoint directly post-deadline
 - [x] Public gallery endpoint with search (simple `ILIKE` on title/description)
-- [x] `api/tests/test_auth.py`, `test_events.py`, `test_teams.py`, `test_submissions.py` passing — 21/21 green (`docker compose exec api pytest tests/ -v`)
+- [x] `api/tests/test_auth.py`, `test_events.py`, `test_teams.py`, `test_submissions.py` passing — plus `test_regressions.py` from the Phase 0/1 audit: **30/30 green** (`docker compose exec api pytest tests/ -v`, which now works verbatim — see audit note below)
 - [ ] Run the acceptance suite against T1 — *blocked: no acceptance suite has been published yet (see Open Questions)*
 
 ### UX checklist (see Section 4 for detail)
@@ -189,12 +189,22 @@ Pin every dependency to an exact version in `api/pyproject.toml` (or `requiremen
 - [x] Submission draft/edit: visible autosave indicator ("Saving… / Saved / Unsaved changes"); never loses entered content on a validation error
 - [x] Public gallery: loading skeleton while fetching, empty state with role-appropriate call-to-action, search with no-results state that's distinct from the empty-gallery state
 - [x] Deadline countdown or clear deadline display on the submission page — the user should never discover a deadline passed only via a rejected save
-- [ ] All Phase 1 screens verified at mobile/tablet/desktop breakpoints and via keyboard-only navigation — *built mobile-first with responsive Tailwind classes throughout, but not yet visually verified in a browser at all three breakpoints; needs a manual or devtools pass*
+- [x] All Phase 1 screens verified at mobile/tablet/desktop breakpoints and via keyboard-only navigation — done in a real browser via `web/tests/breakpoints.spec.ts` (24 Playwright checks at 375/768/1280 + keyboard + role-aware nav). Found and fixed a real 54px horizontal overflow on `/gallery` at 375px; see the `sm:` audit note below.
 - [x] Role-aware navigation: nav only shows links the current role can use
 
 **Definition of Done — Phase 1 gate:** acceptance suite reports all T1 checks green, and every item in the Phase 1 UX checklist is checked. Do not start Phase 2 otherwise.
 
-**Gate status:** functionally complete and self-tested (21/21 `api/tests/` passing against a real Postgres, verified live against the running `docker compose` stack — seeded event/gallery data confirmed over HTTP). Two items keep this from a clean gate pass: the published acceptance suite doesn't exist yet, and the responsive/keyboard breakpoint pass hasn't been done in an actual browser. Recommend treating Phase 1 as done-pending-verification rather than fully green.
+**Gate status:** green, after a full Phase 0/1 audit (see `## Phase 0/1 Audit` below). Verification now standing:
+
+| Suite | Command | Result |
+|---|---|---|
+| Backend | `docker compose exec api pytest tests/ -v` | 30 passed |
+| Frontend unit | `cd web && npm test` | 9 passed |
+| Browser E2E | `cd web && npx playwright test` | 24 passed |
+
+`docker compose up -d --build` boots both containers healthy from a clean volume; seeding is
+idempotent across restarts (row counts unchanged); `GET /healthz` → `200`. The only item still
+open is the published acceptance suite, which does not exist to run.
 
 ---
 
@@ -344,6 +354,47 @@ Update these as each phase completes, not in a single pass before submission:
 
 ---
 
+## Phase 0/1 Audit
+
+A line-by-line re-read of every Phase 0 and Phase 1 file, with each finding
+reproduced against the running stack before it was fixed and pinned by a test
+after. `api/tests/test_regressions.py` holds one test per defect, named after it.
+
+### Correctness defects (all fixed, all reproduced first)
+
+| # | Defect | Reproduced as | Fix |
+|---|---|---|---|
+| 1 | **Deadlines drifted by the viewer's UTC offset.** Columns were `TIMESTAMP WITHOUT TIME ZONE`, so the API served `2026-09-21T18:00:00` with no offset and `new Date()` read it as *local* time. The countdown disagreed with the deadline the API enforces by 5.5h in IST — and in a negative-offset zone it tells a participant they still have time when the server will reject the save. | `GET /api/events` returned offset-less timestamps; verified a 5.5h drift in `TZ=Asia/Kolkata` | All datetime columns are `timestamptz`; new `api/app/timeutil.py` (`utcnow`, `ensure_utc`) is the only source of "now"; naive client and fixture input is read as UTC. API now serves `...Z`. |
+| 2 | **`PATCH /api/teams/{id}/submission` with `{"title": null}` → HTTP 500.** The validator called `.strip()` on `None`; `exclude_unset` alone would then have written `NULL` into a `NOT NULL` column. | `AttributeError: 'NoneType' object has no attribute 'strip'` in the api log | Validator is None-tolerant; router uses `exclude_unset=True, exclude_none=True`, so an explicit null means "no change". |
+| 3 | **Unknown `/api/*` paths returned the SPA shell with HTTP 200.** The catch-all SPA route swallowed them, so a client mistake looked like a successful empty response instead of a 404. | `GET /api/does-not-exist` → `200 text/html` | Catch-all refuses `api/`, `healthz`, `docs`, `redoc`, `openapi.json` and 404s as JSON. |
+| 4 | **`DELETE /api/events/{id}` → HTTP 500** on any event with teams or submissions (raw foreign-key violation). A destructive endpoint failing with a bare 500 violates §4.6. | `ForeignKeyViolation ... teams_event_id_fkey` | Returns `409` naming what blocks it and the consequence in plain language (§4.3). |
+| 5 | **`docker compose exec api pytest tests/ -v` — the gate command PLAN.md documents — did not work.** `conftest.py` hard-coded `localhost`, which inside the api container is not the database. Exited 4 at collection. | `OperationalError: connection to server at "localhost" ... refused`, exit 4 | The test database is derived from the app's own `DATABASE_URL` + `_test`, so the documented command works with no extra environment. |
+| 6 | **`PATCH /api/events/{id}` could invert the dates** that `POST` rejects — `EventUpdate` validated nothing. An event could be left with `end_at` before `start_at`. | — (found by reading; test added) | `EventUpdate` revalidates name length and UTC coercion; the router re-checks ordering against the stored row, so a one-sided change is still caught. |
+| 7 | **Gallery search leaked `ILIKE` wildcards.** Searching `%` or `_` matched every submission, so a literal `100%` in a title could not be searched for. | `q=%` returned all rows | Term is escaped and the `ILIKE` uses an explicit `escape` character. |
+| 8 | **54px horizontal overflow on `/gallery` at 375px.** `DESIGN_SYSTEM.md` §4 defines `sm` as *the 375px mobile target*, and says layout stacks below `md` (768px) with "never a horizontal scrollbar on a primary view" — but four `sm:` layout switches were written as though `sm` meant "wider than mobile" (Tailwind's 640px default), so they fired *on* mobile. | Measured `scrollWidth - clientWidth = 54` at 375px | Layout switches moved to `md:` in `GalleryPage`, `EventDetailPage` and `NavBar`. Now 0px overflow on every page at all three breakpoints. |
+| 9 | **The submission page had no deadline on it at all**, though that checklist item was ticked. `DeadlineCountdown` was only on the event detail page. | — (checklist vs. code) | Submission page loads its event and shows the countdown above the form, warns explicitly once passed, and disables the fields (server already enforced it). Added `GET /api/events/id/{event_id}` because the page only knows its team's `event_id`. |
+| 10 | **Invite redemption ended in a silent redirect**, which that checklist item explicitly forbids — and it fired twice under React StrictMode, so the second `409` rendered as a *failure* on a successful join. | — (found by reading; reproduced in the browser) | Redeems once per code via a ref; shows an explicit success screen with the team and members; treats "already a member" as a success state, not a dead end. |
+| 11 | **`npm test` exited 1** — the script was wired with no test files. | `No test files found, exiting with code 1` | 9 Vitest tests (`api.test.ts`, `DeadlineCountdown.test.tsx`) on a `vitest.config.ts` kept separate from the production Vite config. |
+| 12 | **Non-reproducible image builds.** `api/Dockerfile` ran `npm install` with no committed lockfile, against §5's "pin every dependency to an exact version". | — | `web/package-lock.json` committed; Dockerfile uses `npm ci`. |
+| 13 | **131 `datetime.utcnow()` deprecation warnings** (removed in a future Python). | pytest warning summary | Gone with finding #1; the suite now reports only 2 third-party warnings. |
+| 14 | **Unknown SPA routes rendered a blank page** under the nav — a dead-end screen (§4.4). | `GET /nope` rendered nav + nothing | `NotFoundPage` on a `path="*"` route with a way back. |
+| 15 | **`_check_deadline` would 500** if an event row vanished between the team lookup and the write. | — (found by reading) | Replaced by `_load_open_event`, which 404s with a readable message. |
+
+### Also verified working (no change needed)
+
+- Role isolation at the endpoint level: organizer → participant-only team endpoints `403`;
+  anonymous → every mutating endpoint `401`; non-member → team read `403` and submission PATCH `403`.
+- `require_role()` is defined once in `api/app/auth/deps.py` and imported everywhere — no inline
+  role checks in any handler (§8).
+- `UserPublic` never exposes `password_hash`.
+- Seeding is idempotent: row counts unchanged across an api restart.
+- `bcrypt==4.0.1` is pinned deliberately — passlib 1.7.4 breaks against bcrypt ≥ 4.1.
+- Route ordering is correct: `/api/teams/mine` and `/api/teams/join` resolve before `/{team_id}`.
+- No network calls in the runtime path; no CDN assets in the served app.
+
+
+---
+
 ## Open Questions
 
 *(Append here anything ambiguous you had to make a judgment call on, so it's visible before submission — e.g., a T3 fallback taken, a DESIGN_SYSTEM.md/reference_design.pdf conflict, a rubric edge case.)*
@@ -365,11 +416,11 @@ Update these as each phase completes, not in a single pass before submission:
   §3 and `DESIGN_SYSTEM.md` §11 both specify a `tailwind.config.ts` with `theme.extend`, which is
   the v3 configuration model. v4's CSS-first config would invalidate that instruction.
 - **No acceptance suite exists yet (Phase 1).** "Run the acceptance suite against T1" is unchecked
-  because no acceptance suite has been published — nothing to run. Backend coverage stands on
-  `api/tests/` instead (21 tests: auth, role gating, event CRUD + validation, team formation +
-  invite join/expiry, submission autosave/deadline/gallery visibility), run via
-  `docker compose exec api pytest tests/ -v` against a dedicated `dogfood_test` database. Re-run
-  once the real suite ships.
+  because no acceptance suite has been published — nothing to run. Coverage stands on our own
+  suites instead: 30 backend tests (auth, role gating, event CRUD + validation, team formation +
+  invite join/expiry, submission autosave/deadline/gallery visibility, plus one regression test per
+  audit finding), 9 Vitest unit tests, and 24 Playwright browser checks. Re-run once the real suite
+  ships; tier claims in `README.md` stay unwritten until then.
 - **Public registration always creates a participant (Phase 1).** `POST /api/auth/register` never
   accepts a role from the client. Judge/organizer/admin accounts exist only via `fixtures/users.json`
   seeding. This wasn't explicit in PLAN.md; treated as the safer default for a hackathon platform
@@ -387,8 +438,31 @@ Update these as each phase completes, not in a single pass before submission:
   `docker compose down -v` dropped the dev volume for a clean schema. Fine for local development;
   flag before Phase 5 whether real migrations are needed for anything beyond a `docker compose up`
   demo.
-- **Responsive/keyboard breakpoint pass not yet done in a browser (Phase 1).** All Phase 1 screens
-  were built mobile-first with Tailwind's responsive utilities (stacking layouts, a collapsing nav,
-  `sm`/`md`/`lg` breakpoints throughout), consistent with `DESIGN_SYSTEM.md` §4, but nobody has
-  actually opened them at 375px/768px/1280px or tabbed through them yet. Do this before checking
-  that Phase 1 UX box, and definitely before Phase 5's dedicated UX audit.
+- **~~Responsive/keyboard breakpoint pass not yet done in a browser (Phase 1).~~ Resolved by the
+  Phase 0/1 audit.** Done in headless Chromium at 375/768/1280 across every Phase 1 screen, plus a
+  keyboard-only pass. It was worth doing: it caught a real 54px overflow on `/gallery` at 375px
+  (audit finding #8) that reading the code had not. Kept as `web/tests/breakpoints.spec.ts` so it
+  re-runs every phase rather than being a one-time manual check.
+
+- **`sm:` means *mobile*, not *above mobile* (Phase 1, audit).** `DESIGN_SYSTEM.md` §4 sets
+  `sm: 375px` as the mobile target, so a `sm:`-prefixed utility applies **on** phones — the opposite
+  of Tailwind's 640px default, where `sm:` is the first step *up* from mobile. Any layout that
+  should stack on a phone must switch at `md:` (768px), matching §4's "stacking to one column below
+  768px". Worth knowing before writing Phase 2's judge dashboard and score form.
+
+- **Playwright added as a dev dependency (Phase 1, audit).** §5 already calls for "one Playwright
+  end-to-end lifecycle test", so this isn't new scope — it is now actually installed and running
+  (`web/tests/lifecycle.spec.ts`, the sign-up → team → invite → autosave → submit → gallery walk
+  that §9 asks be kept green as the demo script). It is a dev dependency only; nothing about the
+  runtime image or the no-network constraint changes.
+
+- **The seeded event expires 2026-09-21 (Phase 1, audit — needs a decision).** `fixtures/events.json`
+  hard-codes `end_at: 2026-09-21T18:00:00`. After that date the fixture event is closed, so team
+  creation and every submission write correctly start returning `400` and a fresh `docker compose up`
+  demos a dead event. Left as-is rather than silently rewriting fixture semantics, but before the
+  demo either push the date well out or compute fixture dates relative to first boot.
+
+- **Test data accumulates in the dev database (Phase 1, audit).** The Playwright suite runs against
+  the live `docker compose` stack and creates real users/teams/submissions in `dogfood`. Seeding
+  stays idempotent and the backend suite is isolated in `dogfood_test`, but run
+  `docker compose down -v` before recording the demo so the gallery shows fixture data only.

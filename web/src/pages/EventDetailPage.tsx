@@ -86,7 +86,7 @@ function TeamCard({ team }: { team: Team }) {
     <div className="flex flex-col gap-3">
       <p className="text-h3 text-ink-800">{team.name}</p>
       <p className="text-meta text-ink-500">{team.members.map((m) => m.name).join(', ')}</p>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end">
         <Input label="Invite link" readOnly value={inviteUrl} className="flex-1" />
         <Button variant="secondary" onClick={copy}>
           {copied ? 'Copied' : 'Copy'}

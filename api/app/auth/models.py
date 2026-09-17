@@ -3,7 +3,15 @@ import enum
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import Column, DateTime
 from sqlmodel import Field, SQLModel
+
+from ..timeutil import utcnow
+
+
+def _ts_column() -> Column:
+    """TIMESTAMP WITH TIME ZONE, so the offset survives the round trip."""
+    return Column(DateTime(timezone=True), nullable=False)
 
 
 class Role(str, enum.Enum):
@@ -21,7 +29,7 @@ class User(SQLModel, table=True):
     name: str
     password_hash: str
     role: Role = Field(default=Role.participant)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
 
 
 class UserPublic(SQLModel):

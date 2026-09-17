@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app.auth.models import Role, User
 from app.events.models import Event
+from app.timeutil import utcnow
 
 
 def _setup_event(session, name: str = "team-event") -> Event:
@@ -12,8 +13,8 @@ def _setup_event(session, name: str = "team-event") -> Event:
     event = Event(
         slug=name,
         name="Team Event",
-        start_at=datetime.utcnow() + timedelta(days=1),
-        end_at=datetime.utcnow() + timedelta(days=3),
+        start_at=utcnow() + timedelta(days=1),
+        end_at=utcnow() + timedelta(days=3),
         created_by_id=organizer.id,
     )
     session.add(event)

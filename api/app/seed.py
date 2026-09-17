@@ -10,9 +10,12 @@ import logging
 import os
 from pathlib import Path
 
+from datetime import datetime
+
 from sqlmodel import Session, select
 
 from .db import engine
+from .timeutil import ensure_utc
 
 log = logging.getLogger("seed")
 
@@ -27,6 +30,12 @@ def load_fixture(name: str) -> list[dict]:
         return []
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def _fixture_dt(value: str) -> datetime:
+    """Fixture timestamps are written without an offset and mean UTC. Parse them
+    explicitly so they never get read as the container's local time."""
+    return ensure_utc(datetime.fromisoformat(value))
 
 
 def _seed_users(session: Session) -> dict[str, int]:
@@ -64,8 +73,8 @@ def _seed_events(session: Session, email_to_id: dict[str, int]) -> dict[str, int
             slug=row["slug"],
             name=row["name"],
             description=row.get("description", ""),
-            start_at=row["start_at"],
-            end_at=row["end_at"],
+            start_at=_fixture_dt(row["start_at"]),
+            end_at=_fixture_dt(row["end_at"]),
             tracks=row.get("tracks", []),
             created_by_id=email_to_id[row["created_by"]],
         )
@@ -129,7 +138,12 @@ def _self_check() -> None:
 
     Run with: python -m app.seed  (from api/)
     """
+    from datetime import timezone
+
     assert load_fixture("__definitely_missing__.json") == []
+    parsed = _fixture_dt("2026-09-21T18:00:00")
+    assert parsed.tzinfo is not None and parsed.utcoffset().total_seconds() == 0, parsed
+    assert _fixture_dt("2026-09-21T18:00:00+05:30").astimezone(timezone.utc).hour == 12
     print("seed self-check ok")
 
 

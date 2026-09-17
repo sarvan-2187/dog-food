@@ -1,14 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { DeadlineCountdown } from '../components/DeadlineCountdown';
 import { ErrorState, InlineStatus, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import type { SaveState } from '../components/feedback';
 import { Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
-import type { Submission } from '../types';
+import type { EventRecord, Submission, Team } from '../types';
+
+const FIELD_CLASS =
+  'rounded-md border border-border bg-surface-0 px-3 text-body text-ink-800 ' +
+  'focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20 ' +
+  'disabled:bg-surface-100 disabled:text-ink-500';
 
 export function SubmissionPage() {
   const { teamId = '' } = useParams();
   const [submission, setSubmission] = useState<Submission | null>(null);
+  const [event, setEvent] = useState<EventRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -17,18 +24,36 @@ export function SubmissionPage() {
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const loaded = useRef(false);
+  // What the server last confirmed, so a blur with no edit does not re-PATCH and
+  // an edit can be reported as "Unsaved changes" the moment it diverges.
+  const saved = useRef({ title: '', description: '', track: '' });
 
   useEffect(() => {
-    api
-      .get<Submission>(`/api/teams/${teamId}/submission`)
-      .then((s) => {
+    let cancelled = false;
+
+    async function load() {
+      // The deadline must be on screen before the participant types anything, so
+      // they never discover it via a rejected save (PLAN.md 4.1). The team lookup
+      // is what tells us which event this submission belongs to.
+      try {
+        const team = await api.get<Team>(`/api/teams/${teamId}`);
+        if (!cancelled) setEvent(await api.get<EventRecord>(`/api/events/id/${team.event_id}`));
+      } catch {
+        // A missing deadline must not block editing; the server still enforces it.
+      }
+
+      try {
+        const s = await api.get<Submission>(`/api/teams/${teamId}/submission`);
+        if (cancelled) return;
         setSubmission(s);
         setTitle(s.title);
         setDescription(s.description);
         setTrack(s.track);
-      })
-      .catch((err) => {
+        saved.current = { title: s.title, description: s.description, track: s.track };
+      } catch (err) {
+        if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) {
+          // No draft yet is the normal starting state, not an error.
           setSubmission({
             id: 0,
             team_id: Number(teamId),
@@ -43,23 +68,42 @@ export function SubmissionPage() {
         } else {
           setError(err instanceof ApiError ? err.message : 'Could not load your submission.');
         }
-      })
-      .finally(() => {
-        loaded.current = true;
-      });
+      } finally {
+        if (!cancelled) loaded.current = true;
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [teamId]);
 
-  async function saveField(patch: Partial<Pick<Submission, 'title' | 'description' | 'track'>>) {
-    if (!loaded.current) return;
-    setSaveState('saving');
-    try {
-      const updated = await api.patch<Submission>(`/api/teams/${teamId}/submission`, patch);
-      setSubmission(updated);
-      setSaveState('saved');
-    } catch (err) {
-      setSaveState('unsaved');
-      setToast({ message: err instanceof ApiError ? err.message : 'Could not save your changes.', ok: false });
-    }
+  const deadlinePassed = event ? new Date(event.end_at).getTime() <= Date.now() : false;
+
+  const saveField = useCallback(
+    async (field: 'title' | 'description' | 'track', value: string) => {
+      if (!loaded.current || deadlinePassed) return;
+      if (saved.current[field] === value) return; // nothing changed on this blur
+      setSaveState('saving');
+      try {
+        const updated = await api.patch<Submission>(`/api/teams/${teamId}/submission`, { [field]: value });
+        setSubmission(updated);
+        saved.current = { title: updated.title, description: updated.description, track: updated.track };
+        setSaveState('saved');
+      } catch (err) {
+        setSaveState('unsaved');
+        setToast({ message: err instanceof ApiError ? err.message : 'Could not save your changes.', ok: false });
+      }
+    },
+    [teamId, deadlinePassed],
+  );
+
+  function edit(field: 'title' | 'description' | 'track', value: string) {
+    if (field === 'title') setTitle(value);
+    if (field === 'description') setDescription(value);
+    if (field === 'track') setTrack(value);
+    setSaveState(saved.current[field] === value ? 'saved' : 'unsaved');
   }
 
   async function onFinalSubmit() {
@@ -67,7 +111,7 @@ export function SubmissionPage() {
     try {
       const updated = await api.post<Submission>(`/api/teams/${teamId}/submission/submit`);
       setSubmission(updated);
-      setToast({ message: 'Submission sent for judging.', ok: true });
+      setToast({ message: 'Submission sent for judging. You can keep editing until the deadline.', ok: true });
     } catch (err) {
       setToast({ message: err instanceof ApiError ? err.message : 'Could not submit yet.', ok: false });
     } finally {
@@ -79,6 +123,11 @@ export function SubmissionPage() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-section">
         <ErrorState description={error} />
+        <p className="mt-4 text-center text-meta">
+          <Link to="/teams/mine" className="text-brand-500">
+            Back to my teams
+          </Link>
+        </p>
       </div>
     );
   }
@@ -92,42 +141,79 @@ export function SubmissionPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-section">
+      <p className="mb-4 text-meta">
+        <Link to="/teams/mine" className="text-brand-500">
+          &larr; My teams
+        </Link>
+      </p>
+
+      {event && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <DeadlineCountdown endAt={event.end_at} />
+          <span className="text-meta text-ink-500">{event.name}</span>
+        </div>
+      )}
+
+      {deadlinePassed && (
+        <div role="alert" className="mb-4 rounded-md border border-border bg-warning-bg px-4 py-3 text-body text-warning-fg">
+          The deadline has passed, so this submission can no longer be edited. What you see below is what the judges
+          will review.
+        </div>
+      )}
+
       <Card
         title="Your submission"
         meta={<InlineStatus state={saveState} />}
-        footer="Fields save automatically when you click away - no manual save needed."
+        footer={
+          deadlinePassed
+            ? 'Editing is closed for this event.'
+            : 'Fields save automatically when you click away - no manual save needed.'
+        }
       >
         <div className="flex flex-col gap-4">
-          {submission.status === 'submitted' && <p className="text-meta text-success-fg">Submitted - you can still edit until the deadline.</p>}
+          {submission.status === 'submitted' && !deadlinePassed && (
+            <p className="text-meta text-success-fg">
+              <span aria-hidden="true">&#10003;</span> Submitted - you can still edit until the deadline.
+            </p>
+          )}
           <label className="flex flex-col gap-1.5">
             <span className="text-label text-ink-800">Title</span>
             <input
-              className="h-10 rounded-md border border-border bg-surface-0 px-3 text-body text-ink-800 focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20"
+              className={`h-10 ${FIELD_CLASS}`}
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={() => saveField({ title })}
+              disabled={deadlinePassed}
+              onChange={(e) => edit('title', e.target.value)}
+              onBlur={() => saveField('title', title)}
             />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-label text-ink-800">Description</span>
             <textarea
               rows={6}
-              className="rounded-md border border-border bg-surface-0 px-3 py-2 text-body text-ink-800 focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20"
+              className={`py-2 ${FIELD_CLASS}`}
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onBlur={() => saveField({ description })}
+              disabled={deadlinePassed}
+              onChange={(e) => edit('description', e.target.value)}
+              onBlur={() => saveField('description', description)}
             />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-label text-ink-800">Track</span>
             <input
-              className="h-10 rounded-md border border-border bg-surface-0 px-3 text-body text-ink-800 focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20"
+              className={`h-10 ${FIELD_CLASS}`}
               value={track}
-              onChange={(e) => setTrack(e.target.value)}
-              onBlur={() => saveField({ track })}
+              disabled={deadlinePassed}
+              onChange={(e) => edit('track', e.target.value)}
+              onBlur={() => saveField('track', track)}
             />
           </label>
-          <Button variant="primary" loading={submitLoading} loadingLabel="Submitting..." onClick={onFinalSubmit}>
+          <Button
+            variant="primary"
+            loading={submitLoading}
+            loadingLabel="Submitting..."
+            disabled={deadlinePassed}
+            onClick={onFinalSubmit}
+          >
             {submission.status === 'submitted' ? 'Re-submit' : 'Submit for judging'}
           </Button>
         </div>

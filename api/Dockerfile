@@ -1,8 +1,10 @@
 # Stage 1: build the Vite SPA. Node is discarded after this stage (PLAN.md Phase 0).
 FROM node:20-slim AS web
 WORKDIR /web
-COPY web/package.json ./
-RUN npm install --no-audit --no-fund
+# package-lock.json is committed and `npm ci` installs it exactly, so the image
+# is reproducible (PLAN.md section 5: pin every dependency).
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 

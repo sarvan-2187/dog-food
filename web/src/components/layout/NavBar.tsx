@@ -40,7 +40,7 @@ export function NavBar() {
           {user ? (
             <>
               <RoleBadge role={user.role} />
-              <span className="hidden text-label text-ink-700 sm:inline">{user.name}</span>
+              <span className="hidden text-label text-ink-700 md:inline">{user.name}</span>
               <Button variant="ghost" size="sm" onClick={onLogout}>
                 Log out
               </Button>
