@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import tailwindcssAnimate from 'tailwindcss-animate';
 import {
   borderRadius,
   boxShadow,
@@ -40,5 +41,5 @@ export default {
       transitionTimingFunction,
     },
   },
-  plugins: [],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;

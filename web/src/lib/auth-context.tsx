@@ -9,6 +9,10 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Re-read the session. Needed when the server changes the current user's
+   *  role mid-session (accepting a judge invitation), since the nav is
+   *  role-aware and would otherwise keep rendering the old role. */
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -38,7 +42,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ user, status, login, register, logout }}>{children}</AuthContext.Provider>;
+  const refresh = useCallback(async () => {
+    try {
+      setUser(await api.get<User>('/api/auth/me'));
+    } catch {
+      // A failed refresh means the session is gone; reflect that rather than
+      // leaving a stale user on screen.
+      setUser(null);
+    }
+  }, []);
+
+  return <AuthContext.Provider value={{ user, status, login, register, logout, refresh }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthState {

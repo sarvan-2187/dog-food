@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { JudgeInvitePanel } from '../components/JudgeInvitePanel';
 import { RequireRole } from '../components/auth/guards';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Button, Card } from '../components/ui';
@@ -198,6 +199,8 @@ function EventResults() {
           </div>
         </div>
       </Card>
+
+      <JudgeInvitePanel onToast={(message, ok) => setToast({ message, ok })} />
 
       <Card title="Exports" meta="CSV">
         <div className="flex flex-wrap gap-2">

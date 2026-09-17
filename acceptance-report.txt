@@ -9,10 +9,10 @@ below comes from a real run against the live `docker compose` stack on a fresh
 volume — nothing here is hand-edited. Replace this file by running the real
 acceptance suite the moment it is published.
 
-Generated: 2026-09-17T17:35:24Z (re-run after two tests were added pinning the
-  judging/voting separation documented in JUDGING.md — see the note at the end)
-Commit under test: 6b5d072 plus the uncommitted judging role-model reconciliation
-  (PLAN.md 8.0 / Phase 2, JUDGING.md, and the two separation tests below)
+Generated: 2026-09-17T18:03:15Z (re-run after judge invitation, the shadcn Select
+  swap and the landing-page motion guards — see the addenda at the end)
+Commit under test: 2c1e48c plus the judge-invitation and UI-pass work described in
+  the addenda below
 Environment: `docker compose up -d --build` on a freshly created `dog-food_db_data`
   volume (`docker compose down -v` immediately before this run), Docker Desktop /
   Windows host, Postgres 16-alpine + the built api image.
@@ -23,12 +23,12 @@ SUITE 1 — Backend (pytest, inside the api container against a dedicated
 -----------------------------------------------------------------------------
 Command: docker compose exec -e TEST_DATABASE_URL=postgresql+psycopg2://dogfood:dogfood@db:5432/dogfood_test api pytest tests/ -q -p no:warnings
 
-Result: 160 passed in 75.70s
+Result: 181 passed in 103.09s
 
 Coverage by file: test_auth.py, test_events.py, test_teams.py,
 test_submissions.py, test_judging.py, test_scoring.py, test_voting.py,
-test_role_isolation.py (75 cases: the parametrized role/endpoint matrix plus the
-ownership and mechanism-separation tests),
+test_role_isolation.py (81 cases: the parametrized role/endpoint matrix plus the
+ownership and mechanism-separation tests), test_judge_invites.py,
 test_regressions.py (9 pinned defects from the Phase 0/1 audit).
 
 -----------------------------------------------------------------------------
@@ -46,7 +46,7 @@ SUITE 3 — Browser end-to-end (Playwright, real Chromium, against the live
 -----------------------------------------------------------------------------
 Command: cd web && npx playwright test
 
-Result: 64 passed (9.0s)
+Result: 75 passed (37.2s)
 
 Coverage by file: breakpoints.spec.ts (mobile/tablet/desktop overflow —
 including "/", the landing page, added this session — role-aware nav,
@@ -58,7 +58,7 @@ keyboard-only voting/commenting), lifecycle.spec.ts (full participant
 lifecycle: sign up -> team -> invite -> autosave -> submit -> gallery).
 
 -----------------------------------------------------------------------------
-TOTAL: 233 / 233 passed across all three suites.
+TOTAL: 265 / 265 passed across all three suites.
 -----------------------------------------------------------------------------
 
 -----------------------------------------------------------------------------
@@ -208,3 +208,51 @@ clause, so every box could be ticked with the capability absent. It is now liste
 unchecked there, the Phase 2 gate status no longer reads as a clean T2 sweep, and
 Open Questions carries the consequence and a scope sketch. Nothing already built is
 wrong; this is a missing capability, and it is not claimed as present anywhere.
+
+
+-----------------------------------------------------------------------------
+ADDENDUM 2 — judge invitation, shadcn Select, landing-page motion
+-----------------------------------------------------------------------------
+JUDGE INVITATION (closes the T2 gap logged in addendum 1)
+
+`judge` now has exactly one route in: an organizer-issued, single-use, expiring
+invitation. 15 tests in test_judge_invites.py, weighted deliberately towards the
+escalation cases rather than the happy path:
+  - a participant cannot create an invitation (the whole control: minting one
+    would mint themselves sight of every score)
+  - a judge cannot create further invitations, so one compromised judge account
+    does not become many
+  - registration still cannot request the role
+  - an organizer following a judge link is refused, not silently demoted
+  - a refused or revoked redemption does not consume the invitation
+  - the public preview leaks neither the invited email nor the organizer's note
+Plus 2 new rows in the role-isolation matrix and 9 browser tests.
+
+SHADCN SELECT
+
+The two native <select> controls are now Radix-based shadcn/ui Selects skinned
+with our own tokens. Two browser tests assert the result is a real
+listbox/option tree and keyboard-operable — a styled <div> that merely looks
+like a dropdown would pass a screenshot review and fail these.
+
+LANDING-PAGE MOTION (Framer Motion + GSAP ScrollTrigger)
+
+Both libraries animate by setting opacity to 0 and animating back, so a trigger
+that never fires leaves content permanently invisible while the page still
+renders and nothing else notices. web/tests/landing-motion.spec.ts guards it:
+nothing stranded at zero opacity after a scroll pass, every step in the band
+visible, and under prefers-reduced-motion everything visible with no scrolling.
+
+One test-integrity note, recorded because it nearly produced a false pass:
+`test.use({ reducedMotion: 'reduce' })` inside a nested describe did not apply,
+so the reduced-motion test was silently exercising the full-motion path — where
+scroll-revealed content legitimately starts at opacity 0. It reported a defect
+that did not exist. Fixed by using an explicit browser context and by asserting
+the media query actually matches before checking anything.
+
+All dependencies added in this pass were pinned exactly (PLAN.md section 5).
+`npm install` writes caret ranges by default, which would have quietly violated
+that rule; the whole package.json was un-caretted, including devDependencies
+added earlier in the build that had the same problem.
+
+Counts: backend 160 -> 181, Playwright 64 -> 75, total 233 -> 265.

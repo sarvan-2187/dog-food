@@ -34,6 +34,7 @@ from .events.router import router as events_router
 from .teams.router import router as teams_router
 from .submissions.router import router as submissions_router
 from .judging.router import router as judging_router
+from .judging.invites import router as judge_invites_router
 from .scoring.router import router as scoring_router
 from .voting.router import router as voting_router
 from .audit.router import router as audit_router
@@ -63,6 +64,7 @@ app.include_router(events_router)
 app.include_router(teams_router)
 app.include_router(submissions_router)
 app.include_router(judging_router)
+app.include_router(judge_invites_router)
 app.include_router(scoring_router)
 app.include_router(voting_router)
 app.include_router(audit_router)
