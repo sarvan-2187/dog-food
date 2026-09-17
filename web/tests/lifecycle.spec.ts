@@ -22,10 +22,16 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   await page.getByLabel('Email').fill(founder);
   await page.getByLabel('Password').fill('supersecret1');
   await page.locator('form').getByRole('button', { name: 'Sign up' }).click();
-  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+  // A real positive signal, not just "not on /login" - that would also pass
+  // if registration failed and the page simply stayed on /register.
+  await expect(page.getByRole('banner').getByText('PARTICIPANT')).toBeVisible();
 
   // --- open the seeded event ----------------------------------------------
-  await page.getByRole('link', { name: 'Events' }).first().click();
+  // Via the real header (client-side route, no reload) - a page.goto() here
+  // forces a full page reload that races AuthProvider's cookie-based session
+  // restore against the render, dropping the just-registered session.
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  await page.getByRole('link', { name: 'Events' }).click();
   await page.getByText('Dogfood Hackathon 2026').click();
   // The deadline is on screen before anything is typed (PLAN.md 4.1).
   await expect(page.getByText(/remaining|Deadline passed/)).toBeVisible();
@@ -61,7 +67,8 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   await expect(page.getByText(/Submission sent for judging/)).toBeVisible();
 
   // --- it shows up in the public gallery, and search finds it --------------
-  await page.getByRole('link', { name: 'Gallery' }).first().click();
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  await page.getByRole('link', { name: 'Gallery' }).click();
   await expect(page.getByText(projectTitle)).toBeVisible();
   await page.getByLabel('Search').fill(projectTitle);
   await expect(page.getByText(projectTitle)).toBeVisible();
@@ -80,8 +87,9 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   await mate.getByLabel('Password').fill('supersecret1');
   await mate.locator('form').getByRole('button', { name: 'Sign up' }).click();
   // Wait for the session to exist before redeeming, or the invite POST races the
-  // sign-up and arrives unauthenticated.
-  await expect(mate.getByRole('button', { name: 'Log out' })).toBeVisible();
+  // sign-up and arrives unauthenticated. A real positive signal, not just
+  // "not on /login" - that would also pass if registration itself failed.
+  await expect(mate.getByRole('banner').getByText('PARTICIPANT')).toBeVisible();
   await mate.goto(inviteUrl);
   await expect(mate.getByText("You're in")).toBeVisible();
   await expect(mate.getByText(/2 members/)).toBeVisible();

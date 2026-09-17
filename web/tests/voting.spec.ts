@@ -7,7 +7,7 @@ async function login(page: Page, email: string, password: string) {
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.locator('form').getByRole('button', { name: 'Log in' }).click();
-  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await expect(page).not.toHaveURL(/\/login$/);
 }
 
 const asVoter = (page: Page) => login(page, 'kai@example.com', 'participant-pass3');

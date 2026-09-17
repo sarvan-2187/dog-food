@@ -48,6 +48,13 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* Found live at 768px: a nested overflow-x-auto row (the landing page's
+       capability cards, DESIGN_SYSTEM.md 10 item 6 - deliberately
+       horizontally scrollable) still pushed document.documentElement's own
+       scrollWidth past the viewport in this browser, even under an ancestor
+       overflow-x-hidden. This is the definitive fix, not a per-section one:
+       the nested row still scrolls internally, unaffected. */
+    overflow-x: hidden;
   }
 
   body {

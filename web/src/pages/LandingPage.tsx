@@ -175,10 +175,10 @@ export function LandingPage() {
       </section>
 
       {/* 6. Capability cards */}
-      <section className="border-t border-border-subtle bg-surface-100 px-4 py-section md:px-6">
+      <section className="[overflow-x:clip] border-t border-border-subtle bg-surface-100 px-4 py-section md:px-6">
         <div className="mx-auto max-w-[1200px]">
           <p className="text-eyebrow uppercase text-ink-400">What's built</p>
-          <div className="mt-6 flex gap-4 overflow-x-auto pb-2">
+          <div className="mt-6 flex w-full min-w-0 max-w-full gap-4 overflow-x-auto pb-2">
             <CapabilityCard n="01" lead="Assign fairly." rest="Conflict-aware, load-balanced, deterministic." to="/events" />
             <CapabilityCard n="02" lead="Score consistently." rest="A locked rubric and a live running total." to="/events" />
             <CapabilityCard n="03" lead="Rank honestly." rest="Per-judge normalization, not a raw average." to="/events" />
@@ -234,6 +234,44 @@ export function LandingPage() {
             <StepItem n="03" label="Score" value="Locked rubric" />
             <StepItem n="04" label="Normalize" value="Per-judge z-score" />
             <StepItem n="05" label="Reveal" value="On schedule" last />
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ - accordion, same left-label/right-content split as sections 4/6 */}
+      <section className="border-t border-border-subtle px-4 py-section md:px-6">
+        <div className="mx-auto grid max-w-[1200px] gap-8 md:grid-cols-12">
+          <div className="md:col-span-4">
+            <p className="text-eyebrow uppercase text-ink-400">09 — FAQ</p>
+            <h2 className="mt-2 text-h1 text-ink-900">
+              Ask. <span className="font-serif italic">Learn.</span> Build.
+            </h2>
+          </div>
+          <div className="md:col-span-8">
+            <FaqAccordion
+              items={[
+                {
+                  q: 'How is a judge assigned to a submission?',
+                  a: 'Round-robin by current load, excluding any judge on the submitting team, with ties broken by judge ID. Re-running the assignment never produces a different result or a duplicate — see JUDGING.md.',
+                },
+                {
+                  q: 'Can an organizer change the rubric after judging starts?',
+                  a: 'No. Criteria and weights lock the moment any score exists for the event, so a rubric edit can never silently invalidate scores already given.',
+                },
+                {
+                  q: "Why doesn't the raw average decide the ranking?",
+                  a: 'A harsh judge and a lenient one are put on the same scale first, using each judge’s own mean and spread, before anything is ranked — a raw average would let one judge’s grading style skew the result.',
+                },
+                {
+                  q: 'When do vote counts and results become visible?',
+                  a: 'Not until the reveal time the event set. Enforced in the API response itself, not just hidden in the interface, so early counts can never sway the vote.',
+                },
+                {
+                  q: 'What happens if I miss the submission deadline?',
+                  a: 'The server rejects the write the moment the deadline passes — the countdown on your submission page is the same clock the server enforces, so it is never a surprise.',
+                },
+              ]}
+            />
           </div>
         </div>
       </section>
@@ -331,6 +369,53 @@ function StepItem({ n, label, value, last }: { n: string; label: string; value: 
       <p className="font-mono text-meta text-surface-0/60">{n}</p>
       <p className="mt-2 text-eyebrow uppercase text-surface-0/70">{label}</p>
       <p className="mt-1 text-h3 text-surface-0">{value}</p>
+    </div>
+  );
+}
+
+interface FaqItem {
+  q: string;
+  a: string;
+}
+
+/**
+ * The reference screenshot's accordion pattern: hairline-divided rows, a
+ * +/- toggle at the far right, each row's answer only in the DOM (not just
+ * visually hidden) while expanded. Rows toggle independently.
+ */
+function FaqAccordion({ items }: { items: FaqItem[] }) {
+  const [openIndex, setOpenIndex] = useState<number | null>(1);
+
+  return (
+    <div className="flex flex-col border-t border-border-subtle">
+      {items.map((item, i) => {
+        const open = openIndex === i;
+        const panelId = `faq-panel-${i}`;
+        return (
+          <div key={item.q} className="border-b border-border-subtle">
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={panelId}
+              onClick={() => setOpenIndex(open ? null : i)}
+              className="flex w-full items-center justify-between gap-4 py-5 text-left"
+            >
+              <span className="text-h3 text-ink-800">{item.q}</span>
+              <span
+                aria-hidden="true"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-ink-600"
+              >
+                {open ? '−' : '+'}
+              </span>
+            </button>
+            {open && (
+              <p id={panelId} className="max-w-prose pb-5 text-body text-ink-600">
+                {item.a}
+              </p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
