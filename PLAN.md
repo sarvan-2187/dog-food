@@ -344,12 +344,13 @@ For every screen introduced in any phase:
 
 ### 5.4 — Landing page reconciliation
 
-- [ ] The pixel-level landing-page-vs-`reference_design.pdf` diff-check was **not** re-performed this session (it was done when the landing page was originally built) — flagged as outstanding rather than re-claimed without re-checking.
-- [x] `hackraptors.pdf` positioning applied to `README.md` (opening line links Hackathon Raptors / raptors.dev, framing the platform for an organization running several branded events). No token, component, or layout changed, per the logged decision.
+- [x] **Correction: the landing page did not exist.** This item was originally written assuming a landing page had already been built and just needed a final diff-check against `reference_design.pdf` — that assumption was wrong. `"/"` redirected straight into the app across all of Phases 0–3; `DESIGN_SYSTEM.md` §10's full 9-section composition had never been implemented. Built `web/src/pages/LandingPage.tsx` following §10 exactly (hero with the italic-serif accent word, a product-proof panel wired to real live data via `GET /api/events` / `GET /api/gallery`, the numbered rules list, an illustrative decision trail, four capability cards, an illustrative dashboard preview, the full-bleed step band, footer) plus the `MetricTile` primitive §11 called for and never had. Routed at `"/"`.
+- [x] **Real defect found and fixed while building it.** Several `sm:` grid classes fired their multi-column layout AT 375px — the exact `sm:`-means-mobile mistake the Phase 0/1 audit already documented (see Open Questions). Caught with a live 375px screenshot (a 5-column step band crammed into one row), fixed by switching to `md:`, re-verified at all three breakpoints with zero overflow, and added `"/"` to `breakpoints.spec.ts`'s `PUBLIC_PAGES` so this is now permanent automated coverage, not a one-time look.
+- [x] `hackraptors.pdf` positioning applied to `README.md` and the landing page's footer line (Hackathon Raptors / raptors.dev, framing the platform for an organization running several branded events). No token, component, or layout borrowed from it, per the logged decision.
 
 ### 5.5 — Acceptance suite: run it, or formally document why not
 
-- [x] No acceptance suite has been published. `acceptance-report.txt` generated fresh from a real, live run of all three suites on a clean volume: **158 backend + 9 Vitest + 61 Playwright = 228/228 passing.** Header states plainly that it is self-issued. `README.md`'s tier/status claims are written against these exact numbers.
+- [x] No acceptance suite has been published. `acceptance-report.txt` generated fresh from a real, live run of all three suites on a clean volume: **158 backend + 9 Vitest + 64 Playwright = 231/231 passing** (updated after the landing page and its breakpoint test were added later in this same phase). Header states plainly that it is self-issued. `README.md`'s tier/status claims are written against these exact numbers.
 
 ### 5.6 — Demo video
 
@@ -634,16 +635,24 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   that pipeline to begin with. Revisit only if a future request explicitly asks for the
   app's visual identity to change.
 
-- **Three Phase 5 checks genuinely not performed, left unchecked rather than assumed
-  (Phase 5.2-5.4).** (1) Network-throttled ("Slow 3G") verification of every loading
-  skeleton was not done this session. (2) The landing page's pixel-level composition
-  against `reference_design.pdf` was not re-diffed this session (only re-confirmed when
-  originally built). (3) A handful of lower-traffic screens (audit log viewer, CSV export
-  controls under every role) have automated role-gating coverage via
-  `test_role_isolation.py` but no dedicated live keyboard/breakpoint spot-check. None of
-  these are known defects — they are simply unverified, and are recorded here rather than
-  silently marked done, per the same discipline that caught the two real defects logged
-  in `acceptance-report.txt`.
+- **The landing page never existed — corrected in Phase 5.4, not just re-checked.**
+  `DESIGN_SYSTEM.md` §10 has carried a full 9-section landing-page composition since
+  Phase 0, and `PLAN.md` §3 explicitly required it be built. It never was — `"/"` simply
+  redirected into the app across Phases 0-3. This was masked by an earlier version of the
+  Phase 5.4 checklist item, which was phrased as "confirm it still matches," assuming one
+  existed. Built `web/src/pages/LandingPage.tsx` per §10 in Phase 5, with a real product-
+  proof panel wired to live data (not a static mockup). A real `sm:`-means-mobile defect
+  (see the audit-history entry below) was found and fixed while building it. Flagging this
+  prominently because it's the kind of gap that's easy to miss when a checklist item's
+  wording quietly assumes work that was never actually done.
+- **Two Phase 5 checks genuinely not performed, left unchecked rather than assumed
+  (Phase 5.2-5.3).** (1) Network-throttled ("Slow 3G") verification of every loading
+  skeleton was not done this session. (2) A handful of lower-traffic screens (audit log
+  viewer, CSV export controls under every role) have automated role-gating coverage via
+  `test_role_isolation.py` but no dedicated live keyboard/breakpoint spot-check. Neither is
+  a known defect — they are simply unverified, and are recorded here rather than silently
+  marked done, per the same discipline that caught the real defects logged in
+  `acceptance-report.txt`.
 - **Demo video and "repo made public" (Phase 5.6-5.7) are not done and cannot be done
   by an agent.** The walkthrough script and the pre-recording `docker compose down -v`
   reset are both ready and accurate as written in 5.6; the actual screen recording needs

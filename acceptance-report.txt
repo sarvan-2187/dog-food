@@ -9,7 +9,7 @@ below comes from a real run against the live `docker compose` stack on a fresh
 volume — nothing here is hand-edited. Replace this file by running the real
 acceptance suite the moment it is published.
 
-Generated: 2026-09-17T15:00:37Z
+Generated: 2026-09-17T15:28:28Z (updated after the landing page was built — see below)
 Commit under test: PLAN.md Phase 5 in progress (Phase 5.1-5.3 complete; see
   `git log --oneline -1` at the time this file was produced for the exact SHA)
 Environment: `docker compose up -d --build` on a freshly created `dog-food_db_data`
@@ -44,18 +44,19 @@ SUITE 3 — Browser end-to-end (Playwright, real Chromium, against the live
 -----------------------------------------------------------------------------
 Command: cd web && npx playwright test
 
-Result: 61 passed (8.5s)
+Result: 64 passed (9.0s)
 
-Coverage by file: breakpoints.spec.ts (mobile/tablet/desktop overflow,
-role-aware nav, keyboard-only login), judging.spec.ts (Phase 2 role gating,
-rubric builder, score form, CSV export, Phase 2 screens at all three
-breakpoints, keyboard-only scoring), voting.spec.ts (Phase 3 results hiding,
-voting, comments, rate limiting, Phase 3 screens at all three breakpoints,
+Coverage by file: breakpoints.spec.ts (mobile/tablet/desktop overflow —
+including "/", the landing page, added this session — role-aware nav,
+keyboard-only login), judging.spec.ts (Phase 2 role gating, rubric builder,
+score form, CSV export, Phase 2 screens at all three breakpoints,
+keyboard-only scoring), voting.spec.ts (Phase 3 results hiding, voting,
+comments, rate limiting, Phase 3 screens at all three breakpoints,
 keyboard-only voting/commenting), lifecycle.spec.ts (full participant
 lifecycle: sign up -> team -> invite -> autosave -> submit -> gallery).
 
 -----------------------------------------------------------------------------
-TOTAL: 228 / 228 passed across all three suites.
+TOTAL: 231 / 231 passed across all three suites.
 -----------------------------------------------------------------------------
 
 -----------------------------------------------------------------------------
@@ -87,16 +88,45 @@ code review, per Phase 5.3's "prove the states, don't trust the code":
   ("Results become visible on ...") against the updated fixture dates.
 
 -----------------------------------------------------------------------------
+LANDING PAGE (Phase 5.4 — built this session, not just reconciled)
+-----------------------------------------------------------------------------
+Phase 5.4 was originally scoped as "confirm the landing page still matches
+reference_design.pdf" — that assumption was wrong. No landing page existed
+anywhere in the codebase; "/" simply redirected into the app across all of
+Phases 0-3, despite DESIGN_SYSTEM.md carrying a full worked-out 9-section
+composition (section 10) derived from reference_design.pdf since Phase 0.
+
+Built web/src/pages/LandingPage.tsx following that composition exactly (hero,
+product-proof panel with real live data from GET /api/events and
+GET /api/gallery, a numbered rules list, an illustrative decision trail, four
+capability cards, an illustrative dashboard preview, a full-bleed step band,
+and a footer), plus the MetricTile primitive DESIGN_SYSTEM.md section 11
+called for and never had. Routed at "/".
+
+A real defect was found and fixed while building it: several `sm:` grid
+classes fired their multi-column layout AT the 375px mobile breakpoint
+(because this project's tokens redefine `sm` to mean 375px, not Tailwind's
+default 640px) — the exact mistake the Phase 0/1 audit already documented and
+named. Caught visually with a live 375px screenshot (a 5-column step band
+crammed into one row), fixed by switching every such class to `md:`, and
+re-verified at 375/768/1280 with zero horizontal overflow. "/" was then added
+to breakpoints.spec.ts's PUBLIC_PAGES list so this is now a permanent,
+automated regression check rather than a one-time manual look.
+
+-----------------------------------------------------------------------------
 KNOWN GAPS AT THIS REPORT'S TIMESTAMP
 -----------------------------------------------------------------------------
 - No real acceptance suite exists to compare against; this report is the
   fallback described in PLAN.md Phase 5.5, not a replacement for it.
 - The Phase 5.2 whole-app click-through audit (every screen x every role x
-  every breakpoint) rests primarily on the 61 Playwright checks above, which
+  every breakpoint) rests primarily on the 64 Playwright checks above, which
   are real and current; the event-creation and team-formation keyboard checks
   above closed the two gaps found by inspection. A handful of lower-traffic
   screens (e.g. the audit log viewer, CSV export buttons under every role)
   have automated role-gating coverage via test_role_isolation.py but no
   dedicated live keyboard/breakpoint spot-check yet.
-- Demo video (Phase 5.6) and final documentation (Phase 5.7) had not yet been
-  produced as of this report's timestamp.
+- Network-throttle verification and a pixel-level landing-page-vs-PDF diff
+  (as opposed to a composition-and-tokens check, which was done) were not
+  performed this session.
+- Demo video (Phase 5.6) had not yet been produced as of this report's
+  timestamp, and making the repository public remains the owner's decision.

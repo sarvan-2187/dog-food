@@ -12,7 +12,7 @@ const BREAKPOINTS = [
   { name: 'desktop', width: 1280, height: 900 },
 ];
 
-const PUBLIC_PAGES = ['/events', '/gallery', '/login', '/register', '/definitely-not-a-page'];
+const PUBLIC_PAGES = ['/', '/events', '/gallery', '/login', '/register', '/definitely-not-a-page'];
 
 async function login(page, email: string, password: string) {
   await page.goto('/login');

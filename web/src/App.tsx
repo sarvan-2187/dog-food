@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './components/auth/guards';
 import { NavBar } from './components/layout/NavBar';
 import { AuthProvider } from './lib/auth-context';
@@ -9,6 +9,7 @@ import { EventsPage } from './pages/EventsPage';
 import { GalleryPage } from './pages/GalleryPage';
 import { JoinTeamPage } from './pages/JoinTeamPage';
 import { JudgeDashboardPage } from './pages/JudgeDashboardPage';
+import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -25,7 +26,7 @@ export default function App() {
         <div className="min-h-screen">
           <NavBar />
           <Routes>
-            <Route path="/" element={<Navigate to="/events" replace />} />
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/events" element={<EventsPage />} />
