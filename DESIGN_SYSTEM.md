@@ -1,6 +1,7 @@
 # DESIGN_SYSTEM.md — Dogfood 2026 (Team CodeHawk)
 
-Derived from `reference_landing.pdf` (RiskSentinel X landing page). Token values below were
+Derived from `reference_design.pdf` (RiskSentinel X landing page — renamed from
+`reference_landing.pdf` in Phase 5.1 to match `PLAN.md` §2's repo layout). Token values below were
 extracted from the reference file's actual fills and type sizes, not eyeballed.
 
 **This file is the single source of truth for tokens.** Per `PLAN.md` §3, mirror everything in
@@ -103,19 +104,23 @@ Roles use ink + border, **not** the status palette (a role is not a state):
 
 ### 3.1 Families
 
+**Decided (Phase 5.1, closing the font Open Question):** system font stacks are canonical, not a
+fallback. No `Inter`/`Instrument Serif`/`JetBrains Mono` binaries are committed, and none should
+be — sourcing and licensing real webfont files was heavier than the payoff for an app that has
+rendered correctly on the system stack since Phase 0, and `PLAN.md` §1's no-CDN-assets rule makes
+self-hosting the only legal alternative. If a future request wants the literal named fonts, commit
+`.woff2` files under `web/public/fonts/` with `@font-face` + `font-display: swap` and update this
+table — never a `fonts.googleapis.com` `<link>`.
+
 | Token | Stack |
 |---|---|
-| `font-sans` | `Inter, "Inter var", -apple-system, "Segoe UI", system-ui, sans-serif` |
-| `font-serif-accent` | `"Instrument Serif", Georgia, "Times New Roman", serif` — *italic only* |
-| `font-mono` | `"JetBrains Mono", Consolas, ui-monospace, monospace` |
+| `font-sans` | `-apple-system, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif` |
+| `font-serif-accent` | `Georgia, "Times New Roman", serif` — *italic only* |
+| `font-mono` | `Consolas, "SF Mono", ui-monospace, monospace` |
 
-> **Offline constraint (`PLAN.md` §1):** no CDN font links. Self-host `Inter` (and the accent serif,
-> if used) as `.woff2` under `web/public/fonts/` with `@font-face` + `font-display: swap`. If a
-> self-hosted file isn't committed, fall back to the system stack above — do **not** add a
-> `fonts.googleapis.com` `<link>`.
-
-The reference uses the italic serif for exactly one word in the hero (`workspace.`). Use it at most
-once per page, in the landing hero only. It never appears in product UI.
+The reference uses an italic serif for exactly one word in the hero (`workspace.`). Use it at most
+once per page, in the landing hero only, rendered in the system serif above. It never appears in
+product UI.
 
 ### 3.2 Scale
 

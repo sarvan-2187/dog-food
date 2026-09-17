@@ -99,7 +99,7 @@ The user will supply two files partway through the build: **`DESIGN_SYSTEM.md`**
 
 ## 4. UX & Usability Principles (apply in every phase, not just at the end)
 
-This is the single biggest lever for making the platform feel like something Hackathon Raptors could actually run for real events, not a demo. Every phase's checklist below references back to this section — treat these as standing requirements, checked at every gate, not a one-time task.
+This is the single biggest lever for making the platform feel like something an organization like Hackathon Raptors — see `hackraptors.pdf`, raptors.dev's own landing page: dozens of concurrently-run branded events, a judged proof pipeline, public results — could actually run for real events, not a demo. Every phase's checklist below references back to this section — treat these as standing requirements, checked at every gate, not a one-time task.
 
 **4.1 Clarity and feedback**
 - Every action that changes data gives visible confirmation: a toast/banner on success ("Invite link copied", "Draft saved", "Score submitted"), and a specific, human-readable error on failure — never a raw stack trace or a bare "Error" string.
@@ -288,9 +288,9 @@ and a shared client fingerprint is recorded in the audit log **without** blockin
 
 ---
 
-## Phase 4 — Stretch (T4) and bonus challenges
+## Phase 4 — Stretch (T4) and bonus challenges — **FROZEN for this submission**
 
-Only enter this phase if Phases 1–3 gates are all green with real time remaining.
+**Status: frozen, not attempted.** Phases 1–3 gates are green, so PLAN.md's own entry condition for this phase was met — but the decision was made to spend the remaining time on Phase 5's audit, documentation, and freeze work instead of stretch features. Reasoning: a smaller, thoroughly-audited T1–T3 submission demos and scores better than an unaudited T1–T4 one, and Phase 0/1's audit already showed that unaudited "done" work hides real defects (15 of them, in barely two phases). None of the items below were started; they are kept here, unstruck, in case there is confirmed slack after Phase 5 closes.
 
 ### T4 functional checklist
 - [ ] REST API/OpenAPI completeness audit: confirm every UI action has a documented endpoint (check invite-link redemption and any other click-triggered-DB-write paths specifically)
@@ -314,17 +314,58 @@ Only enter this phase if Phases 1–3 gates are all green with real time remaini
 
 ## Phase 5 — Polish, UX Audit & Freeze Prep
 
-This phase exists specifically so UX quality gets one dedicated, whole-app pass rather than only being checked screen-by-screen as you go. Do not skip it even if Phases 1–3 individually passed their UX checklists.
+This phase exists specifically so UX quality gets one dedicated, whole-app pass rather than only being checked screen-by-screen as you go. Do not skip it even though Phases 1–3 individually passed their own UX checklists — this phase catches cross-phase inconsistency the same way the Phase 0/1 audit caught the `sm:`/`md:` breakpoint bug that reading Phase 1's code in isolation had not.
 
-- [ ] Full click-through of every screen in the app, on all three breakpoints, as each of the four roles — note and fix any inconsistency in spacing, color, or component usage against `DESIGN_SYSTEM.md`
-- [ ] Full keyboard-only pass: tab through every screen, confirm every action is reachable and focus states are visible
-- [ ] Confirm every loading/empty/error state actually appears when triggered (simulate empty DB sections, slow network via devtools throttling, and a forced 500 to check the error path) — don't just trust that the component exists, verify it renders
-- [ ] Landing page matches `reference_design.pdf` (if supplied) — if not yet supplied, confirm it is at least clean, responsive, and consistent with Tailwind defaults
-- [ ] Run the full acceptance suite one final time; save output verbatim to `acceptance-report.txt` at repo root; fix only what it flags from this point on
-- [ ] Record the 5-minute demo video from the rehearsed Playwright lifecycle path
-- [ ] Finalize `README.md`, `ARCHITECTURE.md`, `DATA-MODEL.md`, `JUDGING.md` (see Section 10)
+### 5.1 — Close every dangling Open Question first
 
-**Definition of Done — Phase 5 / submission gate:** acceptance report committed, all four docs complete and cross-checked against it, demo video recorded, repo made public, license in place.
+Fix these before auditing anything else, since leaving them open would either produce false audit findings or block the demo outright:
+
+- [x] Resolve the `reference_design.pdf` / `reference_landing.pdf` filename mismatch — renamed `reference_landing.pdf` → `reference_design.pdf` (`git mv`), matching Section 2's repo layout. `DESIGN_SYSTEM.md`'s references updated to match.
+- [x] Decide the font question once and for all — **system stacks are canonical**, not a fallback (`DESIGN_SYSTEM.md` §3.1 rewritten). No `Inter`/`Instrument Serif`/`JetBrains Mono` binaries are committed; sourcing and licensing real webfont files wasn't worth it for an app that has rendered correctly on the system stack since Phase 0. `web/src/styles/tokens.ts` updated to match.
+- [x] Fix the seeded event's expiry — `fixtures/events.json` now runs `2026-10-15T09:00:00` → `2026-10-17T18:00:00` (voting hidden-window `2026-10-17T20:00:00`), well past the freeze/demo window.
+- [x] Decide the acceptance-suite fallback now: no acceptance suite has been published at any point in this build. `acceptance-report.txt` will be self-issued from the project's own suites (`api/tests/` + Vitest + Playwright), generated fresh in 5.5 below with a header stating plainly that it is self-issued pending the real suite — never hand-edited, never claiming a tier the run didn't earn.
+
+### 5.2 — Whole-app audit: click-through × role × breakpoint
+
+Extends the Phase 0/1 audit's method to every screen Phases 2 and 3 added, and to cross-phase consistency Phases 1–3 couldn't each see on their own:
+
+- [x] Click through every screen as each of the four roles, at all three breakpoints — rests on the 61 Playwright checks (all real, all rerun and passing this session) plus two live spot-checks with a real Chromium session for the two screens with no named test: the event creation form (organizer) and the team creation/join form (participant). Both confirmed keyboard-reachable with a visible focus ring. No new spacing/color/component-usage defect found beyond the one logged in 5.3.
+- [x] ~~Extend `web/tests/breakpoints.spec.ts`~~ — correction: this coverage already existed, just not in that file. `judging.spec.ts` has its own "Phase 2 screens at every breakpoint" block and `voting.spec.ts` has "Phase 3 screens at every breakpoint," both exercising all three widths for the screens each phase added. No refactor needed; the checklist item's premise (breakpoints.spec.ts is the only breakpoint coverage) was wrong.
+- [x] Full keyboard-only pass — `breakpoints.spec.ts`, `judging.spec.ts`, and `voting.spec.ts` each carry a `keyboard-only` block (login, score form, vote control, comment box); the two gaps found (event creation, team formation) were closed live this session (see above).
+- [x] Re-verify role-aware navigation — confirmed live: an organizer session shows "Create event" and never "My teams"; a fresh participant session shows "My teams" and never "Create event." Matches `breakpoints.spec.ts`'s automated assertions of the same.
+
+### 5.3 — Prove the states, don't trust the code
+
+For every screen introduced in any phase:
+
+- [x] Simulated a no-results search on the gallery live — renders, though the debounce means it doesn't update instantly on a raw DOM event (expected React behavior, not a bug). The true zero-submissions empty state and the judge-dashboard-with-no-assignments empty state are exercised by `judging.spec.ts`/`voting.spec.ts` rather than re-verified by hand here.
+- [ ] Network throttling ("Slow 3G") was **not** performed this session — flagged rather than falsely checked off.
+- [x] Forced a real 500 by stopping the `db` container mid-session: the gallery's `ErrorState` rendered correctly (`role="alert"`, "Something went wrong," a working "Try again" button) — **and this caught a real defect**, fixed on the spot: the error fallback was leaking the bare status code ("Request failed (500)."), which brushes against §4.6's "no jargon like '500 Internal Server Error'." Fixed in `web/src/lib/api.ts` (`request()` and `download()`), and the existing Vitest test that was *named* for exactly this case but never actually asserted the message was tightened to check it for real. See `acceptance-report.txt` for the full write-up.
+
+### 5.4 — Landing page reconciliation
+
+- [ ] The pixel-level landing-page-vs-`reference_design.pdf` diff-check was **not** re-performed this session (it was done when the landing page was originally built) — flagged as outstanding rather than re-claimed without re-checking.
+- [x] `hackraptors.pdf` positioning applied to `README.md` (opening line links Hackathon Raptors / raptors.dev, framing the platform for an organization running several branded events). No token, component, or layout changed, per the logged decision.
+
+### 5.5 — Acceptance suite: run it, or formally document why not
+
+- [x] No acceptance suite has been published. `acceptance-report.txt` generated fresh from a real, live run of all three suites on a clean volume: **158 backend + 9 Vitest + 61 Playwright = 228/228 passing.** Header states plainly that it is self-issued. `README.md`'s tier/status claims are written against these exact numbers.
+
+### 5.6 — Demo video
+
+- [ ] **Not done — cannot be done by an agent.** Scripting the walkthrough from `lifecycle.spec.ts` and `voting.spec.ts`, and the `docker compose down -v` reset beforehand, are both still accurate as written above; the actual screen recording needs a human at a keyboard. Left unchecked rather than claimed.
+
+### 5.7 — Documentation, freeze, and ship
+
+- [x] `README.md` — setup, feature overview, tier/status claims matching `acceptance-report.txt` exactly.
+- [x] `ARCHITECTURE.md` — modular-monolith rationale, backend package map, frontend primitive structure, auth model, no-network-calls constraint, testing architecture.
+- [x] `DATA-MODEL.md` — every table transcribed field-for-field from the actual model files (not summarized from memory), entity relationships, import/export paths.
+- [x] `JUDGING.md` — assignment algorithm, normalization math, role isolation (including the ownership checks beyond role alone), rubric-locking, results-visibility, and duplicate-vote/rate-limit design, collected from Section 8 and the Open Questions decisions already made.
+- [x] `LICENSE` — MIT, in place.
+- [ ] Repo made public — **not done; needs the repo owner's decision**, not an agent's. `git status` shows an existing `origin/main` remote; making it public is a one-line GitHub setting but is exactly the kind of outward-facing, hard-to-reverse-in-spirit action this build asks to be confirmed explicitly rather than assumed.
+- [x] Final full suite run after the documentation pass: 158/158 backend still green, confirming the docs pass didn't disturb anything.
+
+**Definition of Done — Phase 5 / submission gate:** acceptance report committed and real (done); all four docs complete and cross-checked against it (done); demo video recorded (not done — needs a human); repo public (not done — needs the owner's decision); license in place (done); every Open Question either resolved or explicitly and knowingly carried into submission (done — see the running log below). Phase 5 is substantially complete; the two remaining items are both things this session cannot do on its own.
 
 ---
 
@@ -428,15 +469,16 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
 
 *(Append here anything ambiguous you had to make a judgment call on, so it's visible before submission — e.g., a T3 fallback taken, a DESIGN_SYSTEM.md/reference_design.pdf conflict, a rubric edge case.)*
 
-- **Reference design filename (Phase 0).** §2/§3 expect `reference_design.pdf`; the file supplied is
-  `reference_landing.pdf`. Treated as the same artifact — it is a full landing-page reference, and
-  `DESIGN_SYSTEM.md` §10 was derived from it. Rename one or the other before submission so the
-  repo layout in §2 matches reality.
-- **Fonts vs. the offline constraint (Phase 0).** `DESIGN_SYSTEM.md` §3.1 specifies Inter with an
-  italic serif accent, but §1 forbids CDN-fetched assets in the served app. No font binaries are
-  committed, so the app currently renders the system fallback stack declared in
-  `web/src/styles/tokens.ts`. Decision needed: commit self-hosted `.woff2` files under
-  `web/public/fonts/`, or accept the system stack permanently and simplify §3.1.
+- **~~Reference design filename (Phase 0).~~ Resolved in Phase 5.1.** §2/§3 expect
+  `reference_design.pdf`; the file supplied was `reference_landing.pdf`. It was the same
+  artifact — a full landing-page reference that `DESIGN_SYSTEM.md` §10 was derived from —
+  so it was renamed (`git mv reference_landing.pdf reference_design.pdf`) rather than
+  updating every reference the other way; the repo layout in §2 now matches reality.
+- **~~Fonts vs. the offline constraint (Phase 0).~~ Resolved in Phase 5.1.** `DESIGN_SYSTEM.md`
+  §3.1 originally specified Inter with an italic serif accent, but §1 forbids CDN-fetched assets
+  in the served app and no font binaries were ever committed — the app has rendered the system
+  fallback stack since Phase 0. Decision: keep it that way permanently. §3.1 now states the system
+  stacks as canonical, not a fallback, and `web/src/styles/tokens.ts` matches.
 - **Phase 0 `web/src/App.tsx` (judgment call).** The Phase 0 checklist asks for shared primitives
   but no pages. The SPA still needed a root component for `docker compose up` to be verifiable, so
   `App.tsx` is a primitives smoke page that also reports `/healthz` status. It is scaffolding, not
@@ -573,3 +615,37 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   the live `docker compose` stack and creates real users/teams/submissions in `dogfood`. Seeding
   stays idempotent and the backend suite is isolated in `dogfood_test`, but run
   `docker compose down -v` before recording the demo so the gallery shows fixture data only.
+
+- **Phase 4 frozen, not attempted (freeze decision).** Phases 1–3 all gate green, meeting
+  PLAN.md's own entry condition for Phase 4, but the decision was made to spend remaining
+  time on Phase 5's audit and documentation instead of stretch scope — a smaller,
+  thoroughly-audited T1–T3 submission was judged to demo and score better than an
+  unaudited T1–T4 one. Every Phase 4 checklist item is left unstruck (not deleted) in case
+  confirmed slack appears after Phase 5 closes.
+
+- **`hackraptors.pdf` scope: positioning and copy only, not a design-system input (Phase
+  5).** `hackraptors.pdf` is raptors.dev's real landing page — bold illustrated
+  hackathon-poster art, a stats bar, "Guild of Expert Engineers" community framing —
+  which is a different visual language from the institutional look already locked into
+  `DESIGN_SYSTEM.md` and built across four phases. Decision: it grounds "Hackathon
+  Raptors" in README framing, landing-page microcopy, and demo-video narration only. It
+  does not change any token, component, or layout, and does not conflict with the
+  `reference_design.pdf` → `DESIGN_SYSTEM.md` token pipeline, because it was never in
+  that pipeline to begin with. Revisit only if a future request explicitly asks for the
+  app's visual identity to change.
+
+- **Three Phase 5 checks genuinely not performed, left unchecked rather than assumed
+  (Phase 5.2-5.4).** (1) Network-throttled ("Slow 3G") verification of every loading
+  skeleton was not done this session. (2) The landing page's pixel-level composition
+  against `reference_design.pdf` was not re-diffed this session (only re-confirmed when
+  originally built). (3) A handful of lower-traffic screens (audit log viewer, CSV export
+  controls under every role) have automated role-gating coverage via
+  `test_role_isolation.py` but no dedicated live keyboard/breakpoint spot-check. None of
+  these are known defects — they are simply unverified, and are recorded here rather than
+  silently marked done, per the same discipline that caught the two real defects logged
+  in `acceptance-report.txt`.
+- **Demo video and "repo made public" (Phase 5.6-5.7) are not done and cannot be done
+  by an agent.** The walkthrough script and the pre-recording `docker compose down -v`
+  reset are both ready and accurate as written in 5.6; the actual screen recording needs
+  a human. Making the repository public is the repo owner's explicit decision, not
+  something to assume on their behalf.

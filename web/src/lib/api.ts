@@ -28,7 +28,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const body = isJson ? await res.json() : undefined;
   if (!res.ok) {
-    throw new ApiError(res.status, extractMessage(body) ?? `Request failed (${res.status}).`);
+    const message = extractMessage(body);
+    if (!message) {
+      // Found live in Phase 5.3 (forced 500 by stopping the db container): the old
+      // fallback surfaced the raw status code ("Request failed (500)."), which
+      // brushes against PLAN.md 4.6's "no jargon like '500 Internal Server Error'".
+      // The real code still goes to the console for whoever's debugging.
+      console.error(`API request to ${path} failed with status ${res.status}`);
+    }
+    throw new ApiError(res.status, message ?? 'Something went wrong on our end. Please try again.');
   }
   return body as T;
 }
@@ -48,12 +56,13 @@ export const api = {
   async download(path: string, filename: string): Promise<void> {
     const res = await fetch(path, { credentials: 'include' });
     if (!res.ok) {
-      let message = `Could not export this file (${res.status}).`;
+      let message = 'Could not export this file. Please try again.';
       try {
         const body = await res.json();
         if (typeof body?.detail === 'string') message = body.detail;
+        else console.error(`Export ${path} failed with status ${res.status}`);
       } catch {
-        // non-JSON error body; keep the generic message
+        console.error(`Export ${path} failed with status ${res.status} (non-JSON body)`);
       }
       throw new ApiError(res.status, message);
     }
