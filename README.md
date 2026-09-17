@@ -64,11 +64,11 @@ that lives only in the frontend.
 
 ## Status
 
-231 tests passing across three suites, run live against this exact stack:
+233 tests passing across three suites, run live against this exact stack:
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 158 passed |
+| Backend | `docker compose exec api pytest tests/ -v` | 160 passed |
 | Frontend unit | `cd web && npm test` | 9 passed |
 | Browser E2E | `cd web && npx playwright test` | 64 passed |
 

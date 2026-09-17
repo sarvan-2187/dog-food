@@ -1,5 +1,41 @@
 # JUDGING.md — Assignment, Normalization & Judging Integrity
 
+## Who evaluates: the role model
+
+`judge` is one of four **distinct** roles (`participant`, `judge`, `organizer`, `admin`),
+not a hat a participant puts on. A judge is someone brought onto an event to evaluate; a
+participant builds and submits. The two never swap.
+
+There are deliberately **two** evaluation mechanisms in this platform, and they are
+separate systems with separate integrity models:
+
+| | **Formal judging** | **Community voting** |
+|---|---|---|
+| Who acts | `judge` role only, and only on an assignment that is theirs | Any signed-in user, any role |
+| Instrument | Weighted rubric, criteria scored 0–`max_score` | One vote per user per submission |
+| Integrity model | Role isolation + per-assignment ownership + conflict exclusion + cross-judge normalization | Unique constraint + rate limiting + fingerprint flagging + hidden results |
+| Determines the ranking? | Yes — `z_bar_i` is the ranking value | No — a separate public tally |
+
+**Community vote counts never enter the judging pipeline.** `normalize_scores()` consumes
+rubric scores and nothing else. "Popular" and "well-executed" are different claims, and
+mixing them would make the normalization impossible to defend — which is the one thing a
+judging engine cannot afford.
+
+**There is no peer review.** Participants are never asked, or able, to score another
+participant's submission. A competitor's hand on a rival's score is exactly the failure
+mode the role isolation below exists to prevent, so it is not a feature that was skipped
+for time — it is excluded on purpose.
+
+The conflict rule in the next section is easy to misread as implying otherwise. It is a
+safeguard for the legitimate overlap case — a mentor who also entered a side project, a
+judge who joined a team late — not a hint that judges are drawn from the participant pool.
+
+**Known gap: there is no judge-invitation flow.** Judge accounts currently exist only via
+`fixtures/users.json` at boot, so on a live instance an organizer cannot add a judge
+without editing a fixture and recreating the database. Every judging path that does exist
+is correctly gated and tested; this is a missing capability, not a defect, and it is
+tracked in `PLAN.md`'s Open Questions with a scope sketch.
+
 ## Assignment algorithm
 
 Implemented in `api/app/judging/assignment.py` as a pure, DB-free function:
@@ -11,7 +47,8 @@ assign_judges(submissions, judges, team_memberships, k) -> list[JudgeAssignment]
 1. **Build a conflict set** — exclude `(judge, submission)` pairs where the judge is a
    member of the submitting team. This is the rule the seeded fixtures exercise for real:
    Dana is both a judge and a member of "Pipeline Pals," so a fresh `docker compose up`
-   assigns her every submission *except* her own team's.
+   assigns her every submission *except* her own team's. The fixture exists to prove the
+   safeguard works, not to model the intended workflow — see the role model above.
 2. **Iterate submissions round-robin**; for each, assign the `k` judges (organizer-
    configurable, default 3) with no conflict and the fewest assignments so far, breaking
    ties by judge ID ascending for determinism.
