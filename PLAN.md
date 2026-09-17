@@ -160,37 +160,41 @@ Pin every dependency to an exact version in `api/pyproject.toml` (or `requiremen
 
 - [x] `git init` (only after kickoff — no code before the official start)
 - [x] Scaffold `docker-compose.yml` with `db` and `api` services
-- [ ] `api`'s Dockerfile is multi-stage: stage 1 builds the Vite frontend (`node:20-slim`), stage 2 is `python:3.12-slim` copying the built frontend's static output into the image alongside the FastAPI app — *written; stays unchecked until the first image build succeeds*
+- [x] `api`'s Dockerfile is multi-stage: stage 1 builds the Vite frontend (`node:20-slim`), stage 2 is `python:3.12-slim` copying the built frontend's static output into the image alongside the FastAPI app
 - [x] `api/app/db.py` (engine + session dependency) and `api/app/seed.py` (reads `fixtures/*.json`, idempotency-checked, called on app startup)
 - [x] Shared UI scaffolding: `web/src/components/ui/` (Button, Input, Card, Badge) and `web/src/components/feedback/` (Toast, Skeleton, EmptyState, ErrorState) built as reusable primitives *before* any feature page — every later screen consumes these rather than reinventing loading/error/empty markup per page
 
 **Definition of Done — Phase 0 gate:** `docker compose up` boots both containers healthy with empty schema, on a clean checkout (clear local Docker build cache and retry if unsure). Do not proceed to Phase 1 until this works.
+
+**Gate verified:** `docker compose up -d --build` — `dog-food-db-1` and `dog-food-api-1` both report `(healthy)`; `GET /healthz` → `200 {"status":"ok"}`; `\dt` on the `dogfood` database reports no relations. Phase 0 is done — proceed to Phase 1.
 
 ---
 
 ## Phase 1 — Core (T1)
 
 ### Functional checklist
-- [ ] `User` model + `passlib` password hashing + session-cookie auth (`api/app/auth/`)
-- [ ] Role enum (`participant`, `judge`, `organizer`, `admin`) + `require_role(*roles)` FastAPI dependency — apply to every mutating/sensitive endpoint from this point forward
-- [ ] `Event` model + CRUD endpoints (organizer/admin only) — configurable dates, tracks, prize config
-- [ ] `Team` model + `TeamMembership` join table + invite-link generation/redemption (server-side expiry check, not just UI hide)
-- [ ] `Submission` model + draft/edit endpoints + autosave-friendly PATCH semantics
-- [ ] Deadline enforcement: reject writes server-side once `Event.end_at` has passed — test by calling the endpoint directly post-deadline
-- [ ] Public gallery endpoint with search (simple `ILIKE` on title/description)
-- [ ] `api/tests/test_auth.py`, `test_events.py`, `test_teams.py`, `test_submissions.py` passing
-- [ ] Run the acceptance suite against T1
+- [x] `User` model + `passlib` password hashing + session-cookie auth (`api/app/auth/`)
+- [x] Role enum (`participant`, `judge`, `organizer`, `admin`) + `require_role(*roles)` FastAPI dependency — apply to every mutating/sensitive endpoint from this point forward
+- [x] `Event` model + CRUD endpoints (organizer/admin only) — configurable dates, tracks, prize config
+- [x] `Team` model + `TeamMembership` join table + invite-link generation/redemption (server-side expiry check, not just UI hide)
+- [x] `Submission` model + draft/edit endpoints + autosave-friendly PATCH semantics
+- [x] Deadline enforcement: reject writes server-side once `Event.end_at` has passed — test by calling the endpoint directly post-deadline
+- [x] Public gallery endpoint with search (simple `ILIKE` on title/description)
+- [x] `api/tests/test_auth.py`, `test_events.py`, `test_teams.py`, `test_submissions.py` passing — 21/21 green (`docker compose exec api pytest tests/ -v`)
+- [ ] Run the acceptance suite against T1 — *blocked: no acceptance suite has been published yet (see Open Questions)*
 
 ### UX checklist (see Section 4 for detail)
-- [ ] Event creation form: inline validation, clear field-level errors, disabled submit while saving
-- [ ] Team formation: invite-link copy button with a "Copied" confirmation; joining flow shows a clear success/failure state, not a silent redirect
-- [ ] Submission draft/edit: visible autosave indicator ("Saving… / Saved / Unsaved changes"); never loses entered content on a validation error
-- [ ] Public gallery: loading skeleton while fetching, empty state with role-appropriate call-to-action, search with no-results state that's distinct from the empty-gallery state
-- [ ] Deadline countdown or clear deadline display on the submission page — the user should never discover a deadline passed only via a rejected save
-- [ ] All Phase 1 screens verified at mobile/tablet/desktop breakpoints and via keyboard-only navigation
-- [ ] Role-aware navigation: nav only shows links the current role can use
+- [x] Event creation form: inline validation, clear field-level errors, disabled submit while saving
+- [x] Team formation: invite-link copy button with a "Copied" confirmation; joining flow shows a clear success/failure state, not a silent redirect
+- [x] Submission draft/edit: visible autosave indicator ("Saving… / Saved / Unsaved changes"); never loses entered content on a validation error
+- [x] Public gallery: loading skeleton while fetching, empty state with role-appropriate call-to-action, search with no-results state that's distinct from the empty-gallery state
+- [x] Deadline countdown or clear deadline display on the submission page — the user should never discover a deadline passed only via a rejected save
+- [ ] All Phase 1 screens verified at mobile/tablet/desktop breakpoints and via keyboard-only navigation — *built mobile-first with responsive Tailwind classes throughout, but not yet visually verified in a browser at all three breakpoints; needs a manual or devtools pass*
+- [x] Role-aware navigation: nav only shows links the current role can use
 
 **Definition of Done — Phase 1 gate:** acceptance suite reports all T1 checks green, and every item in the Phase 1 UX checklist is checked. Do not start Phase 2 otherwise.
+
+**Gate status:** functionally complete and self-tested (21/21 `api/tests/` passing against a real Postgres, verified live against the running `docker compose` stack — seeded event/gallery data confirmed over HTTP). Two items keep this from a clean gate pass: the published acceptance suite doesn't exist yet, and the responsive/keyboard breakpoint pass hasn't been done in an actual browser. Recommend treating Phase 1 as done-pending-verification rather than fully green.
 
 ---
 
@@ -360,3 +364,31 @@ Update these as each phase completes, not in a single pass before submission:
 - **Tailwind major version (Phase 0).** Pinned to `tailwindcss==3.4.17` rather than v4, because
   §3 and `DESIGN_SYSTEM.md` §11 both specify a `tailwind.config.ts` with `theme.extend`, which is
   the v3 configuration model. v4's CSS-first config would invalidate that instruction.
+- **No acceptance suite exists yet (Phase 1).** "Run the acceptance suite against T1" is unchecked
+  because no acceptance suite has been published — nothing to run. Backend coverage stands on
+  `api/tests/` instead (21 tests: auth, role gating, event CRUD + validation, team formation +
+  invite join/expiry, submission autosave/deadline/gallery visibility), run via
+  `docker compose exec api pytest tests/ -v` against a dedicated `dogfood_test` database. Re-run
+  once the real suite ships.
+- **Public registration always creates a participant (Phase 1).** `POST /api/auth/register` never
+  accepts a role from the client. Judge/organizer/admin accounts exist only via `fixtures/users.json`
+  seeding. This wasn't explicit in PLAN.md; treated as the safer default for a hackathon platform
+  (self-service organizer/admin signup would be a privilege-escalation hole) rather than build a
+  separate invite-a-judge flow that Phase 1 didn't ask for.
+- **One submission per team, not a `Submission` id in most URLs (Phase 1).** PLAN.md says
+  "Submission model + draft/edit endpoints" without specifying cardinality. Modeled as exactly one
+  submission per team (`unique=True` on `Submission.team_id`) with endpoints keyed by team
+  (`/api/teams/{team_id}/submission`), matching how the reference PDF and typical hackathon judging
+  treat a team's entry as singular. Flag if multi-track teams need more than one submission each.
+- **Schema changes require a fresh dev volume (Phase 1).** There is no Alembic/migration tool in
+  scope (PLAN.md section 5 doesn't list one). `SQLModel.metadata.create_all()` only creates missing
+  *tables*, not missing *columns* on tables that already exist — adding `Event.prize_config` after
+  the `events` table was already created crashed the API on boot (`UndefinedColumn`) until
+  `docker compose down -v` dropped the dev volume for a clean schema. Fine for local development;
+  flag before Phase 5 whether real migrations are needed for anything beyond a `docker compose up`
+  demo.
+- **Responsive/keyboard breakpoint pass not yet done in a browser (Phase 1).** All Phase 1 screens
+  were built mobile-first with Tailwind's responsive utilities (stacking layouts, a collapsing nav,
+  `sm`/`md`/`lg` breakpoints throughout), consistent with `DESIGN_SYSTEM.md` §4, but nobody has
+  actually opened them at 375px/768px/1280px or tabbed through them yet. Do this before checking
+  that Phase 1 UX box, and definitely before Phase 5's dedicated UX audit.

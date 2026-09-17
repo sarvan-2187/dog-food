@@ -1,0 +1,95 @@
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import Session, select
+
+from ..auth import Role, User, get_current_user, require_role
+from ..db import get_session
+from ..events.models import Event
+from .deps import require_team_member
+from .models import Team, TeamMembership
+from .schemas import TeamCreate, TeamJoin, TeamMemberPublic, TeamPublic
+
+router = APIRouter(tags=["teams"])
+
+
+def _team_public(session: Session, team: Team) -> TeamPublic:
+    memberships = session.exec(select(TeamMembership).where(TeamMembership.team_id == team.id)).all()
+    members: list[TeamMemberPublic] = []
+    for membership in memberships:
+        member_user = session.get(User, membership.user_id)
+        if member_user:
+            members.append(TeamMemberPublic(id=member_user.id, name=member_user.name, email=member_user.email))
+    return TeamPublic(
+        id=team.id,
+        event_id=team.event_id,
+        name=team.name,
+        invite_code=team.invite_code,
+        members=members,
+    )
+
+
+@router.post("/api/events/{event_id}/teams", response_model=TeamPublic, status_code=status.HTTP_201_CREATED)
+def create_team(
+    event_id: int,
+    payload: TeamCreate,
+    user: User = Depends(require_role(Role.participant)),
+    session: Session = Depends(get_session),
+) -> TeamPublic:
+    event = session.get(Event, event_id)
+    if not event:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
+    if event.end_at < datetime.utcnow():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This event's deadline has passed.")
+    team = Team(event_id=event_id, name=payload.name)
+    session.add(team)
+    session.commit()
+    session.refresh(team)
+    session.add(TeamMembership(team_id=team.id, user_id=user.id))
+    session.commit()
+    return _team_public(session, team)
+
+
+@router.post("/api/teams/join", response_model=TeamPublic)
+def join_team(
+    payload: TeamJoin,
+    user: User = Depends(require_role(Role.participant)),
+    session: Session = Depends(get_session),
+) -> TeamPublic:
+    team = session.exec(select(Team).where(Team.invite_code == payload.invite_code)).first()
+    if not team:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That invite link is not valid.")
+    if team.invite_code_expires_at < datetime.utcnow():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That invite link has expired.")
+    existing = session.exec(
+        select(TeamMembership).where(TeamMembership.team_id == team.id, TeamMembership.user_id == user.id)
+    ).first()
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT, "You are already a member of this team.")
+    session.add(TeamMembership(team_id=team.id, user_id=user.id))
+    session.commit()
+    return _team_public(session, team)
+
+
+@router.get("/api/teams/mine", response_model=list[TeamPublic])
+def my_teams(user: User = Depends(get_current_user), session: Session = Depends(get_session)) -> list[TeamPublic]:
+    memberships = session.exec(select(TeamMembership).where(TeamMembership.user_id == user.id)).all()
+    teams = [session.get(Team, m.team_id) for m in memberships]
+    return [_team_public(session, t) for t in teams if t]
+
+
+@router.get("/api/teams/{team_id}", response_model=TeamPublic)
+def get_team(
+    team_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> TeamPublic:
+    team = session.get(Team, team_id)
+    if not team:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Team not found.")
+    is_member = session.exec(
+        select(TeamMembership).where(TeamMembership.team_id == team_id, TeamMembership.user_id == user.id)
+    ).first()
+    if not is_member and user.role not in (Role.organizer, Role.admin):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to view this team.")
+    return _team_public(session, team)

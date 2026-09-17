@@ -1,6 +1,4 @@
 """FastAPI entry point: mounts routers and serves the built SPA."""
-from __future__ import annotations
-
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -12,6 +10,19 @@ from fastapi.staticfiles import StaticFiles
 
 from .db import create_db_and_tables
 from .seed import run_seed
+
+# Import every model module before create_db_and_tables() so SQLModel.metadata
+# knows about every table (auth has no cross-package dependency; the others
+# reference "users.id" / "events.id" / "teams.id" by string foreign key).
+from .auth import models as _auth_models  # noqa: F401
+from .events import models as _event_models  # noqa: F401
+from .teams import models as _team_models  # noqa: F401
+from .submissions import models as _submission_models  # noqa: F401
+
+from .auth.router import router as auth_router
+from .events.router import router as events_router
+from .teams.router import router as teams_router
+from .submissions.router import router as submissions_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -33,7 +44,10 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# Phase 1+ routers mount here, above the SPA catch-all below.
+app.include_router(auth_router)
+app.include_router(events_router)
+app.include_router(teams_router)
+app.include_router(submissions_router)
 
 if (STATIC_DIR / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")

@@ -1,0 +1,7 @@
+[
+  {"email": "alice@example.com", "name": "Alice Organizer", "password": "organizer-pass1", "role": "organizer"},
+  {"email": "priya@example.com", "name": "Priya Admin", "password": "admin-pass123", "role": "admin"},
+  {"email": "sam@example.com", "name": "Sam Judge", "password": "judge-pass123", "role": "judge"},
+  {"email": "jordan@example.com", "name": "Jordan Participant", "password": "participant-pass1", "role": "participant"},
+  {"email": "riley@example.com", "name": "Riley Participant", "password": "participant-pass2", "role": "participant"}
+]

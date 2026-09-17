@@ -1,0 +1,10 @@
+[
+  {
+    "team_name": "Codehawks",
+    "event_slug": "dogfood-2026",
+    "title": "Audit Trail Explorer",
+    "description": "A searchable timeline of every automated decision, built for the judging pipeline.",
+    "track": "Developer Tools",
+    "status": "submitted"
+  }
+]

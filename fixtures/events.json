@@ -1,0 +1,11 @@
+[
+  {
+    "slug": "dogfood-2026",
+    "name": "Dogfood Hackathon 2026",
+    "description": "A weekend build sprint for internal tooling ideas.",
+    "start_at": "2026-09-19T09:00:00",
+    "end_at": "2026-09-21T18:00:00",
+    "tracks": ["Productivity", "Developer Tools", "Open Category"],
+    "created_by": "alice@example.com"
+  }
+]

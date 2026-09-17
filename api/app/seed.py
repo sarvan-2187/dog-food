@@ -1,27 +1,22 @@
 """Idempotent fixture seeding, run automatically on app startup.
 
-Phase 0 has no models, so `SEEDERS` is empty and `run_seed()` is a no-op.
-Each phase that adds a model appends its seeder here; a seeder must check for
-existing rows before inserting so repeated boots never duplicate data.
+Ordered pipeline (users -> events -> teams -> submissions) because each step
+needs the previous step's generated ids. Every insert is guarded by a lookup
+on the row's natural key, so re-running on an already-seeded database is a
+no-op.
 """
-from __future__ import annotations
-
 import json
 import logging
 import os
-from collections.abc import Callable
 from pathlib import Path
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from .db import engine
 
 log = logging.getLogger("seed")
 
 FIXTURES_DIR = Path(os.getenv("FIXTURES_DIR", "fixtures"))
-
-# Populated by later phases, e.g. SEEDERS.append(seed_users)
-SEEDERS: list[Callable[[Session], None]] = []
 
 
 def load_fixture(name: str) -> list[dict]:
@@ -34,32 +29,107 @@ def load_fixture(name: str) -> list[dict]:
         return json.load(fh)
 
 
+def _seed_users(session: Session) -> dict[str, int]:
+    from .auth.models import Role, User
+    from .auth.security import hash_password
+
+    email_to_id: dict[str, int] = {}
+    for row in load_fixture("users.json"):
+        existing = session.exec(select(User).where(User.email == row["email"])).first()
+        if existing:
+            email_to_id[row["email"]] = existing.id
+            continue
+        user = User(
+            email=row["email"],
+            name=row["name"],
+            role=Role(row["role"]),
+            password_hash=hash_password(row["password"]),
+        )
+        session.add(user)
+        session.flush()
+        email_to_id[row["email"]] = user.id
+    return email_to_id
+
+
+def _seed_events(session: Session, email_to_id: dict[str, int]) -> dict[str, int]:
+    from .events.models import Event
+
+    slug_to_id: dict[str, int] = {}
+    for row in load_fixture("events.json"):
+        existing = session.exec(select(Event).where(Event.slug == row["slug"])).first()
+        if existing:
+            slug_to_id[row["slug"]] = existing.id
+            continue
+        event = Event(
+            slug=row["slug"],
+            name=row["name"],
+            description=row.get("description", ""),
+            start_at=row["start_at"],
+            end_at=row["end_at"],
+            tracks=row.get("tracks", []),
+            created_by_id=email_to_id[row["created_by"]],
+        )
+        session.add(event)
+        session.flush()
+        slug_to_id[row["slug"]] = event.id
+    return slug_to_id
+
+
+def _seed_teams(session: Session, email_to_id: dict[str, int], slug_to_id: dict[str, int]) -> dict[str, int]:
+    from .teams.models import Team, TeamMembership
+
+    name_to_id: dict[str, int] = {}
+    for row in load_fixture("teams.json"):
+        event_id = slug_to_id[row["event_slug"]]
+        existing = session.exec(select(Team).where(Team.name == row["name"], Team.event_id == event_id)).first()
+        if existing:
+            name_to_id[row["name"]] = existing.id
+            continue
+        team = Team(name=row["name"], event_id=event_id)
+        session.add(team)
+        session.flush()
+        for email in row.get("member_emails", []):
+            session.add(TeamMembership(team_id=team.id, user_id=email_to_id[email]))
+        name_to_id[row["name"]] = team.id
+    return name_to_id
+
+
+def _seed_submissions(session: Session, slug_to_id: dict[str, int], name_to_id: dict[str, int]) -> None:
+    from .submissions.models import Submission, SubmissionStatus
+
+    for row in load_fixture("submissions.json"):
+        team_id = name_to_id[row["team_name"]]
+        existing = session.exec(select(Submission).where(Submission.team_id == team_id)).first()
+        if existing:
+            continue
+        session.add(
+            Submission(
+                team_id=team_id,
+                event_id=slug_to_id[row["event_slug"]],
+                title=row.get("title", ""),
+                description=row.get("description", ""),
+                track=row.get("track", ""),
+                status=SubmissionStatus(row.get("status", "draft")),
+            )
+        )
+
+
 def run_seed() -> None:
-    if not SEEDERS:
-        log.info("no seeders registered, schema left empty")
-        return
     with Session(engine) as session:
-        for seeder in SEEDERS:
-            seeder(session)
+        email_to_id = _seed_users(session)
+        slug_to_id = _seed_events(session, email_to_id)
+        name_to_id = _seed_teams(session, email_to_id, slug_to_id)
+        _seed_submissions(session, slug_to_id, name_to_id)
         session.commit()
-    log.info("seeding complete (%d seeders)", len(SEEDERS))
+    log.info("seeding complete")
 
 
 def _self_check() -> None:
-    """Smallest check that fails if the fixture/registry contract breaks.
+    """Smallest check that fails if the fixture-loading contract breaks.
 
     Run with: python -m app.seed  (from api/)
     """
     assert load_fixture("__definitely_missing__.json") == []
-
-    calls: list[str] = []
-    SEEDERS.append(lambda _session: calls.append("ran"))
-    try:
-        assert len(SEEDERS) == 1
-        assert calls == []
-    finally:
-        SEEDERS.clear()
-    assert SEEDERS == []
     print("seed self-check ok")
 
 
