@@ -1,78 +1,107 @@
 /**
  * Design tokens - the single source of truth, transcribed from DESIGN_SYSTEM.md.
  * tailwind.config.ts consumes this file; nothing else in the app hardcodes a hex.
+ *
+ * Palette rebuilt in Phase 5 from a live self-check of raptors.dev's actual
+ * DOM (computed styles, not the poster artwork): the real UI chrome is
+ * genuinely monochrome (ink-on-cream) — there is no separate saturated brand
+ * hue anywhere in its :root custom properties or its buttons/badges. `brand`
+ * below is therefore the ink scale itself, used for the primary action —
+ * an honest reflection of the reference, not an invented accent color.
  */
 export const colors = {
   brand: {
-    25: '#F5FAFF',
-    50: '#F2F6FF',
-    100: '#ECF2FF',
-    500: '#2F6BFF',
-    600: '#255DF5',
-    700: '#2450CF',
+    25: '#F8F9F9',
+    50: '#F1F2F2',
+    100: '#E7E9E9',
+    500: '#1F2426',
+    600: '#171B1C',
+    700: '#0E1112',
   },
   ink: {
-    400: '#8B95A6',
-    500: '#7B8DA5',
-    600: '#64758D',
-    700: '#43516A',
-    800: '#17283E',
-    900: '#171D29',
+    400: '#8C9294',
+    500: '#6F7678',
+    600: '#565D5F',
+    700: '#3C4344',
+    800: '#282D2E',
+    900: '#1F2426',
   },
   surface: {
     0: '#FFFFFF',
-    50: '#FCFCFD',
-    100: '#F7F9FC',
-    200: '#F4F6FA',
+    50: '#FCFCFC',
+    100: '#F1F2F2',
+    200: '#F8F9F9',
   },
   navy: {
-    800: '#1F2B42',
-    900: '#071936',
+    800: '#1F2426',
+    900: '#12181A',
   },
   border: {
-    subtle: '#EDF0F5',
-    DEFAULT: '#E6EBF2',
-    strong: '#DCE3EC',
+    subtle: '#EAEBEB',
+    DEFAULT: '#DEE0E0',
+    strong: '#C9CCCC',
   },
-  danger: { bg: '#FFF1EF', fg: '#B42318', solid: '#B42318', hover: '#98180F', active: '#7F1410' },
-  warning: { bg: '#FFF7E8', fg: '#B54708' },
-  success: { bg: '#ECF8F2', fg: '#177148' },
-  info: { bg: '#ECF2FF', fg: '#2450CF' },
+  danger: { bg: '#FBEDEC', fg: '#B3271E', solid: '#B3271E', hover: '#93211A', active: '#761A14' },
+  warning: { bg: '#FBF2E4', fg: '#9C5B0E' },
+  success: { bg: '#EAF3EC', fg: '#2F6B45' },
+  info: { bg: '#EBEEEE', fg: '#33393A' },
 } as const;
 
-// System stacks are canonical (DESIGN_SYSTEM.md 3.1, decided Phase 5.1) — no webfont
-// binaries are committed, so no named font ever appears here as a "preferred" entry.
+// Sourced from a live self-check of raptors.dev's actual stylesheet (Phase 5):
+// its :root declares --sans: "Satoshi Variable" and --serif: "Playfair Display".
+// Both are self-hosted under public/fonts/ (PLAN.md section 1 forbids CDN
+// requests in the served app) — never add a <link> to fonts.googleapis.com or
+// fonts.fontshare.com.
 export const fontFamily = {
-  sans: ['-apple-system', 'Segoe UI', 'system-ui', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
-  serifAccent: ['Georgia', 'Times New Roman', 'serif'],
+  sans: ['Satoshi', '-apple-system', 'Segoe UI', 'system-ui', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+  serifAccent: ['Playfair Display', 'Georgia', 'Times New Roman', 'serif'],
   mono: ['Consolas', 'SF Mono', 'ui-monospace', 'monospace'],
 } as const;
 
-/** [size, { lineHeight, letterSpacing, fontWeight }] - Tailwind fontSize tuples. */
+/**
+ * [size, { lineHeight, letterSpacing, fontWeight }] - Tailwind fontSize tuples.
+ * display/h2/h3/body-lg are the real measured values from raptors.dev's live
+ * DOM (h1 70px/500, h2 40px/500/lh50/-1.2px, h3 24px/500/lh34/-0.72px,
+ * p 18px/400/lh30); label/meta/eyebrow are interpolated at the same
+ * tight-tracking, weight-500-headings/700-labels convention since the
+ * reference has no data-dense UI to sample those from directly. Satoshi was
+ * only sourced as static 400/500/700 instances (not the full variable axis),
+ * so "weight 600" treatments below use 700, the closest available.
+ */
 export const fontSize = {
-  display: ['clamp(2.25rem, 4.5vw, 3.5rem)', { lineHeight: '1.05', letterSpacing: '-0.02em', fontWeight: '700' }],
-  h1: ['2.125rem', { lineHeight: '1.15', letterSpacing: '-0.015em', fontWeight: '700' }],
-  h2: ['1.75rem', { lineHeight: '1.2', letterSpacing: '-0.01em', fontWeight: '600' }],
-  h3: ['1.25rem', { lineHeight: '1.3', fontWeight: '600' }],
-  'body-lg': ['1.125rem', { lineHeight: '1.6' }],
-  body: ['0.9375rem', { lineHeight: '1.55' }],
-  label: ['0.8125rem', { lineHeight: '1.4', fontWeight: '500' }],
+  // Real: 70px/500, marketing hero only.
+  display: ['clamp(2.5rem, 6vw, 4.375rem)', { lineHeight: '1.05', letterSpacing: '-0.03em', fontWeight: '500' }],
+  // Real: this is the reference's own H2 (40px/500/lh50/-1.2px) — our in-app
+  // page-title role matches their section-heading role, since their H1 is
+  // used exactly once, in the hero (that's "display" above).
+  h1: ['2.5rem', { lineHeight: '1.25', letterSpacing: '-0.03em', fontWeight: '500' }],
+  // Interpolated: not directly measured, sits between h1(40px) and h3(24px).
+  h2: ['1.75rem', { lineHeight: '1.3', letterSpacing: '-0.03em', fontWeight: '500' }],
+  // Real: 24px/500/lh34/-0.72px.
+  h3: ['1.5rem', { lineHeight: '1.42', letterSpacing: '-0.03em', fontWeight: '500' }],
+  'body-lg': ['1.125rem', { lineHeight: '1.67' }],
+  // Not measured directly on the reference (a marketing site with no dense
+  // table/form UI to sample) — kept smaller than body-lg so tables and forms
+  // stay compact, same density convention as before this rebuild.
+  body: ['0.9375rem', { lineHeight: '1.6' }],
+  label: ['0.875rem', { lineHeight: '1.4', fontWeight: '700', letterSpacing: '0.03em' }],
   meta: ['0.75rem', { lineHeight: '1.4' }],
-  eyebrow: ['0.6875rem', { lineHeight: '1.2', letterSpacing: '0.12em', fontWeight: '600' }],
+  eyebrow: ['0.6875rem', { lineHeight: '1.2', letterSpacing: '0.03em', fontWeight: '700' }],
 } as const;
 
+// Real measurements: button 10px radius, badge 50px (a true pill).
 export const borderRadius = {
   sm: '6px',
-  md: '8px',
-  lg: '12px',
-  xl: '16px',
+  md: '10px',
+  lg: '14px',
+  xl: '18px',
   full: '999px',
 } as const;
 
 export const boxShadow = {
-  sm: '0 1px 2px rgba(7, 25, 54, 0.05)',
-  md: '0 4px 16px rgba(7, 25, 54, 0.06)',
-  lg: '0 16px 48px rgba(7, 25, 54, 0.10)',
+  sm: '0 1px 2px rgba(31, 36, 38, 0.05)',
+  md: '0 4px 16px rgba(31, 36, 38, 0.06)',
+  lg: '0 16px 48px rgba(31, 36, 38, 0.10)',
 } as const;
 
 export const spacing = {

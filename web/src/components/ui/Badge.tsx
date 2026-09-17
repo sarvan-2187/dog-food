@@ -19,8 +19,9 @@ const ROLE: Record<Role, string> = {
   admin: 'bg-navy-800 text-surface-0',
 };
 
-const base =
-  'inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-eyebrow uppercase tracking-[0.06em]';
+// Real raptors.dev badges are a true pill (measured border-radius: 50px) —
+// rounded-full, not rounded-sm.
+const base = 'inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-eyebrow uppercase';
 
 /**
  * DESIGN_SYSTEM.md 7.5 / 2.5. The label text is mandatory - colour is never
