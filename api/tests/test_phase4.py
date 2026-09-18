@@ -183,7 +183,7 @@ def test_export_then_import_recreates_the_events_shape(client, session):
     payload = {
         **exported["event"],
         "slug": "p4-export-copy",
-        "rubric": exported["rubric"],
+        "rubrics": exported["rubrics"],
         "teams": exported["teams"],
         "submissions": exported["submissions"],
     }

@@ -169,7 +169,7 @@ test.describe('the Select is a real listbox', () => {
   });
 
   test('the gallery order dropdown still works after the shadcn swap', async ({ page }) => {
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     const trigger = page.getByRole('combobox', { name: 'Order' });
     await expect(trigger).toBeVisible();
     await trigger.click();

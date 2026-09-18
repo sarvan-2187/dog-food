@@ -12,7 +12,15 @@ const BREAKPOINTS = [
   { name: 'desktop', width: 1280, height: 900 },
 ];
 
-const PUBLIC_PAGES = ['/', '/events', '/gallery', '/login', '/register', '/definitely-not-a-page'];
+const PUBLIC_PAGES = [
+  '/',
+  '/events',
+  '/gallery',
+  '/events/dogfood-2026/gallery',
+  '/login',
+  '/register',
+  '/definitely-not-a-page',
+];
 
 async function login(page, email: string, password: string) {
   await page.goto('/login');
@@ -161,8 +169,11 @@ test.describe('cards in a row are equal height', () => {
       expect(await raggedRows(page, 'a.w-64'), 'landing capability cards').toEqual([]);
       expect(await raggedRows(page, 'div.grid.md\\:grid-cols-3 > div'), 'landing hero claims').toEqual([]);
 
-      await page.goto('/gallery');
-      await expect(page.getByRole('heading', { name: 'Gallery' })).toBeVisible();
+      // The submissions grid (with footers to compare) lives on the scoped
+      // per-event gallery now - "/gallery" itself is an event-picker with no
+      // footer-bearing cards.
+      await page.goto('/events/dogfood-2026/gallery');
+      await expect(page.getByRole('heading', { name: /gallery$/i })).toBeVisible();
       expect(await raggedRows(page, 'div.grid > section'), 'gallery cards').toEqual([]);
       expect(await raggedRows(page, 'div.grid > section > footer'), 'gallery card footers').toEqual([]);
     });

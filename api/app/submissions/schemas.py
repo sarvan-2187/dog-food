@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
@@ -24,3 +25,20 @@ class SubmissionUpdate(BaseModel):
         if v is not None and len(v.strip()) > 5000:
             raise ValueError("Description must be 5000 characters or fewer.")
         return v
+
+
+class SubmissionPublic(BaseModel):
+    """Submission plus its uploaded image, if any (PLAN.md Phase 6) -- a
+    plain Submission row has no such column; this is assembled by the
+    router so the editing page can see an existing screenshot on load."""
+
+    id: int
+    team_id: int
+    event_id: int
+    title: str
+    description: str
+    track: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    image_url: Optional[str] = None

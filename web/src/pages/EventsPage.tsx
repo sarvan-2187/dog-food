@@ -64,7 +64,7 @@ export function EventsPage() {
   );
 }
 
-function EventStatusBadge({ event }: { event: EventRecord }) {
+export function EventStatusBadge({ event }: { event: EventRecord }) {
   const passed = new Date(event.end_at).getTime() < Date.now();
   return <Badge status={passed ? 'danger' : 'info'}>{passed ? 'Deadline passed' : 'Open'}</Badge>;
 }

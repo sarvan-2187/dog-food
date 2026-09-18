@@ -79,7 +79,7 @@ export function JoinTeamPage() {
             <strong className="text-ink-900">{team.name}</strong>.
           </p>
           <p className="text-meta text-ink-500">
-            {team.members.length} member{team.members.length === 1 ? '' : 's'}:{' '}
+            {team.members.length} / {team.max_team_size} members:{' '}
             {team.members.map((m) => m.name).join(', ')}
           </p>
           <Link to={`/teams/${team.id}/submission`}>

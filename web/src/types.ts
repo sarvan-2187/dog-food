@@ -1,10 +1,24 @@
 export type Role = 'participant' | 'judge' | 'organizer' | 'admin';
 
+export interface WebhookRecord {
+  id: number;
+  url: string;
+  active: boolean;
+  last_status: 'never fired' | 'delivered' | 'failed';
+  created_at: string;
+}
+
 export interface User {
   id: number;
   email: string;
   name: string;
   role: Role;
+  avatar_url: string | null;
+}
+
+export interface PrizeEntry {
+  rank: string;
+  reward: string;
 }
 
 export interface EventRecord {
@@ -15,6 +29,9 @@ export interface EventRecord {
   start_at: string;
   end_at: string;
   tracks: string[];
+  /** Convention: { prizes: [{rank, reward}, ...] }. Empty object means none configured. */
+  prize_config: { prizes?: PrizeEntry[] };
+  max_team_size: number;
   created_by_id: number;
   created_at: string;
   voting_enabled: boolean;
@@ -34,6 +51,7 @@ export interface Team {
   name: string;
   invite_code: string;
   members: TeamMember[];
+  max_team_size: number;
 }
 
 export type SubmissionStatus = 'draft' | 'submitted';
@@ -48,6 +66,7 @@ export interface Submission {
   status: SubmissionStatus;
   created_at: string;
   updated_at: string;
+  image_url: string | null;
 }
 
 // --- Phase 2: judging ------------------------------------------------------
@@ -94,7 +113,12 @@ export interface AssignmentSummary {
   existing: number;
   judges_per_submission: number;
   coverage_warnings: CoverageWarning[];
-  rubric_id: number | null;
+}
+
+export interface RubricGroup {
+  rubric_id: number;
+  rubric_name: string;
+  criteria: Criterion[];
 }
 
 export interface ScoringSheet {
@@ -103,8 +127,7 @@ export interface ScoringSheet {
   submission_title: string;
   submission_description: string;
   submission_track: string;
-  rubric_name: string;
-  criteria: Criterion[];
+  rubrics: RubricGroup[];
   my_values: Record<string, number> | null;
   my_comment: string;
   my_raw_total: number | null;
@@ -149,6 +172,7 @@ export interface GalleryItem {
   comment_count: number;
   votes: number | null;
   voted_by_me: boolean;
+  image_url: string | null;
 }
 
 export interface VoteResult {

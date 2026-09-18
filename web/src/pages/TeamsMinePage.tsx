@@ -26,7 +26,7 @@ export function TeamsMinePage() {
         <div className="grid gap-4 md:grid-cols-2">
           {teams.map((t) => (
             <Link key={t.id} to={`/teams/${t.id}/submission`} className="h-full">
-              <Card title={t.name} meta={`${t.members.length} member${t.members.length === 1 ? '' : 's'}`}>
+              <Card title={t.name} meta={`${t.members.length} / ${t.max_team_size} members`}>
                 <p className="text-body text-ink-600">{t.members.map((m) => m.name).join(', ')}</p>
               </Card>
             </Link>

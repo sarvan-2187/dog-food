@@ -81,30 +81,29 @@ test.describe('role-aware navigation for judging', () => {
 });
 
 test.describe('organizer rubric builder', () => {
-  test('weight total validates inline at the field level, live', async ({ page }) => {
+  test('the combined weight total across every rubric validates live', async ({ page }) => {
     await asOrganizer(page);
     await page.goto('/events/dogfood-2026/rubric');
-    await expect(page.getByText(/Weights add up to 1.00/)).toBeVisible();
+    // Two seeded rubrics (Technical, Presentation) whose weights already sum to 1.0.
+    await expect(page.getByText(/rubrics weight to 1.00/)).toBeVisible();
 
-    // Knock one weight out and the running total must object immediately,
-    // without submitting and without a generic form-level rejection.
+    // Knocking one weight out of true must update the COMBINED total immediately,
+    // even though the edited weight lives in just one of several rubric cards.
     const firstWeight = page.getByLabel('Weight').first();
     await firstWeight.fill('0.9');
-    await expect(page.getByText('Weights must add up to 1.00')).toBeVisible();
-    await expect(page.getByText(/too much - reduce a weight/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Save rubric' })).toBeDisabled();
+    await expect(page.getByText('All rubrics together must weight to 1.00')).toBeVisible();
 
     await firstWeight.fill('0.35');
-    await expect(page.getByText(/Weights add up to 1.00/)).toBeVisible();
+    await expect(page.getByText(/rubrics weight to 1.00/)).toBeVisible();
   });
 
   test('a rubric locked by existing scores explains why', async ({ page }) => {
     await asOrganizer(page);
     await page.goto('/events/dogfood-2026/rubric');
-    await page.getByLabel('Rubric name').fill('Renamed Rubric');
-    await page.getByRole('button', { name: 'Save rubric' }).click();
+    await page.getByLabel('Rubric name').first().fill('Renamed Rubric');
+    await page.getByRole('button', { name: 'Save changes' }).first().click();
     // The seeded event has scores, so this must be refused with a reason.
-    await expect(page.getByText(/already scored against this rubric/i).first()).toBeVisible();
+    await expect(page.getByText(/already scored in this event/i).first()).toBeVisible();
   });
 });
 

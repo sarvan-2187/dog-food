@@ -1,10 +1,16 @@
 [
   {
     "event_slug": "dogfood-2026",
-    "name": "Dogfood 2026 Judging Rubric",
+    "name": "Technical Rubric",
     "criteria": [
       {"key": "impact", "label": "Impact", "weight": 0.35, "max_score": 10},
-      {"key": "execution", "label": "Execution", "weight": 0.35, "max_score": 10},
+      {"key": "execution", "label": "Execution", "weight": 0.35, "max_score": 10}
+    ]
+  },
+  {
+    "event_slug": "dogfood-2026",
+    "name": "Presentation Rubric",
+    "criteria": [
       {"key": "innovation", "label": "Innovation", "weight": 0.2, "max_score": 10},
       {"key": "presentation", "label": "Presentation", "weight": 0.1, "max_score": 10}
     ]

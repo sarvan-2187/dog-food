@@ -2,9 +2,10 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RequireRole } from '../components/auth/guards';
+import { PrizeListEditor, TrackListEditor } from '../components/EventConfigEditors';
 import { Button, Card, Input } from '../components/ui';
 import { ApiError, api } from '../lib/api';
-import type { EventRecord } from '../types';
+import type { EventRecord, PrizeEntry } from '../types';
 
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -23,6 +24,9 @@ function EventCreateForm() {
   const [description, setDescription] = useState('');
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
+  const [tracks, setTracks] = useState<string[]>([]);
+  const [prizes, setPrizes] = useState<PrizeEntry[]>([]);
+  const [maxTeamSize, setMaxTeamSize] = useState('4');
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,7 +51,9 @@ function EventCreateForm() {
         description,
         start_at: new Date(startAt).toISOString(),
         end_at: new Date(endAt).toISOString(),
-        tracks: [],
+        tracks,
+        prize_config: { prizes: prizes.filter((p) => p.rank.trim() && p.reward.trim()) },
+        max_team_size: Number(maxTeamSize) || 4,
       });
       navigate(`/events/${created.slug}`);
     } catch (err) {
@@ -82,6 +88,17 @@ function EventCreateForm() {
             onBlur={mark('endAt')}
             error={dateError}
           />
+          <Input
+            label="Max team size"
+            type="number"
+            min="1"
+            max="20"
+            value={maxTeamSize}
+            onChange={(e) => setMaxTeamSize(e.target.value)}
+            hint="Matches this hackathon's own rule (1-4) by default - change it if this event needs a different cap."
+          />
+          <TrackListEditor tracks={tracks} onChange={setTracks} />
+          <PrizeListEditor prizes={prizes} onChange={setPrizes} />
           {submitError && (
             <p role="alert" className="text-meta text-danger-fg">
               {submitError}

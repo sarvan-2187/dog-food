@@ -165,15 +165,34 @@ def _submitted(session, event: Event, team_name: str, title: str, members: list[
     return submission
 
 
-def test_rubric_rejects_weights_that_do_not_sum_to_one(client, session):
+def test_a_single_rubric_need_not_itself_sum_to_one(client, session):
+    """An organizer builds a multi-rubric set up one rubric at a time, so a lone
+    rubric summing to 0.6 is normal mid-setup -- only the combined set, checked
+    when judges are assigned, has to reach 1.0 (see the test below)."""
     event = _event(session, "rubric-weights")
     _login_as(client, session, "rubric-org@example.com", Role.organizer)
     bad = [
         {"key": "a", "label": "Alpha", "weight": 0.3, "max_score": 10},
         {"key": "b", "label": "Beta", "weight": 0.3, "max_score": 10},
     ]
-    r = client.put(f"/api/events/{event.id}/rubric", json={"name": "Bad Rubric", "criteria": bad})
-    assert r.status_code == 422, r.text
+    r = client.post(f"/api/events/{event.id}/rubrics", json={"name": "Partial Rubric", "criteria": bad})
+    assert r.status_code == 201, r.text
+
+
+def test_assignment_is_refused_when_the_combined_rubric_weights_do_not_sum_to_one(client, session):
+    event = _event(session, "rubric-weights-gate")
+    p1 = _user(session, "rubric-weights-gate-p@example.com", Role.participant)
+    _submitted(session, event, "Team RWG", "Weighty", [p1])
+    _user(session, "rubric-weights-gate-judge@example.com", Role.judge)
+    _login_as(client, session, "rubric-weights-gate-org@example.com", Role.organizer)
+    bad = [
+        {"key": "a", "label": "Alpha", "weight": 0.3, "max_score": 10},
+        {"key": "b", "label": "Beta", "weight": 0.3, "max_score": 10},
+    ]
+    client.post(f"/api/events/{event.id}/rubrics", json={"name": "Partial Rubric", "criteria": bad})
+
+    r = client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 1})
+    assert r.status_code == 409, r.text
     # The message must name the actual total, not just say "invalid".
     assert "0.6" in r.text
 
@@ -181,8 +200,8 @@ def test_rubric_rejects_weights_that_do_not_sum_to_one(client, session):
 def test_rubric_accepts_weights_summing_to_one(client, session):
     event = _event(session, "rubric-ok")
     _login_as(client, session, "rubric-ok-org@example.com", Role.organizer)
-    r = client.put(f"/api/events/{event.id}/rubric", json={"name": "Good Rubric", "criteria": VALID_CRITERIA})
-    assert r.status_code == 200, r.text
+    r = client.post(f"/api/events/{event.id}/rubrics", json={"name": "Good Rubric", "criteria": VALID_CRITERIA})
+    assert r.status_code == 201, r.text
     assert len(r.json()["criteria"]) == 2
 
 
@@ -193,7 +212,7 @@ def test_rubric_rejects_duplicate_criterion_keys(client, session):
         {"key": "a", "label": "Alpha", "weight": 0.5, "max_score": 10},
         {"key": "a", "label": "Also Alpha", "weight": 0.5, "max_score": 10},
     ]
-    r = client.put(f"/api/events/{event.id}/rubric", json={"name": "Dupe Rubric", "criteria": dupes})
+    r = client.post(f"/api/events/{event.id}/rubrics", json={"name": "Dupe Rubric", "criteria": dupes})
     assert r.status_code == 422
 
 
@@ -205,7 +224,7 @@ def test_assignment_run_is_idempotent(client, session):
         _user(session, f"assign-judge{i}@example.com", Role.judge)
 
     _login_as(client, session, "assign-org@example.com", Role.organizer)
-    client.put(f"/api/events/{event.id}/rubric", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
+    client.post(f"/api/events/{event.id}/rubrics", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
 
     first = client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 3})
     assert first.status_code == 201, first.text
@@ -238,7 +257,7 @@ def test_assignment_reports_coverage_shortfall(client, session):
     _submitted(session, event, "Team S", "Short", [p1])
     _user(session, "short-judge@example.com", Role.judge)  # only one judge
     _login_as(client, session, "short-org@example.com", Role.organizer)
-    client.put(f"/api/events/{event.id}/rubric", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
+    client.post(f"/api/events/{event.id}/rubrics", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
 
     r = client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 3})
     assert r.status_code == 201
@@ -254,7 +273,8 @@ def test_rubric_cannot_change_once_scoring_has_started(client, session):
 
     client.post("/api/auth/logout")
     _login_as(client, session, "locked-org@example.com", Role.organizer)
-    client.put(f"/api/events/{event.id}/rubric", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
+    created = client.post(f"/api/events/{event.id}/rubrics", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
+    rubric_id = created.json()["id"]
     client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 1})
 
     assignment = session.exec(select(JudgeAssignment).where(JudgeAssignment.judge_id == judge.id)).first()
@@ -270,7 +290,7 @@ def test_rubric_cannot_change_once_scoring_has_started(client, session):
         {"key": "impact", "label": "Impact", "weight": 0.8, "max_score": 10},
         {"key": "execution", "label": "Execution", "weight": 0.2, "max_score": 10},
     ]
-    r = client.put(f"/api/events/{event.id}/rubric", json={"name": "Reweighted Rubric", "criteria": changed})
+    r = client.put(f"/api/events/{event.id}/rubrics/{rubric_id}", json={"name": "Reweighted Rubric", "criteria": changed})
     assert r.status_code == 409, "changing weights after scoring would invalidate the scores already given"
 
 
@@ -327,7 +347,9 @@ def test_scoring_sheet_carries_the_rubric_and_the_judges_own_score(client, sessi
     assert sheet.status_code == 200, sheet.text
     body = sheet.json()
     assert body["submission_title"] == "Sheet Content"
-    assert [c["key"] for c in body["criteria"]] == ["impact", "execution"]
+    assert len(body["rubrics"]) == 1
+    assert body["rubrics"][0]["rubric_name"] == "Content Rubric"
+    assert [c["key"] for c in body["rubrics"][0]["criteria"]] == ["impact", "execution"]
     assert body["my_values"] is None, "nothing scored yet"
 
     client.put(f"/api/assignments/{assignment.id}/score", json={"values": {"impact": 6, "execution": 8}})

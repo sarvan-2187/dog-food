@@ -4,7 +4,7 @@ import io
 from datetime import datetime
 from typing import Iterable
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlmodel import Session, select
 
 from ..audit.log import record
@@ -16,6 +16,7 @@ from ..judging.models import JudgeAssignment, Rubric
 from ..submissions.models import Submission, SubmissionStatus
 from ..teams.models import Team, TeamMembership
 from ..timeutil import ensure_utc, utcnow
+from ..webhooks.service import notify
 from .certificate import render_certificate
 from .models import Score
 from .normalization import normalized_table
@@ -31,11 +32,21 @@ def _weighted_total(criteria: list[dict], values: dict[str, float]) -> float:
     return round(sum(float(c["weight"]) * float(values[c["key"]]) for c in criteria), 6)
 
 
-def _rubric_for_event(session: Session, event_id: int) -> Rubric:
-    rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
-    if not rubric:
+def _rubrics_for_event_or_empty(session: Session, event_id: int) -> list[Rubric]:
+    return list(session.exec(select(Rubric).where(Rubric.event_id == event_id).order_by(Rubric.id)))
+
+
+def _rubrics_for_event(session: Session, event_id: int) -> list[Rubric]:
+    rubrics = _rubrics_for_event_or_empty(session, event_id)
+    if not rubrics:
         raise HTTPException(status.HTTP_409_CONFLICT, "This event has no rubric, so it cannot be scored yet.")
-    return rubric
+    return rubrics
+
+
+def _combined_criteria(rubrics: list[Rubric]) -> list[dict]:
+    """The flat criteria list every submission is actually scored against --
+    every rubric in the event's set, concatenated (PLAN.md Open Questions)."""
+    return [c for r in rubrics for c in r.criteria]
 
 
 # --------------------------------------------------------------------------
@@ -46,6 +57,7 @@ def _rubric_for_event(session: Session, event_id: int) -> Rubric:
 def submit_score(
     assignment_id: int,
     payload: ScoreWrite,
+    background_tasks: BackgroundTasks,
     user: User = Depends(require_role(Role.judge)),
     session: Session = Depends(get_session),
 ) -> ScorePublic:
@@ -60,8 +72,7 @@ def submit_score(
     if assignment.judge_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This submission is assigned to a different judge.")
 
-    rubric = _rubric_for_event(session, assignment.event_id)
-    criteria = rubric.criteria
+    criteria = _combined_criteria(_rubrics_for_event(session, assignment.event_id))
     expected = {c["key"] for c in criteria}
     given = set(payload.values)
     if missing := expected - given:
@@ -105,6 +116,7 @@ def submit_score(
     )
     session.commit()
     session.refresh(score)
+    notify(session, background_tasks, assignment.event_id, "score.submitted", submission_id=assignment.submission_id)
     return ScorePublic(**score.model_dump())
 
 
@@ -258,8 +270,7 @@ def export_scores(
 ) -> Response:
     """Raw per-judge scores. Organizer-only: this is exactly the cross-judge
     detail a judge must not see."""
-    rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
-    keys = [c["key"] for c in rubric.criteria] if rubric else []
+    keys = [c["key"] for c in _combined_criteria(_rubrics_for_event_or_empty(session, event_id))]
     assignments = {
         a.id: a for a in session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id))
     }
@@ -361,7 +372,7 @@ def export_event(
     event = session.get(Event, event_id)
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
-    rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
+    rubrics = _rubrics_for_event_or_empty(session, event_id)
     teams = session.exec(select(Team).where(Team.event_id == event_id)).all()
     submissions = session.exec(select(Submission).where(Submission.event_id == event_id)).all()
     team_names = {t.id: t.name for t in teams}
@@ -377,7 +388,7 @@ def export_event(
             "voting_enabled": event.voting_enabled,
             "results_hidden_until": event.results_hidden_until.isoformat() if event.results_hidden_until else None,
         },
-        "rubric": {"name": rubric.name, "criteria": rubric.criteria} if rubric else None,
+        "rubrics": [{"name": r.name, "criteria": r.criteria} for r in rubrics],
         "teams": [{"name": t.name} for t in teams],
         "submissions": [
             {
@@ -417,8 +428,8 @@ def import_event(
     session.add(event)
     session.flush()
 
-    if payload.rubric:
-        session.add(Rubric(event_id=event.id, name=payload.rubric.name, criteria=payload.rubric.criteria))
+    for r in payload.rubrics:
+        session.add(Rubric(event_id=event.id, name=r.name, criteria=r.criteria))
 
     team_ids_by_name: dict[str, int] = {}
     for t in payload.teams:

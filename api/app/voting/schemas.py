@@ -43,6 +43,7 @@ class GalleryItem(BaseModel):
     comment_count: int
     votes: Optional[int] = None
     voted_by_me: bool = False
+    image_url: Optional[str] = None
 
 
 class PublicResultRow(BaseModel):

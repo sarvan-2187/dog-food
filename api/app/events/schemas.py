@@ -24,11 +24,19 @@ class EventCreate(BaseModel):
     end_at: datetime
     tracks: List[str] = []
     prize_config: Dict[str, Any] = {}
+    max_team_size: int = 4
 
     @field_validator("name")
     @classmethod
     def name_len(cls, v: str) -> str:
         return _name_len(v)
+
+    @field_validator("max_team_size")
+    @classmethod
+    def team_size_range(cls, v: int) -> int:
+        if not (1 <= v <= 20):
+            raise ValueError("Max team size must be between 1 and 20.")
+        return v
 
     @field_validator("slug")
     @classmethod
@@ -62,6 +70,7 @@ class EventUpdate(BaseModel):
     end_at: Optional[datetime] = None
     tracks: Optional[List[str]] = None
     prize_config: Optional[Dict[str, Any]] = None
+    max_team_size: Optional[int] = None
     voting_enabled: Optional[bool] = None
     results_hidden_until: Optional[datetime] = None
 
@@ -69,6 +78,13 @@ class EventUpdate(BaseModel):
     @classmethod
     def name_len(cls, v: Optional[str]) -> Optional[str]:
         return v if v is None else _name_len(v)
+
+    @field_validator("max_team_size")
+    @classmethod
+    def team_size_range(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 20):
+            raise ValueError("Max team size must be between 1 and 20.")
+        return v
 
     @field_validator("start_at", "end_at", "results_hidden_until")
     @classmethod

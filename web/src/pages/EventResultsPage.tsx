@@ -137,7 +137,7 @@ function EventResults() {
 
       <Card
         title="Judging"
-        meta={<Link to={`/events/${slug}/rubric`} className="text-meta text-brand-500">Edit rubric</Link>}
+        meta={<Link to={`/events/${slug}/rubric`} className="text-meta text-brand-500">Edit rubrics</Link>}
       >
         <div className="flex flex-col gap-4">
           <p className="text-body text-ink-600">

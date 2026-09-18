@@ -1,5 +1,5 @@
 """Rubric CRUD, assignment runs, and the judge progress dashboard."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from .. import crypto
@@ -11,14 +11,17 @@ from ..scoring.models import Score
 from ..submissions.models import Submission
 from ..teams.models import TeamMembership
 from ..timeutil import utcnow
+from ..webhooks.service import notify
 from .assignment import assign_judges, coverage_report
 from .models import JudgeAssignment, Rubric
 from .schemas import (
+    WEIGHT_SUM_TOLERANCE,
     AssignmentPublic,
     AssignmentRun,
     AssignmentSummary,
     CoverageWarning,
     JudgeProgress,
+    RubricGroup,
     RubricWrite,
     ScoringSheet,
 )
@@ -34,71 +37,119 @@ def _event_or_404(session: Session, event_id: int) -> Event:
 
 
 # --------------------------------------------------------------------------
-# Rubric CRUD -- organizer/admin only
+# Rubric CRUD -- organizer/admin only. An event's rubrics are a SET: several
+# named rubrics, each with its own criteria, combined into one flat criteria
+# list (grouped by rubric name) that every submission in the event is scored
+# against. Editing/adding/removing any rubric is blocked once any judge has
+# actually scored anything in the event -- changing the set after that would
+# silently invalidate scores already given.
 # --------------------------------------------------------------------------
 
-@router.put("/api/events/{event_id}/rubric", response_model=Rubric)
-def upsert_rubric(
+def _rubrics_for_event(session: Session, event_id: int) -> list[Rubric]:
+    return list(session.exec(select(Rubric).where(Rubric.event_id == event_id).order_by(Rubric.id)))
+
+
+def _scoring_started(session: Session, event_id: int) -> bool:
+    return session.exec(select(Score).join(JudgeAssignment).where(JudgeAssignment.event_id == event_id)).first() is not None
+
+
+def _assert_keys_free(session: Session, event_id: int, criteria: list[dict], exclude_rubric_id: "int | None" = None) -> None:
+    """Score.values is one flat dict keyed by criterion key across every rubric
+    in the event, so two rubrics can't reuse the same key -- there'd be no way
+    to tell which criterion a given value belonged to."""
+    taken: set[str] = set()
+    for r in _rubrics_for_event(session, event_id):
+        if r.id == exclude_rubric_id:
+            continue
+        taken.update(c["key"] for c in r.criteria)
+    collisions = taken & {c["key"] for c in criteria}
+    if collisions:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"These criterion keys are already used by another rubric in this event: {', '.join(sorted(collisions))}.",
+        )
+
+
+@router.get("/api/events/{event_id}/rubrics", response_model=list[Rubric])
+def list_rubrics(
+    event_id: int,
+    _: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> list[Rubric]:
+    """Readable by any signed-in user: a judge needs the criteria to score, and a
+    participant is entitled to know what they are being judged on. It carries no
+    scores, so this is not score data."""
+    return _rubrics_for_event(session, event_id)
+
+
+@router.post("/api/events/{event_id}/rubrics", response_model=Rubric, status_code=status.HTTP_201_CREATED)
+def create_rubric(
     event_id: int,
     payload: RubricWrite,
     user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> Rubric:
-    """One rubric per event, so this is a create-or-replace rather than POST+PATCH."""
     _event_or_404(session, event_id)
-    rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
+    if _scoring_started(session, event_id):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Judges have already scored in this event, so its rubric set can no longer change.",
+        )
     criteria = [c.model_dump() for c in payload.criteria]
-    if rubric:
-        if session.exec(select(Score).join(JudgeAssignment).where(JudgeAssignment.event_id == event_id)).first():
-            # Changing the criteria after scoring began would silently invalidate
-            # every score already given against the old weights.
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "Judges have already scored against this rubric, so its criteria can no longer be changed.",
-            )
-        rubric.name = payload.name
-        rubric.criteria = criteria
-        rubric.updated_at = utcnow()
-    else:
-        rubric = Rubric(event_id=event_id, name=payload.name, criteria=criteria)
+    _assert_keys_free(session, event_id, criteria)
+    rubric = Rubric(event_id=event_id, name=payload.name, criteria=criteria)
     session.add(rubric)
     session.flush()
-    record(session, "rubric.saved", actor=user, entity_type="event", entity_id=event_id, criteria=len(criteria))
+    record(session, "rubric.created", actor=user, entity_type="event", entity_id=event_id, rubric_id=rubric.id)
     session.commit()
     session.refresh(rubric)
     return rubric
 
 
-@router.get("/api/events/{event_id}/rubric", response_model=Rubric)
-def get_rubric(
+@router.put("/api/events/{event_id}/rubrics/{rubric_id}", response_model=Rubric)
+def update_rubric(
     event_id: int,
-    _: User = Depends(get_current_user),
+    rubric_id: int,
+    payload: RubricWrite,
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> Rubric:
-    """Readable by any signed-in user: a judge needs the criteria to score, and a
-    participant is entitled to know what they are being judged on. It carries no
-    scores, so this is not score data."""
-    rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
-    if not rubric:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No rubric has been set for this event yet.")
+    rubric = session.get(Rubric, rubric_id)
+    if not rubric or rubric.event_id != event_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such rubric on this event.")
+    if _scoring_started(session, event_id):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Judges have already scored in this event, so its rubric criteria can no longer be changed.",
+        )
+    criteria = [c.model_dump() for c in payload.criteria]
+    _assert_keys_free(session, event_id, criteria, exclude_rubric_id=rubric.id)
+    rubric.name = payload.name
+    rubric.criteria = criteria
+    rubric.updated_at = utcnow()
+    session.add(rubric)
+    record(session, "rubric.updated", actor=user, entity_type="event", entity_id=event_id, rubric_id=rubric.id)
+    session.commit()
+    session.refresh(rubric)
     return rubric
 
 
-@router.delete("/api/events/{event_id}/rubric", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/events/{event_id}/rubrics/{rubric_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_rubric(
     event_id: int,
+    rubric_id: int,
     user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> None:
-    rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
-    if not rubric:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No rubric has been set for this event yet.")
-    if session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id)).first():
+    rubric = session.get(Rubric, rubric_id)
+    if not rubric or rubric.event_id != event_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such rubric on this event.")
+    if _scoring_started(session, event_id):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "Judges have already been assigned for this event, so its rubric cannot be deleted.",
+            "Judges have already scored in this event, so none of its rubrics can be deleted now.",
         )
-    record(session, "rubric.deleted", actor=user, entity_type="event", entity_id=event_id)
+    record(session, "rubric.deleted", actor=user, entity_type="event", entity_id=event_id, rubric_id=rubric_id)
     session.delete(rubric)
     session.commit()
 
@@ -111,17 +162,28 @@ def delete_rubric(
 def run_assignment(
     event_id: int,
     payload: AssignmentRun,
+    background_tasks: BackgroundTasks,
     user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> AssignmentSummary:
     """Idempotent: re-running adds only the pairs that do not exist yet, so an
     organizer can assign again after late submissions without duplicating work."""
     _event_or_404(session, event_id)
-    rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
-    if not rubric:
+    rubrics = _rubrics_for_event(session, event_id)
+    if not rubrics:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Set this event's rubric before assigning judges - judges need criteria to score against.",
+        )
+    # The combined set's weights must sum to 1.0 before judging can start --
+    # checked here, not on every individual rubric save, since an organizer
+    # builds the set up one rubric at a time (see the Rubric model docstring).
+    total_weight = sum(c["weight"] for r in rubrics for c in r.criteria)
+    if abs(total_weight - 1.0) > WEIGHT_SUM_TOLERANCE:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This event's rubrics together must weight to 1.0 before judges can be assigned - "
+            f"they currently add up to {total_weight:.4f}.",
         )
 
     submissions = list(
@@ -163,6 +225,7 @@ def run_assignment(
         judges_per_submission=payload.judges_per_submission,
     )
     session.commit()
+    notify(session, background_tasks, event_id, "assignments.run", created=created)
 
     titles = {s.id: s.title for s in submissions}
     shortfall = coverage_report(submissions, proposed, k=payload.judges_per_submission)
@@ -170,7 +233,6 @@ def run_assignment(
         created=created,
         existing=len(proposed) - created,
         judges_per_submission=payload.judges_per_submission,
-        rubric_id=rubric.id,
         coverage_warnings=[
             CoverageWarning(submission_id=sid, submission_title=titles.get(sid, ""), judges_short=short)
             for sid, short in sorted(shortfall.items())
@@ -246,8 +308,8 @@ def scoring_sheet(
     submission = session.get(Submission, assignment.submission_id)
     if not submission:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That submission no longer exists.")
-    rubric = session.exec(select(Rubric).where(Rubric.event_id == assignment.event_id)).first()
-    if not rubric:
+    rubrics = _rubrics_for_event(session, assignment.event_id)
+    if not rubrics:
         raise HTTPException(status.HTTP_409_CONFLICT, "This event has no rubric, so it cannot be scored yet.")
 
     mine = session.exec(select(Score).where(Score.assignment_id == assignment_id)).first()
@@ -257,8 +319,7 @@ def scoring_sheet(
         submission_title=submission.title or "Untitled submission",
         submission_description=submission.description,
         submission_track=submission.track,
-        rubric_name=rubric.name,
-        criteria=rubric.criteria,
+        rubrics=[RubricGroup(rubric_id=r.id, rubric_name=r.name, criteria=r.criteria) for r in rubrics],
         my_values=mine.values if mine else None,
         my_comment=mine.comment if mine else "",
         my_raw_total=mine.raw_total if mine else None,

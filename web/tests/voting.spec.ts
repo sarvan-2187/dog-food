@@ -27,7 +27,7 @@ async function selectOrder(page: Page, label: string) {
 test.describe('results hiding', () => {
   test('the gallery explains why counts are hidden, not just that they are', async ({ page }) => {
     await asVoter(page);
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     await expect(page.getByText(/Vote counts are hidden until voting closes/)).toBeVisible();
     // The *reason* must be present, not only the fact.
     await expect(page.getByText(/everyone sees the totals at the same time/i)).toBeVisible();
@@ -35,13 +35,13 @@ test.describe('results hiding', () => {
 
   test('a card shows a labelled placeholder rather than a wrong number', async ({ page }) => {
     await asVoter(page);
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     await expect(page.getByText('Counts hidden until voting closes').first()).toBeVisible();
   });
 
   test('sorting by votes is refused while results are hidden, in plain language', async ({ page }) => {
     await asVoter(page);
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     await selectOrder(page, 'Most votes');
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(page.getByRole('alert')).not.toContainText('425');
@@ -51,7 +51,7 @@ test.describe('results hiding', () => {
 test.describe('voting', () => {
   test('a vote toggles optimistically and persists across a reload', async ({ page }) => {
     await asVoter(page);
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
 
     const vote = page.getByRole('button', { name: 'Vote for this submission' }).first();
     await expect(vote).toBeVisible();
@@ -65,7 +65,7 @@ test.describe('voting', () => {
 
   test('a vote can be withdrawn', async ({ page }) => {
     await asVoter(page);
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     const voted = page.getByRole('button', { name: 'Remove your vote' }).first();
     if (await voted.count()) {
       await voted.click();
@@ -74,7 +74,7 @@ test.describe('voting', () => {
   });
 
   test('a signed-out visitor is invited to log in rather than shown a dead control', async ({ page }) => {
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     await expect(page.getByRole('link', { name: 'Log in to vote' }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Vote for this submission' })).toHaveCount(0);
   });
@@ -83,7 +83,7 @@ test.describe('voting', () => {
 test.describe('comments', () => {
   test('a comment appears optimistically, then settles', async ({ page }) => {
     await asVoter(page);
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     await page.getByRole('link', { name: /comment|Add the first comment/ }).first().click();
 
     const text = `Playwright comment ${Date.now()}`;
@@ -100,7 +100,7 @@ test.describe('comments', () => {
 
   test('an over-short comment cannot be posted', async ({ page }) => {
     await asVoter(page);
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     await page.getByRole('link', { name: /comment|Add the first comment/ }).first().click();
     await expect(page.getByRole('button', { name: 'Post comment' })).toBeDisabled();
     await page.getByLabel('Add a comment').fill('a');
@@ -111,7 +111,7 @@ test.describe('comments', () => {
 
   test('the author can delete their own comment', async ({ page }) => {
     await asVoter(page);
-    await page.goto('/gallery');
+    await page.goto('/events/dogfood-2026/gallery');
     await page.getByRole('link', { name: /comment|Add the first comment/ }).first().click();
 
     const text = `Deletable ${Date.now()}`;
@@ -128,7 +128,7 @@ test.describe('comments', () => {
 test.describe('shuffled ordering', () => {
   test('the order is stable across visits within one session', async ({ page }) => {
     const shuffled = async () => {
-      await page.goto('/gallery');
+      await page.goto('/events/dogfood-2026/gallery');
       // Selecting the order triggers a refetch. Waiting only for an <h3> to be
       // visible is not enough -- the previous ordering is still on screen until
       // the new response renders, so the read has to be anchored to that

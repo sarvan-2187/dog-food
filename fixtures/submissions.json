@@ -5,7 +5,8 @@
     "title": "Audit Trail Explorer",
     "description": "A searchable timeline of every automated decision, built for the judging pipeline.",
     "track": "Developer Tools",
-    "status": "submitted"
+    "status": "submitted",
+    "image": "audit-trail-explorer.png"
   },
   {
     "team_name": "Nightjar",
@@ -13,7 +14,8 @@
     "title": "Standup Digest",
     "description": "Collects yesterday's commits and open reviews into a two-minute morning summary.",
     "track": "Productivity",
-    "status": "submitted"
+    "status": "submitted",
+    "image": "standup-digest.png"
   },
   {
     "team_name": "Pipeline Pals",
@@ -21,7 +23,8 @@
     "title": "Flake Finder",
     "description": "Watches CI history and flags the tests that fail intermittently before they waste a morning.",
     "track": "Developer Tools",
-    "status": "submitted"
+    "status": "submitted",
+    "image": "flake-finder.png"
   },
   {
     "team_name": "Quiet Ledger",

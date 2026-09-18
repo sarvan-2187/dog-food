@@ -54,14 +54,21 @@ class JudgeInvite(SQLModel, table=True):
 
 
 class Rubric(SQLModel, table=True):
-    """One rubric per event -- see Open Questions. `criteria` is a list of
-    {key, label, weight, max_score}; the weights must sum to 1.0, which
-    `RubricWrite` enforces on every write."""
+    """An event may have several of these (e.g. "Technical Rubric",
+    "Presentation Rubric") -- see Open Questions. Every submission in the
+    event is scored against the COMBINED criteria of all its rubrics, one
+    flat criteria list grouped by rubric name on the score form. `criteria`
+    is a list of {key, label, weight, max_score}; a criterion key must be
+    unique across every rubric in the event (enforced in the router, since
+    that's a cross-row check), and the combined weights across the whole
+    set must sum to 1.0 before judging can start (checked when judges are
+    assigned, not on every individual rubric save, since an organizer
+    builds the set up one rubric at a time)."""
 
     __tablename__ = "rubrics"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    event_id: int = Field(foreign_key="events.id", unique=True, index=True)
+    event_id: int = Field(foreign_key="events.id", index=True)
     name: str
     criteria: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())

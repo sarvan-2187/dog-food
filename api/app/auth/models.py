@@ -39,3 +39,4 @@ class UserPublic(SQLModel):
     email: str
     name: str
     role: Role
+    avatar_url: Optional[str] = None
