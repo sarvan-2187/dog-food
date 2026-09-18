@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, field_validator
 
@@ -37,3 +37,42 @@ class ResultRow(BaseModel):
     raw_mean: float
     z_bar: float
     display: float
+
+
+# ---------------------------------------------------------------------------
+# Bulk event import (PLAN.md Phase 4 T4). Deliberately scoped to the data an
+# organizer would restore or migrate -- config, teams, and submissions.
+# Judge assignments/scores are tied to specific judge accounts and are not
+# re-created on import (see the router docstring for why).
+# ---------------------------------------------------------------------------
+
+class RubricImport(BaseModel):
+    name: str
+    criteria: List[Dict[str, Any]]
+
+
+class SubmissionImport(BaseModel):
+    team_name: str
+    title: str = ""
+    description: str = ""
+    track: str = ""
+    status: str = "draft"
+
+
+class TeamImport(BaseModel):
+    name: str
+
+
+class EventImportPayload(BaseModel):
+    slug: str
+    name: str
+    description: str = ""
+    start_at: str
+    end_at: str
+    tracks: List[str] = []
+    prize_config: Dict[str, Any] = {}
+    voting_enabled: bool = False
+    results_hidden_until: Optional[str] = None
+    rubric: Optional[RubricImport] = None
+    teams: List[TeamImport] = []
+    submissions: List[SubmissionImport] = []

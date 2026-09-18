@@ -1,4 +1,4 @@
-# DESIGN_SYSTEM.md — Dogfood 2026 (Team CodeHawk)
+# DESIGN_SYSTEM.md — JudgeR (Team CodeHawk)
 
 **Rebuilt in Phase 5 from a live self-check of [raptors.dev](https://www.raptors.dev/)** —
 Hackathon Raptors' actual site, referenced by `hackraptors.pdf`. This supersedes the system

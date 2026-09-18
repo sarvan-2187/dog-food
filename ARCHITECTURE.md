@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — Dogfood 2026
+# ARCHITECTURE.md — JudgeR
 
 ## Shape: a modular monolith, two runtime containers
 

@@ -23,12 +23,15 @@ async function login(page, email: string, password: string) {
 }
 
 /**
- * No-op: the header (rebuilt as a persistent pill nav) shows every link
- * inline at every width now - nothing to open. Kept so call sites below
- * don't all need editing.
+ * Below md the pill nav collapses behind a hamburger toggle (links aren't
+ * inline at that width), so this opens it when present; at md+ the pill
+ * nav is already inline and there is no toggle to click.
  */
-async function openMenu(_page) {
-  // intentionally empty
+async function openMenu(page) {
+  const toggle = page.getByRole('button', { name: 'Open menu' });
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+  }
 }
 
 for (const bp of BREAKPOINTS) {

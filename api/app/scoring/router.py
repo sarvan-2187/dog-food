@@ -1,22 +1,25 @@
 """Score submission, normalised results, and CSV exports (PLAN.md Phase 2)."""
 import csv
 import io
+from datetime import datetime
 from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session, select
 
 from ..audit.log import record
-from ..auth import Role, User, require_role
+from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
 from ..events.models import Event
+from ..events.visibility import may_see_results
 from ..judging.models import JudgeAssignment, Rubric
-from ..submissions.models import Submission
-from ..teams.models import Team
-from ..timeutil import utcnow
+from ..submissions.models import Submission, SubmissionStatus
+from ..teams.models import Team, TeamMembership
+from ..timeutil import ensure_utc, utcnow
+from .certificate import render_certificate
 from .models import Score
 from .normalization import normalized_table
-from .schemas import ResultRow, ScorePublic, ScoreWrite
+from .schemas import EventImportPayload, ResultRow, ScorePublic, ScoreWrite
 
 router = APIRouter(tags=["scoring"])
 
@@ -294,3 +297,152 @@ def export_results(
         [[r.rank, r.submission_id, r.submission_title, r.team_name, r.judges, r.raw_mean, r.z_bar, r.display]
          for r in rows],
     )
+
+
+# --------------------------------------------------------------------------
+# Certificates (PLAN.md Phase 4 T4) -- one per submission, once results are
+# visible. Same visibility gate as public results: an organizer/admin may
+# always fetch one; anyone else must wait for results_hidden_until, and must
+# actually be on the submitting team.
+# --------------------------------------------------------------------------
+
+@router.get("/api/submissions/{submission_id}/certificate.pdf")
+def certificate(
+    submission_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    submission = session.get(Submission, submission_id)
+    if not submission:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Submission not found.")
+    event = session.get(Event, submission.event_id)
+    on_team = session.exec(
+        select(TeamMembership).where(TeamMembership.team_id == submission.team_id, TeamMembership.user_id == user.id)
+    ).first()
+    if not on_team and user.role not in (Role.organizer, Role.admin):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the submitting team may download this certificate.")
+    if not may_see_results(event, user):
+        raise HTTPException(
+            status.HTTP_425_TOO_EARLY,
+            f"Certificates are available once results are revealed on "
+            f"{event.results_hidden_until.strftime('%d %b %Y at %H:%M UTC') if event.results_hidden_until else 'a date the organizer sets'}.",
+        )
+    team = session.get(Team, submission.team_id)
+    rank = next((r.rank for r in _result_rows(session, event.id) if r.submission_id == submission_id), None)
+    pdf_bytes = render_certificate(
+        event_name=event.name,
+        team_name=team.name if team else "",
+        submission_title=submission.title or "Untitled submission",
+        rank=rank,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="submission-{submission_id}-certificate.pdf"'},
+    )
+
+
+# --------------------------------------------------------------------------
+# Bulk event export/import (PLAN.md Phase 4 T4). Scoped to what an organizer
+# would actually restore or migrate -- event config, rubric, teams, and
+# submissions. Judge assignments/scores are deliberately NOT round-tripped:
+# they are tied to specific judge accounts, and silently re-creating scores
+# against a re-assigned (necessarily different) judge would misrepresent who
+# actually judged what. An organizer re-runs assignment and judging fresh on
+# the imported event instead.
+# --------------------------------------------------------------------------
+
+@router.get("/api/events/{event_id}/export.json")
+def export_event(
+    event_id: int,
+    _: User = Depends(require_role(*ORGANIZER)),
+    session: Session = Depends(get_session),
+) -> dict:
+    event = session.get(Event, event_id)
+    if not event:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
+    rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
+    teams = session.exec(select(Team).where(Team.event_id == event_id)).all()
+    submissions = session.exec(select(Submission).where(Submission.event_id == event_id)).all()
+    team_names = {t.id: t.name for t in teams}
+    return {
+        "event": {
+            "slug": event.slug,
+            "name": event.name,
+            "description": event.description,
+            "start_at": event.start_at.isoformat(),
+            "end_at": event.end_at.isoformat(),
+            "tracks": event.tracks,
+            "prize_config": event.prize_config,
+            "voting_enabled": event.voting_enabled,
+            "results_hidden_until": event.results_hidden_until.isoformat() if event.results_hidden_until else None,
+        },
+        "rubric": {"name": rubric.name, "criteria": rubric.criteria} if rubric else None,
+        "teams": [{"name": t.name} for t in teams],
+        "submissions": [
+            {
+                "team_name": team_names.get(s.team_id, ""),
+                "title": s.title,
+                "description": s.description,
+                "track": s.track,
+                "status": s.status.value,
+            }
+            for s in submissions
+        ],
+    }
+
+
+@router.post("/api/events/import", response_model=Event, status_code=status.HTTP_201_CREATED)
+def import_event(
+    payload: EventImportPayload,
+    user: User = Depends(require_role(*ORGANIZER)),
+    session: Session = Depends(get_session),
+) -> Event:
+    if session.exec(select(Event).where(Event.slug == payload.slug)).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "An event with this slug already exists.")
+    event = Event(
+        slug=payload.slug,
+        name=payload.name,
+        description=payload.description,
+        start_at=ensure_utc(datetime.fromisoformat(payload.start_at)),
+        end_at=ensure_utc(datetime.fromisoformat(payload.end_at)),
+        tracks=payload.tracks,
+        prize_config=payload.prize_config,
+        voting_enabled=payload.voting_enabled,
+        results_hidden_until=ensure_utc(datetime.fromisoformat(payload.results_hidden_until))
+        if payload.results_hidden_until
+        else None,
+        created_by_id=user.id,
+    )
+    session.add(event)
+    session.flush()
+
+    if payload.rubric:
+        session.add(Rubric(event_id=event.id, name=payload.rubric.name, criteria=payload.rubric.criteria))
+
+    team_ids_by_name: dict[str, int] = {}
+    for t in payload.teams:
+        team = Team(event_id=event.id, name=t.name)
+        session.add(team)
+        session.flush()
+        team_ids_by_name[t.name] = team.id
+
+    for s in payload.submissions:
+        team_id = team_ids_by_name.get(s.team_name)
+        if team_id is None:
+            continue
+        session.add(
+            Submission(
+                team_id=team_id,
+                event_id=event.id,
+                title=s.title,
+                description=s.description,
+                track=s.track,
+                status=SubmissionStatus(s.status),
+            )
+        )
+
+    record(session, "event.imported", actor=user, entity_type="event", entity_id=event.id, slug=event.slug)
+    session.commit()
+    session.refresh(event)
+    return event
