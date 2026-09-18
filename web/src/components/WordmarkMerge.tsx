@@ -1,6 +1,6 @@
-import { motion, useScroll, useSpring, useTransform } from 'framer-motion';
-import { useEffect, useState } from 'react';
-import { prefersReducedMotion, raptorHandoffPoint } from '../lib/mascot';
+import { motion, useMotionValueEvent, useScroll, useSpring, useTransform } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { prefersReducedMotion, wordmarkHandoffPoint } from '../lib/mascot';
 
 type Box = { x: number; y: number; w: number };
 
@@ -13,9 +13,12 @@ type Box = { x: number; y: number; w: number };
  * `#wordmark-nav-slot` inside the pill - so the path stays correct at any
  * breakpoint and whatever the pill's contents happen to be. Both of those
  * slots render the wordmark at full size but invisible: they hold the layout,
- * this component draws the only visible copy and flies it between them. That
- * way nothing reflows at the moment of the handoff - the pill is already wide
- * enough for the wordmark before it arrives.
+ * this component draws the only visible copy and flies it between them.
+ *
+ * The pill's berth widens in step with the flight rather than being reserved
+ * up front - an empty gap sitting in the pill waiting for the wordmark looks
+ * like a layout bug. That makes the landing target a moving one, so it is
+ * re-measured as the page scrolls instead of once on mount.
  *
  * No gait or bob: at the speed scrolling moves it, added motion reads as
  * wobble rather than as travel.
@@ -23,6 +26,7 @@ type Box = { x: number; y: number; w: number };
 export function WordmarkMerge() {
   const { scrollY } = useScroll();
   const [boxes, setBoxes] = useState<{ from: Box; to: Box } | null>(null);
+  const measureRef = useRef<(() => void) | null>(null);
   const [reduced, setReduced] = useState(prefersReducedMotion);
 
   useEffect(() => {
@@ -46,6 +50,7 @@ export function WordmarkMerge() {
         to: { x: n.left, y: n.top, w: n.width },
       });
     };
+    measureRef.current = measure;
     measure();
     window.addEventListener('resize', measure);
     // Webfonts land after first paint and change the wordmark's width.
@@ -57,7 +62,10 @@ export function WordmarkMerge() {
     };
   }, []);
 
-  const end = raptorHandoffPoint();
+  // The pill grows as the wordmark approaches, so its slot keeps moving.
+  useMotionValueEvent(scrollY, 'change', () => measureRef.current?.());
+
+  const end = wordmarkHandoffPoint();
   const range = [0, end];
   const x = useTransform(scrollY, range, [boxes?.from.x ?? 0, boxes?.to.x ?? 0], { clamp: true });
   const y = useTransform(scrollY, range, [boxes?.from.y ?? 0, boxes?.to.y ?? 0], { clamp: true });

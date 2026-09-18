@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
 
 /**
- * The landing page's raptor runs up the page and "lands" in the nav as you
- * scroll. Both halves of that handoff - the running mascot and the nav's own
- * mark - key off this one point so they swap on the same pixel instead of
- * overlapping or both vanishing for a frame.
+ * The landing page's HackFlow wordmark slides into the pill nav as you scroll.
+ * Every piece of that handoff - the flying copy, the pill's berth opening up,
+ * the pill's own static copy fading in - keys off this one point, so they stay
+ * in step instead of finishing at slightly different scroll positions.
  */
-export function raptorHandoffPoint(): number {
+export function wordmarkHandoffPoint(): number {
   if (typeof window === 'undefined') return 420;
   return Math.min(window.innerHeight * 0.55, 520);
 }
 
-export function useRaptorHandedOff(active: boolean): boolean {
+export function useWordmarkHandedOff(active: boolean): boolean {
   const [handedOff, setHandedOff] = useState(true);
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export function useRaptorHandedOff(active: boolean): boolean {
       setHandedOff(true);
       return;
     }
-    const update = () => setHandedOff(window.scrollY >= raptorHandoffPoint());
+    const update = () => setHandedOff(window.scrollY >= wordmarkHandoffPoint());
     update();
     window.addEventListener('scroll', update, { passive: true });
     window.addEventListener('resize', update);
