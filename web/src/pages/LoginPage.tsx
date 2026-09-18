@@ -2,13 +2,15 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, useAuth } from '../lib/auth-context';
-import { Button, Card, Input } from '../components/ui';
+import { AuthLayout } from '../components/auth/AuthLayout';
+import { PasswordField } from '../components/auth/PasswordField';
+import { Button, Input } from '../components/ui';
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const next = searchParams.get('next') || '/events';
+  const next = searchParams.get('next') || '/dashboard';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -29,27 +31,44 @@ export function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-section">
-      <Card title="Log in">
-        <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-          <Input label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Input label="Password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          {error && (
-            <p role="alert" className="text-meta text-danger-fg">
-              {error}
-            </p>
-          )}
-          <Button type="submit" variant="primary" loading={loading} loadingLabel="Signing in...">
-            Log in
-          </Button>
-          <p className="text-meta text-ink-500">
-            No account?{' '}
-            <Link to="/register" className="text-brand-500">
-              Sign up
-            </Link>
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to pick up where your team left off."
+      footer={
+        <>
+          New here?{' '}
+          <Link to="/register" className="text-ink-900 underline underline-offset-2">
+            Create an account
+          </Link>
+        </>
+      }
+    >
+      <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+        <Input
+          label="Email"
+          type="email"
+          required
+          autoComplete="email"
+          placeholder="you@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <PasswordField
+          label="Password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        {error && (
+          <p role="alert" className="text-meta text-danger-fg">
+            {error}
           </p>
-        </form>
-      </Card>
-    </div>
+        )}
+        <Button type="submit" variant="primary" loading={loading} loadingLabel="Signing in...">
+          Log in
+        </Button>
+      </form>
+    </AuthLayout>
   );
 }

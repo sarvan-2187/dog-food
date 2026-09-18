@@ -3,6 +3,7 @@ import { RequireAuth } from './components/auth/guards';
 import { GuidedTour } from './components/GuidedTour';
 import { NavBar } from './components/layout/NavBar';
 import { AuthProvider } from './lib/auth-context';
+import { DashboardPage } from './pages/DashboardPage';
 import { EventCreatePage } from './pages/EventCreatePage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { EventResultsPage } from './pages/EventResultsPage';
@@ -34,6 +35,14 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <RequireAuth>
+                  <DashboardPage />
+                </RequireAuth>
+              }
+            />
             <Route path="/events" element={<EventsPage />} />
             <Route path="/events/new" element={<EventCreatePage />} />
             <Route path="/events/:slug" element={<EventDetailPage />} />

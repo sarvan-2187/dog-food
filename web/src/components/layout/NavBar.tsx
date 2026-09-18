@@ -1,9 +1,10 @@
 import { Home, Menu, X } from 'lucide-react';
 import { useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../lib/auth-context';
 import { cn } from '../../lib/cn';
-import { Logo } from '../ui';
+import { useRaptorHandedOff } from '../../lib/mascot';
+import { RaptorMark } from '../ui/Logo';
 
 /**
  * Pill-style nav matching a reference screenshot exactly: a centered, rounded,
@@ -21,15 +22,27 @@ import { Logo } from '../ui';
  */
 export function NavBar() {
   const { user } = useAuth();
+  const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Only the landing page runs the scroll mascot, so only there does the nav's
+  // own mark start hidden and wait to be handed over.
+  const handedOff = useRaptorHandedOff(pathname === '/');
+
+  // /login and /register are full-bleed split screens that carry their own
+  // banner landmark and wordmark (components/auth/AuthLayout.tsx); the pill
+  // nav over the top would collide with the photo panel and show the mark twice.
+  const isAuthScreen = pathname === '/login' || pathname === '/register';
 
   // `tour` anchors the guided tour's steps (src/lib/tour.ts) to a stable hook
   // rather than to link text or tab order, either of which is fair game to
   // reword or reorder later.
-  const links: { to: string; label: string; tour?: string }[] = [
+  const links: { to: string; label: string; tour?: string }[] = [];
+  // Signed in, the dashboard is the first thing you want; signed out it doesn't exist.
+  if (user) links.push({ to: '/dashboard', label: 'Dashboard', tour: 'nav-dashboard' });
+  links.push(
     { to: '/events', label: 'Events', tour: 'nav-events' },
     { to: '/gallery', label: 'Gallery', tour: 'nav-gallery' },
-  ];
+  );
   if (user?.role === 'organizer' || user?.role === 'admin') {
     links.push({ to: '/events/new', label: 'Create event', tour: 'nav-create-event' });
   }
@@ -42,7 +55,10 @@ export function NavBar() {
   if (user) {
     links.push({ to: '/profile', label: 'Profile', tour: 'nav-profile' });
   } else {
-    links.push({ to: '/login', label: 'Log in' }, { to: '/register', label: 'Sign up' });
+    // One entry, not two: /login and /register are the same screen now, and a
+    // signed-out visitor choosing between two near-identical words is friction,
+    // not a choice. The screen's own tabs handle which side you land on.
+    links.push({ to: '/login', label: 'Sign in' });
   }
 
   const tabClass = ({ isActive }: { isActive: boolean }) =>
@@ -57,16 +73,55 @@ export function NavBar() {
       isActive ? 'bg-surface-0 text-ink-900' : 'text-surface-0/90 hover:text-surface-0',
     );
 
+  if (isAuthScreen) return null;
+
   return (
     <header className="sticky top-0 z-40 bg-transparent px-4 py-4 md:px-6">
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 md:grid md:grid-cols-[1fr_auto_1fr]">
-        <Link to="/" className="md:justify-self-start">
-          <Logo />
+        {/* The wordmark's starting berth on the landing page. It reserves the
+            layout but is never painted here: WordmarkMerge draws the single
+            visible copy and flies it into the pill as you scroll. Once the
+            merge is done - and on every other route, where it is done from the
+            start - this collapses so the name isn't on screen twice. */}
+        <Link
+          to="/"
+          aria-label="HackFlow home"
+          className={cn(
+            'md:justify-self-start',
+            handedOff && 'pointer-events-none invisible',
+          )}
+        >
+          <span id="wordmark-home-slot" className="invisible text-h3 tracking-tight text-ink-900">
+            Hack<span className="font-serif italic">Flow</span>
+          </span>
         </Link>
         <nav
           aria-label="Primary"
           className="hidden w-fit max-w-full items-center gap-1 overflow-x-auto rounded-full bg-ink-700 p-1.5 md:flex md:justify-self-center"
         >
+          {/* The raptor's berth inside the pill. On the landing page it starts
+              at zero width and opens as the scroll mascot arrives, so the pill
+              appears to absorb the raptor rather than have it pop into place;
+              everywhere else it is simply already open. Width, not just
+              opacity, so the pill's other tabs slide over to make room. */}
+          <Link
+            to="/"
+            aria-label="HackFlow home"
+            className="mr-1 flex shrink-0 items-center gap-2 whitespace-nowrap pl-2 text-surface-0"
+          >
+            <RaptorMark aria-hidden="true" className="h-4 w-8" />
+            {/* Reserved at full size always, so the pill never resizes at the
+                handoff; only its paint waits for the flying copy to land. */}
+            <span
+              id="wordmark-nav-slot"
+              className={cn(
+                'text-body tracking-tight transition-opacity duration-fast',
+                handedOff ? 'opacity-100' : 'opacity-0',
+              )}
+            >
+              Hack<span className="font-serif italic">Flow</span>
+            </span>
+          </Link>
           <NavLink
             to="/"
             end

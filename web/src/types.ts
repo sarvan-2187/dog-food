@@ -37,6 +37,8 @@ export interface EventRecord {
   voting_enabled: boolean;
   /** null means results were never hidden. */
   results_hidden_until: string | null;
+  /** Organizer-supplied cover art; null falls back to a bundled photo (lib/event-cover.ts). */
+  cover_image_url: string | null;
 }
 
 export interface TeamMember {
@@ -223,4 +225,17 @@ export interface JudgeInvitePreview {
 export interface JudgeInviteRedeemResult {
   role: Role;
   already_a_judge: boolean;
+}
+
+/** Mirrors api/app/audit/router.py's AuditEntry (GET /api/audit, organizer+admin). */
+export interface AuditEntry {
+  id: number;
+  actor_id: number | null;
+  actor_name: string;
+  actor_role: string;
+  action: string;
+  entity_type: string;
+  entity_id: number | null;
+  detail: Record<string, unknown>;
+  created_at: string;
 }
