@@ -13,10 +13,9 @@ async function login(page: Page, email: string, password: string) {
   await expect(page).not.toHaveURL(/\/login$/);
 }
 
-/** The header hides nav links behind a circular hamburger button - open it first. */
-async function openMenu(page: Page) {
-  await page.getByRole('button', { name: 'Open menu' }).click();
-  await expect(page.getByRole('dialog', { name: 'Site menu' })).toBeVisible();
+/** No-op: the header (a persistent pill nav) shows every link inline now. */
+async function openMenu(_page: Page) {
+  // intentionally empty
 }
 
 const asOrganizer = (page: Page) => login(page, 'alice@example.com', 'organizer-pass1');

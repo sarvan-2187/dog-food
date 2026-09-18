@@ -64,13 +64,15 @@ that lives only in the frontend.
 
 ## Status
 
-265 tests passing across three suites, run live against this exact stack:
+271 tests passing across three suites, run live against this exact stack (run the
+Playwright suite serially with `--workers=1` for a deterministic count — see
+PLAN.md's Open Questions on shared-dev-database contention across parallel workers):
 
 | Suite | Command | Result |
 |---|---|---|
 | Backend | `docker compose exec api pytest tests/ -v` | 181 passed |
 | Frontend unit | `cd web && npm test` | 9 passed |
-| Browser E2E | `cd web && npx playwright test` | 75 passed |
+| Browser E2E | `cd web && npx playwright test --workers=1` | 81 passed |
 
 No official acceptance suite has been published for this build. `acceptance-report.txt`
 is therefore self-issued from the suites above (see PLAN.md Phase 5.5) — replace it the

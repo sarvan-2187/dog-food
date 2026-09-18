@@ -898,3 +898,39 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   The interface's second implementation (`S3CompatibleStorage`) is documented as the
   production upgrade path and deliberately never built or tested here — see Phase 6's own
   header for the full reasoning and the request-flow diagram.
+
+- **Header rebuilt a second time, to an explicit reference screenshot (post-Phase-5).**
+  The wordmark-plus-hamburger header (itself a live self-check of raptors.dev's real
+  collapsed nav) was replaced on request with a persistent, centred pill-tab bar matching
+  a different reference screenshot exactly — a home icon plus text tabs, the active one
+  highlighted as a light pill inside a dark bar. `DESIGN_SYSTEM.md` §7.6 documents both
+  iterations rather than erasing the first. Post-login account controls (role, name, log
+  out) were moved off the header entirely into a new `/profile` page per the same request
+  — the header is now identical whether signed in or not, with "Profile" simply appearing
+  as one more tab. Rebuilding it broke every test that assumed a menu to open; all were
+  updated to interact with the now-always-visible tabs directly instead.
+- **A genuine pre-existing test/component mismatch, found and fixed while verifying the
+  header change.** `web/src/components/ui/Select.tsx` was rebuilt on Radix primitives at
+  some point (real accessibility gain — roving focus, type-ahead, correct ARIA), but
+  `voting.spec.ts` still drove it with `.selectOption()`, which only works on a native
+  `<select>`. Not a header regression — a dormant gap the header work's full-suite rerun
+  surfaced. Fixed by driving the control the way a user actually would (open the trigger,
+  click the option).
+- **Animations investigated live, found to be technically functioning.** Asked to check
+  why the landing page's Framer Motion / GSAP animations "aren't working": no console
+  errors; `prefers-reduced-motion` reads `false` in the test browser; the GSAP
+  ScrollTrigger-driven decision-trail rows were confirmed to actually transition from
+  `opacity: 0` to `opacity: 1` on scroll, not simply appear. The code path is real and
+  exercised. If nothing visibly animates for a person, the most likely explanation is
+  their own OS/browser having "reduce motion" enabled — which `useReducedMotion()`
+  correctly and intentionally respects (`DESIGN_SYSTEM.md` §9) — rather than a defect.
+  Left as a question back to whoever reported it rather than guessed at further.
+- **Final suite counts after this round: 181 backend + 9 Vitest + 81 Playwright = 271,
+  all passing serially.** The default parallel Playwright run intermittently fails 1-2
+  tests that compare gallery contents across two reads (e.g. shuffle-order stability) —
+  confirmed to be pre-existing contention on the shared dev database across parallel
+  workers (already noted above: "test data accumulates in the dev database"), not
+  something this round introduced. `docker compose down -v` before a demo, and
+  `npx playwright test --workers=1` for a fully deterministic local run, both already
+  documented; worth deciding before Phase 5 freeze whether the suite should default to
+  serial execution or gain per-worker database isolation.
