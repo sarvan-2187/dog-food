@@ -55,7 +55,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="JudgeR", description="A HackRaptors hackathon judging platform.", lifespan=lifespan)
+app = FastAPI(title="HackFlow", description="A HackRaptors hackathon judging platform.", lifespan=lifespan)
 
 
 @app.get("/healthz")

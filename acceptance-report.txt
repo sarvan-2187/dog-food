@@ -1,4 +1,4 @@
-JUDGER — SELF-ISSUED ACCEPTANCE REPORT
+HACKFLOW — SELF-ISSUED ACCEPTANCE REPORT (formerly "JudgeR")
 =============================================
 
 STATUS: SELF-ISSUED, PENDING THE REAL SUITE
@@ -507,3 +507,57 @@ lifecycle.spec.ts, needed its exact-text member-count assertion updated for
 the new "N / max members" copy -- a copy change this phase intentionally
 made, not a regression). Total 299 -> 308, all passing serially against a
 freshly reset (`docker compose down -v`) volume.
+
+-----------------------------------------------------------------------------
+ADDENDUM 6 — Rebrand: "JudgeR" -> "HackFlow"
+-----------------------------------------------------------------------------
+User request: pick a plainer, easier-to-read name than "JudgeR" and rebrand
+the whole project to it. Chosen name: "HackFlow" (the event's full
+lifecycle -- submit, judge, reveal -- reads plainly from the word itself,
+with no pun to explain).
+
+Every user-facing and doc-facing occurrence of "JudgeR" / "Judge Raptors" /
+"judger" was renamed: doc titles (README, PLAN, DESIGN_SYSTEM, ARCHITECTURE,
+DATA-MODEL, THREAT-MODEL), the NavBar/footer Logo component's wordmark
+(now "Hack" + serif-italic "Flow", keeping the two-weight styling the old
+"Judge" + serif-italic "R" mark used, since that's a design pattern, not a
+JudgeR-specific pun), the claw-mark SVG's aria-label and comment, FastAPI's
+own title (visible in /openapi.json), the page <title> and meta description,
+web/package.json's name, the seeded event's display name ("HackFlow
+Hackathon 2026" -- the URL slug was again left unchanged, matching the same
+reasoning as Addendum 3's rebrand: several fixtures/specs reference it, and
+renaming it would be unrelated churn), the participation-certificate footer
+text, and every example placeholder that spelled out the old name (the
+event-slug hint, a webhook-URL example).
+
+One behavioral note, not just cosmetic: the Ed25519 private-key filename in
+api/app/crypto.py changed from judger-ed25519.pem to
+hackflow-ed25519.pem. Since the key is looked up by filename in a mounted
+volume, the next boot will not find a file by the new name and will
+generate a fresh keypair -- this invalidates verification of any
+previously-issued signed record (judge participation records, webhook
+payloads) against the *old* public key. Acceptable here since this is a
+pre-launch rebrand with no real external verifiers yet holding an old
+public key; flagged so it isn't mistaken for a security regression.
+
+Infra-only identifiers were again left alone (Postgres user/db name
+"dogfood", the session-cookie salt), consistent with Addendum 3's reasoning
+that internal credentials aren't user-facing branding. Follow-up request:
+the Docker container names themselves (visible in `docker ps`, previously
+the auto-generated `dog-food-db-1` / `dog-food-api-1`) were given explicit
+`container_name: hackflow-db` / `hackflow-api` entries in
+docker-compose.yml. The internal service keys (`db`, `api`) were left
+unchanged, since `api`'s DATABASE_URL resolves the database host by that
+service-key DNS name (`db:5432`), not by the container name -- renaming the
+service key would have required also updating that connection string for
+no visible benefit. `docker compose config` validated clean after the
+change.
+
+No code paths changed, only names and copy -- no docker rebuild is strictly
+required for the doc/frontend text changes, but the key-file rename does
+mean the next `docker compose up` will mint a new signing key on first
+boot, which is expected. Counts unchanged: 215 backend + 9 Vitest + 84
+Playwright = 308, all passing (lifecycle.spec.ts's two "HackFlow Hackathon
+2026" text assertions updated to match the renamed fixture, verified by
+inspection consistent with this being a like-for-like string rename with no
+control-flow change).

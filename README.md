@@ -1,4 +1,4 @@
-# JudgeR — Judge Raptors
+# HackFlow
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-3ddc84?style=flat-square)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-308%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
@@ -89,6 +89,9 @@ docker compose up --build
   verifiable offline against `GET /api/public-key` without trusting the server again.
 - **Bulk event export/import** — an event's config, rubric, teams, and submissions as one
   JSON file, for backup or migration between environments.
+- **Guided onboarding** — a role-aware tour (driver.js, bundled — no network calls) starts
+  once on first login and is replayable from `/profile`, so a fresh cohort of participants
+  and judges can be pointed at the site rather than at a support doc. See `USER-MANUAL.md`.
 - **Outbound webhooks** — organizers opt an event into signed HTTP callbacks
   (`submission.submitted`, `assignments.run`, `score.submitted`,
   `event.results_revealed`), each payload signed with the same Ed25519 key used for judge
@@ -117,6 +120,9 @@ real run against the live stack; neither is hand-edited.
 
 ## Documentation
 
+- **`USER-MANUAL.md`** — illustrated, step-by-step guide for participants, judges, and
+  organizers, in plain language. Start here if you want to *use* HackFlow rather than
+  modify it.
 - **`PLAN.md`** — the execution spec this build follows, phase by phase, including every
   judgment call made along the way (`## Open Questions`).
 - **`DESIGN_SYSTEM.md`** — the design tokens and component patterns the frontend is built

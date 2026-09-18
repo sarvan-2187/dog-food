@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — JudgeR
+# ARCHITECTURE.md — HackFlow
 
 ## Shape: a modular monolith, two runtime containers
 

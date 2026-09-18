@@ -75,7 +75,7 @@ function EventCreateForm() {
             onChange={(e) => setSlug(e.target.value)}
             onBlur={mark('slug')}
             error={slugError}
-            hint={slugError ? undefined : 'Used in the URL, e.g. judger-2026.'}
+            hint={slugError ? undefined : 'Used in the URL, e.g. hackflow-2026.'}
           />
           <Input label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
           <Input label="Start" type="datetime-local" required value={startAt} onChange={(e) => setStartAt(e.target.value)} />

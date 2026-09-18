@@ -50,7 +50,7 @@ export function EventsPage() {
         />
       )}
       {events && events.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div data-tour="event-list" className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {events.map((e) => (
             <Link key={e.id} to={`/events/${e.slug}`} className="h-full">
               <Card title={e.name} meta={<EventStatusBadge event={e} />}>

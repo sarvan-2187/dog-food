@@ -207,7 +207,7 @@ function WebhookPanel({ eventId, onToast }: { eventId: number; onToast: (t: { me
             label="Webhook URL"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com/hooks/judger"
+            placeholder="https://example.com/hooks/hackflow"
             className="flex-1"
           />
           <Button type="submit" variant="secondary" loading={adding} loadingLabel="Adding...">

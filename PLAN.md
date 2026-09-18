@@ -1,4 +1,4 @@
-# PLAN.md — JudgeR Build Plan (Claude Code Execution Spec)
+# PLAN.md — HackFlow Build Plan (Claude Code Execution Spec)
 
 **Team:** CodeHawk
 
@@ -305,7 +305,7 @@ and a shared client fingerprint is recorded in the audit log **without** blockin
 
 ## Phase 4 — Stretch (T4) and bonus challenges
 
-**Status: un-frozen and built (backend), post-Phase-5 rebrand session.** The earlier freeze note below is kept for the record rather than deleted, but the user explicitly directed this phase to proceed after the JudgeR rebrand and hero rebuild. Scope was built API-first; see the honest gap called out at the bottom before treating this as fully done.
+**Status: un-frozen and built (backend), post-Phase-5 rebrand session.** The earlier freeze note below is kept for the record rather than deleted, but the user explicitly directed this phase to proceed after the JudgeR rebrand and hero rebuild. Scope was built API-first; see the honest gap called out at the bottom before treating this as fully done. (The product was later renamed again, JudgeR → HackFlow, after Phase 7 — see the Open Questions entry for that decision. This historical note is left as originally written.)
 
 ~~**Original freeze note (superseded):** frozen, not attempted. Phases 1–3 gates are green, so PLAN.md's own entry condition for this phase was met — but the decision was made to spend the remaining time on Phase 5's audit, documentation, and freeze work instead of stretch features. Reasoning: a smaller, thoroughly-audited T1–T3 submission demos and scores better than an unaudited T1–T4 one, and Phase 0/1's audit already showed that unaudited "done" work hides real defects (15 of them, in barely two phases).~~
 
@@ -544,6 +544,84 @@ screen shows "NEVER FIRED" immediately and is removable — confirmed live; `doc
 unchanged at exactly `db` + `api`. Full Playwright suite and Vitest re-run clean after this phase
 (one pre-existing spec's exact-text assertion needed updating for the new "N / max members"
 copy — not a regression, a copy change this phase intentionally made).
+
+---
+
+## Phase 8 — Onboarding: Guided Tour & Illustrated User Manual
+
+**Entry condition:** Phases 1–7 gates are green; T1–T4 are all built and the full suite
+passes (215 + 9 + 84 = 308). That precondition is the *whole* justification for this phase,
+and it was checked before the phase was written rather than assumed.
+
+**Where this scores — stated honestly, because it is easy to overclaim.** Neither item below
+climbs the tier ladder. T1–T4 say nothing about onboarding, so nothing here moves Tier
+Completion & Correctness (40%). Both items land squarely in **Adoptability & Operability
+(20%)**, which is judged on *"whether Hackathon Raptors could realistically run the
+software"* — and an organization running 35+ events across 85+ countries onboards an
+entirely fresh set of participants and judges every single time. A platform that explains
+itself in plain language is the difference between adopting it and writing a support doc
+around it. The manual additionally serves the Write Up Quest (4 × ₹10,000). The brief's own
+warning governs the sequencing: *"a clean, correct T2 is better than a broken T4"* and *"one
+challenge done properly beats four unfinished features."* This phase is therefore polish on
+a finished ladder, and would have been the wrong call at any earlier point in the build.
+
+**Constraint check (PLAN.md §1, run before adding the dependency).** `driver.js` is ~5KB,
+installs from npm, and is bundled into the SPA at build time. It makes **zero** network
+calls at runtime, registers no service, and needs no account or key — so
+`docker compose up` with the network physically off is unaffected. Pinned exactly
+(`driver.js: 1.8.0`, `--save-exact`) like every other dependency here. `npm audit` was
+checked after install: it introduces no new vulnerability. `docker-compose.yml` stays at
+exactly `db` + `api`.
+
+### 8.1 — Role-aware guided tour (driver.js)
+
+- [ ] `web/src/lib/tour.ts` — one step list per role, written for a **layman**: no "rubric
+      weights sum to 1.0", but "the weights have to add up to 100%, and the page tells you
+      live whether they do". Participants get find-event → join-team → draft/autosave →
+      gallery/voting. Judges get their assigned list → how scoring works → why they cannot
+      see other judges → *why being a harsh marker will not hurt anyone* (the normalization
+      explanation is the single most valuable thing to tell a nervous first-time judge, and
+      it is the one a support email always ends up having to explain). Organizers get create
+      → rubric → invite/assign → results/reveal/export → optional webhooks.
+- [ ] Steps are a per-role **superset filtered at runtime** by whether each selector is
+      present *and visibly rendered*. This is what lets one definition run from any screen
+      without choreographing navigation between steps, and it is why the tour degrades
+      rather than breaks: an absent anchor costs one step, not the tour. The visibility half
+      of the check matters specifically because the desktop nav stays in the DOM at phone
+      widths behind `hidden md:flex` — a presence-only check would spotlight a zero-size box.
+- [ ] Anchor via `data-tour="..."` attributes, never link text or tab order — both are fair
+      game to reword later, and a tour that silently stops matching is worse than no tour.
+- [ ] Auto-start once per role per browser, remembered in `localStorage` (**not** a DB
+      column: this is a per-browser convenience, it must survive nothing, and adding a
+      schema change for it would be unjustified). Every read/write wrapped — blocked storage
+      in private browsing must degrade to "offer the tour again", never throw.
+- [ ] Replayable on demand from `/profile`, and the tour's own closing step says so.
+- [ ] Popover restyled onto this repo's own tokens in `index.css` (driver.js's stock look is
+      a blue on a system font stack). Keyboard-operable with a visible focus ring, since the
+      tour is fully keyboard-driven and PLAN.md's UX bar applies to it like any other screen.
+
+### 8.2 — `USER-MANUAL.md` v1 (illustrated, step-by-step)
+
+- [ ] A genuine manual, not a feature tour: written per role, in the order a real person
+      hits each screen, with a real screenshot at each step.
+- [ ] Screenshots captured **live against the running stack on fixture data** — the same
+      non-negotiable rule §1 already applies to `acceptance-report.txt` and the README's
+      existing screenshots. No mockups, no hand-drawn diagrams standing in for a real UI.
+- [ ] Stored under `docs/screenshots/manual/`, alongside the existing `docs/screenshots/`.
+- [ ] Covers: signing up, the four seeded logins, participant path (find event → team →
+      invite → draft → submit → gallery), judge path (accept invite → dashboard → score
+      form → what normalization does to your scores), organizer path (create → settings →
+      rubric → judges → assignment → results/reveal → CSV export → webhooks), plus the
+      guided tour itself and a short troubleshooting section.
+- [ ] Linked from `README.md`'s Documentation list so it is discoverable from the front door.
+
+**Definition of Done — Phase 8 gate:** the tour starts once per role for all four roles and
+is replayable from `/profile`, verified **live in a real browser**, not merely compiled;
+`npm run build` clean; the full existing suite (308) still green, since a component mounted
+globally in `App.tsx` can regress any page; every manual screenshot regenerated from the
+live stack in the same session as the prose describing it; `docker-compose.yml` still
+exactly `db` + `api`; and the phase's tier-neutrality stated plainly in both
+`acceptance-report.txt` and this file rather than quietly implied.
 
 ---
 

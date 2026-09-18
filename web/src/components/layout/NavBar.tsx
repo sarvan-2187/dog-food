@@ -8,7 +8,7 @@ import { Logo } from '../ui';
 /**
  * Pill-style nav matching a reference screenshot exactly: a centered, rounded,
  * dark bar with a home icon and tab links, the current one highlighted as a
- * white pill against the dark bar. The JudgeR wordmark sits to its left (a
+ * white pill against the dark bar. The HackFlow wordmark sits to its left (a
  * three-column grid keeps the pill mathematically centered regardless of the
  * wordmark's width, rather than the pill drifting off-center). No persistent
  * inline account controls - post-login actions (log out, etc.) live on
@@ -23,21 +23,24 @@ export function NavBar() {
   const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const links: { to: string; label: string }[] = [
-    { to: '/events', label: 'Events' },
-    { to: '/gallery', label: 'Gallery' },
+  // `tour` anchors the guided tour's steps (src/lib/tour.ts) to a stable hook
+  // rather than to link text or tab order, either of which is fair game to
+  // reword or reorder later.
+  const links: { to: string; label: string; tour?: string }[] = [
+    { to: '/events', label: 'Events', tour: 'nav-events' },
+    { to: '/gallery', label: 'Gallery', tour: 'nav-gallery' },
   ];
   if (user?.role === 'organizer' || user?.role === 'admin') {
-    links.push({ to: '/events/new', label: 'Create event' });
+    links.push({ to: '/events/new', label: 'Create event', tour: 'nav-create-event' });
   }
   if (user?.role === 'participant') {
-    links.push({ to: '/teams/mine', label: 'My teams' });
+    links.push({ to: '/teams/mine', label: 'My teams', tour: 'nav-teams' });
   }
   if (user?.role === 'judge') {
-    links.push({ to: '/judge', label: 'Judging' });
+    links.push({ to: '/judge', label: 'Judging', tour: 'nav-judge' });
   }
   if (user) {
-    links.push({ to: '/profile', label: 'Profile' });
+    links.push({ to: '/profile', label: 'Profile', tour: 'nav-profile' });
   } else {
     links.push({ to: '/login', label: 'Log in' }, { to: '/register', label: 'Sign up' });
   }
@@ -78,7 +81,7 @@ export function NavBar() {
             <Home size={16} aria-hidden="true" />
           </NavLink>
           {links.map((l) => (
-            <NavLink key={l.to} to={l.to} className={tabClass}>
+            <NavLink key={l.to} to={l.to} data-tour={l.tour} className={tabClass}>
               {l.label}
             </NavLink>
           ))}
