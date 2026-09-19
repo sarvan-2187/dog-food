@@ -33,8 +33,14 @@ class JudgeInvite(SQLModel, table=True):
     is an invitation issued by an organizer or admin, single-use and expiring, with both
     conditions checked server-side rather than by hiding a link (PLAN.md section 8.0).
 
-    Deliberately not scoped to an event: judge accounts are global, matching how the
-    assignment query already selects judges (see Open Questions).
+    Scoped to an event since Phase 10.1. The `judge` *role* is still global - it is a
+    property of the account - but an invitation now says which event the person was
+    brought in to judge, and redeeming it enrols them on that event's panel
+    (`EventJudge`). Before this, assignment drew from every judge account on the
+    platform, so a judge invited for one hackathon was handed submissions from all the
+    others; on a company running 35+ events that is a confidentiality breach, not an
+    inconvenience. `event_id` stays nullable so invitations issued before this change
+    still redeem - they simply enrol the person on nothing.
     """
 
     __tablename__ = "judge_invites"
@@ -46,10 +52,30 @@ class JudgeInvite(SQLModel, table=True):
     # signing up with a different address than the one they were emailed at.
     invited_email: str = ""
     note: str = ""
+    event_id: Optional[int] = Field(default=None, foreign_key="events.id", index=True)
     created_by_id: int = Field(foreign_key="users.id", index=True)
     expires_at: datetime = Field(default_factory=_default_invite_expiry, sa_column=_ts_column())
     redeemed_at: Optional[datetime] = Field(default=None, sa_column=_nullable_ts_column())
     redeemed_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+
+
+class EventJudge(SQLModel, table=True):
+    """Which judges sit on which event's panel (Phase 10.1).
+
+    Assignment selects from this table rather than from "every account whose role is
+    judge". One row per judge per event; the unique constraint makes enrolling twice a
+    no-op at the database level rather than something every caller has to remember.
+    """
+
+    __tablename__ = "event_judges"
+    __table_args__ = (UniqueConstraint("event_id", "judge_id", name="uq_event_judge"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_id: int = Field(foreign_key="events.id", index=True)
+    judge_id: int = Field(foreign_key="users.id", index=True)
+    # Who added them, for the audit trail. Null when the row came from fixtures.
+    added_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
 
 

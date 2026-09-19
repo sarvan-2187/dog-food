@@ -656,6 +656,152 @@ because T1–T4 were already finished.
 
 ---
 
+## Phase 10 — Multi-Event Correctness
+
+**There is no Phase 9.** The numbering jumps because this work was scoped as "Phase 10"
+before it was written down; renumbering it to 9 afterwards would have broken every
+reference to it in commits and review notes for no gain. Nothing is missing.
+
+**Why this phase exists.** Phases 0–8 built a platform that runs *an* event correctly. The
+brief is a company running 35+ events. Re-reading the built system against that sentence
+surfaced defects that only appear once more than one event exists at a time — they are not
+missing features, they are wrong answers, and they are therefore ahead of anything new in
+this phase's order.
+
+**Tier-neutral.** Like Phase 8, this scores under correctness and Adoptability & Operability,
+not the tier ladder. T1–T4 were already finished before it started.
+
+### 10.1 — Judges belong to an event, not to the platform — DONE
+
+- [x] **The defect.** `run_assignment` selected `User.role == judge` — *every* judge account
+      on the platform — and `JudgeInvite` carried no event at all. On a company running 35+
+      events concurrently, a judge invited for one hackathon was assigned submissions from
+      all the others. That is a confidentiality breach between events, not an inconvenience,
+      and it also silently broke the conflict-of-interest guarantee: the algorithm can only
+      exclude a judge from *their own team's* submission, which means nothing when the judge
+      had no business seeing that event's submissions in the first place.
+- [x] `EventJudge` (`event_id`, `judge_id`, unique together) is the event's panel. Assignment
+      reads it, ordered by id so a run stays reproducible per section 8's determinism rule.
+      An empty panel is refused with a sentence that says what to do, not a silent zero-row
+      assignment.
+- [x] `JudgeInvite.event_id` (nullable, so pre-existing invitations still redeem). Redeeming
+      an event-scoped invitation promotes the account *and* enrols it on that panel — a
+      promotion that skipped the enrolment would grant a role assignment never draws on.
+- [x] **An established judge invited to a second event is now a real redemption.** The
+      previous "already a judge → return early, don't burn the invitation" branch was correct
+      when judges were global and is wrong once they are not: it would have accepted the
+      invitation and enrolled them on nothing. The early return now applies only when they
+      are *already on that panel*, which is still the double-click case it was written for.
+- [x] `GET/POST/DELETE /api/events/{id}/judges` so an organizer can see and correct the
+      panel, plus a "Judging panel" card on the event's results page. **Adding requires an
+      account that already holds the judge role**, so this composes a panel and cannot become
+      a second route into the role — invitation stays the only door in. Removing a judge
+      deliberately leaves their existing scores alone; deleting those would silently rewrite
+      the standings, and what happens to their *unfinished* work is 10.7's reassignment flow.
+- [x] `GET /api/judge-invites?event_id=` and the event page passes it. This is what made an
+      event's Judges card list a dozen invitations belonging to other events.
+- [x] Seeded: `fixtures/events.json` gains a `judges` list, so `docker compose up` produces a
+      demo event that can actually be judged rather than one with an empty panel.
+
+### 10.2 — One entrant, one team, per event — DONE
+
+- [x] **The defect.** Joining a team only checked membership of *that* team, and creating one
+      checked nothing, so a participant could enter the same hackathon on several teams. The
+      seeded data already did it: `jordan@example.com` held both Codehawks and Quiet Ledger
+      in `dogfood-2026`, which means the shipped demo demonstrated the bug.
+- [x] Both paths — join and create — now refuse with the name of the team the person is
+      already on, so the message says what to do rather than only what went wrong.
+- [x] **Scoped per event, not per platform.** Competing in two different hackathons is normal
+      and stays allowed; a test asserts it, because the obvious over-fix is a global limit.
+- [x] Fixture corrected: Quiet Ledger is now `mara@example.com`, a new seeded participant, so
+      the solo-team case the fixture was demonstrating survives.
+
+### 10.3 — Judging can start while projects are still editable — NOT DONE
+
+- [ ] **Still open, and disclosed rather than quietly dropped.** Neither assignment nor
+      scoring checks the event deadline, so a judge can score an entry its team can still
+      edit afterwards. Confirmed live: a judge scored *Audit Trail Explorer* while its team
+      retains edit rights until Oct 17.
+- [ ] Not fixed here because the honest fix is not a deadline `if`. It needs the explicit
+      event phase that 10.8 describes (Upcoming / Open / Judging / Results): a bare
+      `end_at` comparison would make the seeded demo event unjudgeable the moment it is
+      seeded, and would give organizers no way to open judging early for a event that
+      finished ahead of schedule. Doing it properly means doing 10.8 with it.
+
+### 10.4 — Sign-in attempt limit — DONE
+
+- [x] **The defect.** `POST /api/auth/login` had no limit of any kind; a password could be
+      guessed indefinitely.
+- [x] Reuses the existing in-process token bucket rather than adding a dependency — §1's
+      no-external-service rule applies here as everywhere. The module moved from
+      `voting/ratelimit.py` to `app/ratelimit.py`, because authentication is not a voting
+      concern and reaching across sibling feature packages for it is the wrong dependency
+      direction.
+- [x] Two buckets: **per account** (6 / 5 min) against many machines on one account, and
+      **per client fingerprint** (30 / 5 min) against one machine spraying many accounts.
+- [x] **Only failed attempts are charged to the client bucket, and a clean sign-in clears the
+      account bucket.** Found by running the browser suite against it: every request in the
+      suite shares one address and user-agent, so charging *successful* sign-ins to that
+      bucket locked the suite out after twenty logins. That is not a test artefact — an
+      office or campus behind one NAT address would have been locked out the same way on a
+      busy morning. Guessing produces failures by definition, so counting only failures
+      costs nothing defensively.
+- [x] The refusal is identical whether or not the account exists, and the account bucket is
+      spent *before* the password is checked, so the limiter cannot be used to enumerate
+      accounts. Asserted by a test that compares the full response sequence for a real
+      address against an unknown one.
+- [x] Failed attempts are audit-logged as `user.login_failed`.
+
+### 10.5–10.13 — NOT STARTED
+
+Scoped and agreed, not built. Listed so the gap is visible rather than implied:
+
+- [ ] **10.5** Project links (repo, live demo, video), validated, shown in the gallery, on the
+      submission page, and on the judge's scoring screen. Judges currently score four
+      criteria from one sentence and a screenshot.
+- [ ] **10.6** Winners and awards: bind each configured prize to a standing, announce on the
+      event page at reveal, name the prize on the certificate. Prizes are configured today
+      and never linked to anyone, so events end without announcing a winner.
+- [ ] **10.7** Organizer view of judging progress per judge, removing a judge who dropped out
+      and reassigning their unfinished work, and a judge-side "conflict of interest" return.
+      The data endpoint exists; no screen shows it.
+- [ ] **10.8** Event phase badge and timeline (Upcoming / Open / Judging / Results), start
+      date and "starts in", and the scorecard criteria made readable by participants. **10.3
+      depends on this.**
+- [ ] **10.9** Team management: leave, remove a member, rename, regenerate the invite link,
+      all closed after the deadline.
+- [ ] **10.10** Admin user management and organizer invitations by link.
+- [ ] **10.11** Event announcements.
+- [ ] **10.12** Draft events, visible only to organizers until published.
+- [ ] **10.13** Editing your own name on the profile page.
+
+Deliberately excluded from the phase as scoped: email verification and email change,
+passkeys, a notification inbox, account deletion and data export, public team-finding.
+
+**Definition of Done — Phase 10 gate (partial).** 10.1, 10.2 and 10.4 are done and are
+covered by 13 new endpoint tests in `api/tests/test_phase10.py`, chosen at the endpoint
+level because in all three cases the defect was that the *server* permitted something — a
+test driving only the UI would have caught none of them. Full suite green against a live
+stack: **228 API tests**, 9 unit tests, **89 Playwright specs**. `docker-compose.yml` still
+exactly `db` + `api`. 10.3 and 10.5–10.13 are open and stated as such above rather than
+left to be discovered.
+
+**Schema note.** This phase adds the `event_judges` table and `judge_invites.event_id`. The
+app creates its schema with `SQLModel.metadata.create_all` and has no migration tool, so an
+existing database will not gain them on its own — recreate the volume
+(`docker compose down -v`) or add the column and table by hand.
+
+**A note on the test suite, corrected.** Phase 8's section claimed all Playwright specs pass.
+Fourteen had been failing since the auth-screen redesign, including a real accessibility
+defect (`AuthLayout` nested its `<header>` inside `<main>`, so neither auth screen exposed a
+`banner` landmark at all). Fixed, and the claim above is a fresh measurement rather than a
+carried-forward one. One further caveat, unchanged from the Open Questions entry on shared
+database contention: a *second* full run without recreating the volume will fail a handful of
+specs, because the suite mutates the same database it reads. Each such spec passes alone and
+in its own file's order; the numbers above are from a fresh stack.
+
+---
+
 ## 8. Judging integrity — implement exactly this
 
 ### 8.0 Role model — who evaluates what, and by which mechanism

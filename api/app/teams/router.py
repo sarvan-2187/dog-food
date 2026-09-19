@@ -13,6 +13,27 @@ from .schemas import TeamCreate, TeamJoin, TeamMemberPublic, TeamPublic
 router = APIRouter(tags=["teams"])
 
 
+def _team_in_event(session: Session, user_id: int, event_id: int) -> Team | None:
+    """The team this person is already on for this event, if any.
+
+    Phase 10.2. One entrant, one team, per event. Membership rows carry only a
+    team_id, so "already in this event" has to be resolved through the teams
+    table rather than read off the membership directly. Enforced here on the
+    server, because the consequence of getting it wrong is a person competing
+    against themselves and, downstream, the conflict-of-interest rule in
+    assignment silently protecting the wrong set of submissions.
+    """
+    memberships = session.exec(select(TeamMembership).where(TeamMembership.user_id == user_id)).all()
+    if not memberships:
+        return None
+    return session.exec(
+        select(Team).where(
+            Team.id.in_([m.team_id for m in memberships]),
+            Team.event_id == event_id,
+        )
+    ).first()
+
+
 def _team_public(session: Session, team: Team) -> TeamPublic:
     memberships = session.exec(select(TeamMembership).where(TeamMembership.team_id == team.id)).all()
     members: list[TeamMemberPublic] = []
@@ -43,6 +64,13 @@ def create_team(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
     if event.end_at < utcnow():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This event's deadline has passed.")
+    already = _team_in_event(session, user.id, event_id)
+    if already:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"You are already on a team for this event ({already.name}). "
+            "Leave that team before creating another one.",
+        )
     team = Team(event_id=event_id, name=payload.name)
     session.add(team)
     session.commit()
@@ -69,6 +97,13 @@ def join_team(
     ).first()
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "You are already a member of this team.")
+    already = _team_in_event(session, user.id, team.event_id)
+    if already:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"You are already on a team for this event ({already.name}). "
+            "Leave that team before joining another one.",
+        )
     event = session.get(Event, team.event_id)
     max_size = event.max_team_size if event else 4
     current_size = len(session.exec(select(TeamMembership).where(TeamMembership.team_id == team.id)).all())

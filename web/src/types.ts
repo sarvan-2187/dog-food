@@ -215,6 +215,9 @@ export interface JudgeInvite {
   redeemed_at: string | null;
   redeemed_by_name: string | null;
   status: JudgeInviteStatus;
+  /** Which event this judge was invited for. Null on pre-Phase-10.1 invitations. */
+  event_id: number | null;
+  event_name: string | null;
 }
 
 /** Deliberately carries no invitee identity — see the backend's InvitePreview. */
@@ -227,6 +230,15 @@ export interface JudgeInvitePreview {
 export interface JudgeInviteRedeemResult {
   role: Role;
   already_a_judge: boolean;
+  event_id: number | null;
+  event_name: string | null;
+}
+
+/** A judge on one event's panel (GET /api/events/:id/judges). */
+export interface PanelJudge {
+  judge_id: number;
+  name: string;
+  email: string;
 }
 
 /** Mirrors api/app/audit/router.py's AuditEntry (GET /api/audit, organizer+admin). */
