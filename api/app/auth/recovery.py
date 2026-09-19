@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 from ..audit.log import record
 from ..db import get_session
 from ..timeutil import utcnow
-from ..voting.ratelimit import reset_issue_limiter
+from ..ratelimit import reset_issue_limiter
 from . import mailer
 from .deps import require_role
 from .models import PasswordReset, ResetChannel, Role, User, UserPublic

@@ -11,7 +11,7 @@ from app.submissions.models import Submission, SubmissionStatus
 from app.teams.models import Team, TeamMembership
 from app.timeutil import utcnow
 from app.voting.models import Vote
-from app.voting.ratelimit import TokenBucketLimiter
+from app.ratelimit import TokenBucketLimiter
 
 
 # ---------------------------------------------------------------------------

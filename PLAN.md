@@ -656,6 +656,16 @@ because T1–T4 were already finished.
 
 ---
 
+**A note on the test suite, corrected** (added by pranavneelu06, merged 2026-09-19). The
+Definition of Done above claimed all Playwright specs pass. Fourteen had been failing since the
+auth-screen redesign, including a real accessibility defect: `AuthLayout` nested its `<header>`
+inside `<main>`, so neither auth screen exposed a `banner` landmark at all. That was fixed on
+`main`, and the fix is kept. One caveat still applies: a *second* full run without recreating
+the volume fails a handful of specs, because the suite changes the same database it reads.
+Each of those specs passes when run alone.
+
+---
+
 ## Phase 9 — Account Recovery: Forgotten Passwords
 
 **Status: BUILT (2026-09-19).** Gate met; see the build notes below for the five places the
@@ -970,6 +980,30 @@ demonstrates the full email flow offline; and an existing pre-Phase-9 volume boo
 ## Phase 10 — Platform Audit: Judging Integrity, Core Hackathon Features, Operability
 
 **Status: planned, not built. Approved 2026-09-19 (all 13 items).**
+
+**Two implementations, merged (2026-09-19).** pranavneelu06 built 10.1, 10.2 and 10.4
+independently on `feat/phase10` (merged to `main` as PR #2). They stated plainly that 10.3 and
+10.5–10.13 weren't done. The same three items had also been built here, as part of all 13.
+The two were merged as follows:
+- **This branch's version kept for 10.1, 10.2 and 10.4**, because it closes three gaps a
+  review of `main` found:
+  - **Existing databases.** `main` needed `docker compose down -v` to pick up
+    `judge_invites.event_id`, which deletes every event. `add_missing_columns()` upgrades in
+    place instead.
+  - **Password spraying.** `main`'s per-IP login limit was only checked after a failed
+    password, so a correct guess still got in. It's now checked before.
+  - **Account probing by timing.** `main` answered faster for unknown emails. Unknown emails
+    now run bcrypt against a dummy hash.
+  - 10.2 also gets the database-level unique index `main` left out.
+- **Kept from `main`:**
+  - the login/register `banner` landmark fix
+  - the dashboard label de-duplication
+  - `BASE_URL`-aware judge-invite specs
+  - the event-scoped `JudgeInvitePanel`
+  - the move of the rate limiter to `app/ratelimit.py`
+  - the Phase 8 correction above
+- `main`'s `JudgePanelCard` was rebuilt on this branch's `/api/events/{id}/judges`, which
+  also carries 10.7's progress counts.
 
 **Entry condition:** Phases 1–9 gates are green.
 

@@ -33,7 +33,10 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   // Via the real header (client-side route, no reload) - a page.goto() here
   // forces a full page reload that races AuthProvider's cookie-based session
   // restore against the render, dropping the just-registered session.
-  await page.getByRole('link', { name: 'Events' }).click();
+  // `exact` because registration now lands on /dashboard, whose cards also link
+  // to /events ("Browse events", "All events"); Playwright matches accessible
+  // names by substring unless told otherwise. The nav tab is the one meant here.
+  await page.getByRole('link', { name: 'Events', exact: true }).click();
   await page.getByText('HackFlow Hackathon 2026').click();
   // The deadline is on screen before anything is typed (PLAN.md 4.1).
   await expect(page.getByText(/remaining|Deadline passed/)).toBeVisible();
