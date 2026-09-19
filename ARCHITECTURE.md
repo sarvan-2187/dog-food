@@ -108,9 +108,11 @@ build time. Once running, the api container makes no *required* outbound network
 no cloud database, no auth-as-a-service, no external API, no CDN-fetched font or script in
 the served app (PLAN.md §1). This is why fonts fall back to the system stack (see
 `DESIGN_SYSTEM.md` §3.1) rather than a Google Fonts `<link>`, and why CSV export uses the
-Python stdlib `csv` module instead of a hosted export service. The one exception is
-outbound webhooks (below), and those are opt-in per event — an organizer who never
-configures one gets the original zero-outbound-calls behavior unchanged.
+Python stdlib `csv` module instead of a hosted export service. There are exactly two
+exceptions, both opt-in: outbound webhooks (below), configured per event, and
+password-reset email (below), configured per deployment. An install that sets up neither
+gets the original zero-outbound-calls behavior unchanged — the test suite asserts that no
+SMTP connection is attempted with email off.
 
 ## Uploaded images: local disk, no CDN
 
@@ -126,6 +128,37 @@ uploading a new one deletes the old one rather than accumulating orphans on disk
 no CDN: images are served straight from the api container, which is consistent with the
 "works fully offline" requirement — a CDN would be a hard external dependency this
 platform is specifically built not to need.
+
+## Password recovery and email: opt-in SMTP, hashed single-use links
+
+Every reset link, whether emailed, organizer-issued, or printed by the break-glass CLI, is
+one `PasswordReset` row (DATA-MODEL.md) holding only the SHA-256 of a
+`secrets.token_urlsafe(32)` token. Links are redeemed through the same two endpoints
+(`GET …/preview`, which never consumes the link, and `POST …/redeem`) and the same
+`/reset/:token` page (`api/app/auth/recovery.py`). Emailed links expire in 30 minutes;
+organizer and CLI links, handed over live, expire in 60. Issuing a new link retires any
+earlier unused one for that account.
+
+Sessions are revocable: the signed cookie carries `{user_id, v}`, and `get_current_user`
+rejects any cookie whose `v` isn't the account's current `session_version`. Every password
+change or reset increments it, which signs the account out everywhere at once. Cookies
+signed before this existed have no `v` and read as 0, so the upgrade signed nobody out.
+
+Email is sent by `api/app/auth/mailer.py` using stdlib `smtplib` and `email.message`, with
+no SDK and no new dependency. It is read from `SMTP_*` environment variables once at
+startup; with `SMTP_HOST` empty it is off, and nothing in the module opens a socket. Reset
+and "your password was changed" emails go out through FastAPI `BackgroundTasks`, one
+attempt with a 10-second timeout, the same fire-and-forget choice as webhooks. That way a
+slow mail server never delays a response, and a response can't reveal whether an account
+exists. Failures are logged. `docker-compose.mail.yml` adds a local Mailpit inbox, with
+its own version check disabled, for demos and the end-to-end test.
+
+Adding `session_version` to an existing `users` table is handled by
+`db.add_missing_columns()`, a short list of `(table, column, ddl)` entries applied at
+startup only when `information_schema` says the column is absent. That replaces
+`docker compose down -v` as the way to pick up a new column. The check matters:
+`ADD COLUMN IF NOT EXISTS` on its own still takes an exclusive table lock on every boot,
+which hung the test suite when it was tried.
 
 ## Outbound webhooks: fire-and-forget, signed, opt-in
 

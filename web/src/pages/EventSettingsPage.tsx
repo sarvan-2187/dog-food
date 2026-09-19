@@ -22,6 +22,13 @@ export function EventSettingsPage() {
   );
 }
 
+/** An ISO instant as the value a datetime-local input expects, in local time. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function EventSettingsForm() {
   const { slug = '' } = useParams();
   const [event, setEvent] = useState<EventRecord | null>(null);
@@ -29,6 +36,10 @@ function EventSettingsForm() {
   const [tracks, setTracks] = useState<string[]>([]);
   const [prizes, setPrizes] = useState<PrizeEntry[]>([]);
   const [maxTeamSize, setMaxTeamSize] = useState('4');
+  // PLAN.md 10.8: dates were only settable at creation; rules are new.
+  const [startAt, setStartAt] = useState('');
+  const [endAt, setEndAt] = useState('');
+  const [rules, setRules] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
 
@@ -42,6 +53,9 @@ function EventSettingsForm() {
         setTracks(ev.tracks);
         setPrizes(ev.prize_config.prizes ?? []);
         setMaxTeamSize(String(ev.max_team_size));
+        setStartAt(toLocalInput(ev.start_at));
+        setEndAt(toLocalInput(ev.end_at));
+        setRules(ev.rules);
       })
       .catch((err) => !cancelled && setLoadError(err instanceof ApiError ? err.message : 'Could not load this event.'));
     return () => {
@@ -51,13 +65,26 @@ function EventSettingsForm() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!event) return;
+    if (!event || datesError) return;
+    const newEnd = new Date(endAt).getTime();
+    const closesNow = newEnd <= Date.now() && new Date(event.end_at).getTime() > Date.now();
+    if (
+      closesNow &&
+      !window.confirm(
+        'That end date has already passed, so this closes submissions now. Teams will no longer be able to edit their entries. Continue?',
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     try {
       const updated = await api.patch<EventRecord>(`/api/events/${event.id}`, {
         tracks,
         prize_config: { prizes: prizes.filter((p) => p.rank.trim() && p.reward.trim()) },
         max_team_size: Number(maxTeamSize) || 4,
+        start_at: new Date(startAt).toISOString(),
+        end_at: new Date(endAt).toISOString(),
+        rules,
       });
       setEvent(updated);
       setToast({ message: 'Event settings saved.', ok: true });
@@ -67,6 +94,26 @@ function EventSettingsForm() {
       setSaving(false);
     }
   }
+
+  async function closeNow() {
+    if (!event) return;
+    if (!window.confirm('Close submissions now? Teams will no longer be able to edit their entries, and judging can start.')) {
+      return;
+    }
+    try {
+      const updated = await api.patch<EventRecord>(`/api/events/${event.id}`, { end_at: new Date().toISOString() });
+      setEvent(updated);
+      setEndAt(toLocalInput(updated.end_at));
+      setToast({ message: 'Submissions are closed. You can assign judges from the results page.', ok: true });
+    } catch (err) {
+      setToast({ message: err instanceof ApiError ? err.message : 'Could not close submissions.', ok: false });
+    }
+  }
+
+  const datesError =
+    startAt && endAt && new Date(endAt).getTime() <= new Date(startAt).getTime()
+      ? 'The end has to come after the start.'
+      : undefined;
 
   if (loadError) {
     return (
@@ -91,8 +138,42 @@ function EventSettingsForm() {
         </Link>
       </p>
 
+      <div className="mb-6">
+        <PublishPanel event={event} onChange={setEvent} onToast={setToast} />
+      </div>
+
       <Card title="Event settings" meta={event.name}>
         <form className="flex flex-col gap-5" onSubmit={onSubmit} noValidate>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Starts" type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
+            <Input
+              label="Submissions close"
+              type="datetime-local"
+              value={endAt}
+              onChange={(e) => setEndAt(e.target.value)}
+              error={datesError}
+              hint={datesError ? undefined : 'Judging opens once this passes.'}
+            />
+          </div>
+          {new Date(event.end_at).getTime() > Date.now() && (
+            <div>
+              <Button type="button" variant="ghost" size="sm" onClick={closeNow}>
+                Close submissions now
+              </Button>
+            </div>
+          )}
+          <label className="flex flex-col gap-1.5">
+            <span className="text-label text-ink-800">Rules</span>
+            <textarea
+              rows={5}
+              maxLength={5000}
+              value={rules}
+              onChange={(e) => setRules(e.target.value)}
+              placeholder={'Teams of up to 4.\nEverything must be built during the event.'}
+              className="rounded-md border border-border bg-surface-0 px-3 py-2 text-body text-ink-800 focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20"
+            />
+            <span className="text-meta text-ink-500">Plain text, shown on the event page. Line breaks are kept.</span>
+          </label>
           <Input
             label="Max team size"
             type="number"
@@ -264,6 +345,85 @@ function WebhookPanel({ eventId, onToast }: { eventId: number; onToast: (t: { me
             Add webhook
           </Button>
         </form>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * PLAN.md 10.12. New events start as drafts, visible only to organizers. The
+ * checklist warns rather than blocks - an organizer may have good reason to
+ * publish before the rubric is written - and unpublishing is refused by the
+ * server once any team has joined.
+ */
+function PublishPanel({
+  event,
+  onChange,
+  onToast,
+}: {
+  event: EventRecord;
+  onChange: (e: EventRecord) => void;
+  onToast: (t: { message: string; ok: boolean }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [hasRubric, setHasRubric] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api
+      .get<unknown[]>(`/api/events/${event.id}/criteria`)
+      .then((c) => setHasRubric(c.length > 0))
+      .catch(() => setHasRubric(null));
+  }, [event.id]);
+
+  const warnings = [
+    event.tracks.length === 0 && 'No tracks yet.',
+    hasRubric === false && "No judging rubric yet - judges can't score without one.",
+    !event.rules.trim() && 'No rules written.',
+  ].filter(Boolean) as string[];
+
+  async function toggle() {
+    const publishing = event.status === 'draft';
+    if (!publishing && !window.confirm('Turn this event back into a draft? Participants will no longer see it.')) return;
+    setBusy(true);
+    try {
+      const updated = await api.post<EventRecord>(`/api/events/${event.id}/${publishing ? 'publish' : 'unpublish'}`);
+      onChange(updated);
+      onToast({ message: publishing ? 'Published - participants can see it now.' : 'Back to draft.', ok: true });
+    } catch (err) {
+      onToast({ message: err instanceof ApiError ? err.message : 'Could not change the event status.', ok: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card
+      title="Visibility"
+      meta={event.status === 'draft' ? <Badge status="neutral">Draft</Badge> : <Badge status="success">Published</Badge>}
+    >
+      <div className="flex flex-col gap-3">
+        <p className="text-body text-ink-600">
+          {event.status === 'draft'
+            ? 'Only organizers can see this event. Publish it when it is ready for participants.'
+            : 'Participants can see and join this event.'}
+        </p>
+        {event.status === 'draft' && warnings.length > 0 && (
+          <ul className="list-inside list-disc text-meta text-warning-fg">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        )}
+        <div>
+          <Button
+            variant={event.status === 'draft' ? 'primary' : 'secondary'}
+            loading={busy}
+            loadingLabel="Saving..."
+            onClick={toggle}
+          >
+            {event.status === 'draft' ? 'Publish event' : 'Move back to draft'}
+          </Button>
+        </div>
       </div>
     </Card>
   );

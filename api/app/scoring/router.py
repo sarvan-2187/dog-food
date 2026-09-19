@@ -17,6 +17,7 @@ from ..submissions.models import Submission, SubmissionStatus
 from ..teams.models import Team, TeamMembership
 from ..timeutil import ensure_utc, utcnow
 from ..webhooks.service import notify
+from .awards import awards_by_submission
 from .certificate import render_certificate
 from .models import Score
 from .normalization import normalized_table
@@ -71,6 +72,14 @@ def submit_score(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found.")
     if assignment.judge_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This submission is assigned to a different judge.")
+    event = session.get(Event, assignment.event_id)
+    if event is not None and utcnow() < event.end_at:
+        # PLAN.md 10.3: covers assignments made before judging was gated on the deadline.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Judging opens when submissions close on {event.end_at.strftime('%d %b %Y at %H:%M UTC')} - "
+            "until then the team can still change what you'd be scoring.",
+        )
 
     criteria = _combined_criteria(_rubrics_for_event(session, assignment.event_id))
     expected = {c["key"] for c in criteria}
@@ -345,6 +354,7 @@ def certificate(
         team_name=team.name if team else "",
         submission_title=submission.title or "Untitled submission",
         rank=rank,
+        prizes=awards_by_submission(session, [submission_id]).get(submission_id, []),
     )
     return Response(
         content=pdf_bytes,
@@ -424,6 +434,7 @@ def import_event(
         if payload.results_hidden_until
         else None,
         created_by_id=user.id,
+        status="draft",  # PLAN.md 10.12: an import is reviewed before it goes public
     )
     session.add(event)
     session.flush()

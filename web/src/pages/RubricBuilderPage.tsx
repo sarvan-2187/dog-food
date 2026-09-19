@@ -15,6 +15,7 @@ interface Row {
   label: string;
   weight: string;
   max_score: string;
+  description: string;
 }
 
 interface Draft {
@@ -24,7 +25,7 @@ interface Draft {
   rows: Row[];
 }
 
-const BLANK_ROW: Row = { key: '', label: '', weight: '', max_score: '10' };
+const BLANK_ROW: Row = { key: '', label: '', weight: '', max_score: '10', description: '' };
 
 function draftFromRubric(rubric: Rubric): Draft {
   return {
@@ -36,6 +37,7 @@ function draftFromRubric(rubric: Rubric): Draft {
       label: c.label,
       weight: String(c.weight),
       max_score: String(c.max_score),
+      description: c.description ?? '',
     })),
   };
 }
@@ -209,6 +211,7 @@ function RubricCard({
           label: r.label.trim(),
           weight: Number(r.weight),
           max_score: Number(r.max_score) || 10,
+          description: r.description.trim(),
         })),
       };
       const saved = draft.rubricId
@@ -312,6 +315,15 @@ function RubricCard({
                   onChange={(e) => update(i, { max_score: e.target.value })}
                 />
               </div>
+              {/* PLAN.md 10.8: judges read this under the field; entrants see it on the event page. */}
+              <Input
+                label="What this means (optional)"
+                value={row.description}
+                maxLength={300}
+                onChange={(e) => update(i, { description: e.target.value })}
+                placeholder="Who would use this, and how much would it help them?"
+                hint="Shown to judges while scoring, and to entrants on the event page."
+              />
             </div>
           ))}
         </div>

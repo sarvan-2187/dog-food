@@ -14,6 +14,27 @@ const FIELD_CLASS =
   'focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20 ' +
   'disabled:bg-surface-100 disabled:text-ink-500';
 
+type Field = 'title' | 'description' | 'track' | 'repo_url' | 'demo_url' | 'video_url';
+
+const LINKS: { field: 'repo_url' | 'demo_url' | 'video_url'; label: string; placeholder: string; hint: string }[] = [
+  { field: 'repo_url', label: 'Code repository', placeholder: 'https://github.com/you/project', hint: 'Where judges can read the code.' },
+  { field: 'demo_url', label: 'Live demo', placeholder: 'https://your-project.example.com', hint: 'A running version judges can try.' },
+  { field: 'video_url', label: 'Demo video', placeholder: 'https://youtu.be/...', hint: 'A short walkthrough. Linked, not embedded.' },
+];
+
+/** Mirrors the server's rule (PLAN.md 10.5) so a bad link is flagged inline, before a save. */
+function linkError(value: string): string | undefined {
+  const v = value.trim();
+  if (!v) return undefined;
+  try {
+    const url = new URL(v);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && url.host) return undefined;
+  } catch {
+    // fall through
+  }
+  return 'Enter a full web address starting with https://';
+}
+
 export function SubmissionPage() {
   const { teamId = '' } = useParams();
   const [submission, setSubmission] = useState<Submission | null>(null);
@@ -22,13 +43,21 @@ export function SubmissionPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [track, setTrack] = useState('');
+  const [links, setLinks] = useState({ repo_url: '', demo_url: '', video_url: '' });
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const loaded = useRef(false);
   // What the server last confirmed, so a blur with no edit does not re-PATCH and
   // an edit can be reported as "Unsaved changes" the moment it diverges.
-  const saved = useRef({ title: '', description: '', track: '' });
+  const saved = useRef<Record<Field, string>>({
+    title: '',
+    description: '',
+    track: '',
+    repo_url: '',
+    demo_url: '',
+    video_url: '',
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +80,15 @@ export function SubmissionPage() {
         setTitle(s.title);
         setDescription(s.description);
         setTrack(s.track);
-        saved.current = { title: s.title, description: s.description, track: s.track };
+        setLinks({ repo_url: s.repo_url, demo_url: s.demo_url, video_url: s.video_url });
+        saved.current = {
+          title: s.title,
+          description: s.description,
+          track: s.track,
+          repo_url: s.repo_url,
+          demo_url: s.demo_url,
+          video_url: s.video_url,
+        };
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) {
@@ -67,6 +104,9 @@ export function SubmissionPage() {
             created_at: '',
             updated_at: '',
             image_url: null,
+            repo_url: '',
+            demo_url: '',
+            video_url: '',
           });
         } else {
           setError(err instanceof ApiError ? err.message : 'Could not load your submission.');
@@ -85,14 +125,22 @@ export function SubmissionPage() {
   const deadlinePassed = event ? new Date(event.end_at).getTime() <= Date.now() : false;
 
   const saveField = useCallback(
-    async (field: 'title' | 'description' | 'track', value: string) => {
+    async (field: Field, value: string) => {
       if (!loaded.current || deadlinePassed) return;
       if (saved.current[field] === value) return; // nothing changed on this blur
+      if (field.endsWith('_url') && linkError(value)) return; // shown inline; don't send what the server will refuse
       setSaveState('saving');
       try {
         const updated = await api.patch<Submission>(`/api/teams/${teamId}/submission`, { [field]: value });
         setSubmission(updated);
-        saved.current = { title: updated.title, description: updated.description, track: updated.track };
+        saved.current = {
+          title: updated.title,
+          description: updated.description,
+          track: updated.track,
+          repo_url: updated.repo_url,
+          demo_url: updated.demo_url,
+          video_url: updated.video_url,
+        };
         setSaveState('saved');
       } catch (err) {
         setSaveState('unsaved');
@@ -102,10 +150,11 @@ export function SubmissionPage() {
     [teamId, deadlinePassed],
   );
 
-  function edit(field: 'title' | 'description' | 'track', value: string) {
+  function edit(field: Field, value: string) {
     if (field === 'title') setTitle(value);
     if (field === 'description') setDescription(value);
     if (field === 'track') setTrack(value);
+    if (field === 'repo_url' || field === 'demo_url' || field === 'video_url') setLinks((l) => ({ ...l, [field]: value }));
     setSaveState(saved.current[field] === value ? 'saved' : 'unsaved');
   }
 
@@ -231,6 +280,33 @@ export function SubmissionPage() {
               />
             )}
           </label>
+          {/* PLAN.md 10.5: without these a judge scores from a paragraph of text. */}
+          <fieldset className="flex flex-col gap-3">
+            <legend className="mb-1 text-label text-ink-800">Links for the judges</legend>
+            {LINKS.map(({ field, label, placeholder, hint }) => {
+              const err = linkError(links[field]);
+              return (
+                <label key={field} className="flex flex-col gap-1.5">
+                  <span className="text-meta text-ink-700">{label}</span>
+                  <input
+                    type="url"
+                    inputMode="url"
+                    className={`h-10 ${FIELD_CLASS}`}
+                    placeholder={placeholder}
+                    value={links[field]}
+                    disabled={deadlinePassed}
+                    aria-invalid={err ? true : undefined}
+                    aria-describedby={`${field}-help`}
+                    onChange={(e) => edit(field, e.target.value)}
+                    onBlur={() => saveField(field, links[field].trim())}
+                  />
+                  <span id={`${field}-help`} className={err ? 'text-meta text-danger-fg' : 'text-meta text-ink-500'}>
+                    {err ?? hint}
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
           {submission.id !== 0 && !deadlinePassed && (
             <div className="flex flex-col gap-1.5">
               <span className="text-label text-ink-800">Screenshot</span>

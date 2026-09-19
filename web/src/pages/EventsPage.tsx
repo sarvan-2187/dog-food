@@ -4,8 +4,9 @@ import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { eventCover } from '../lib/event-cover';
 import type { EventRecord } from '../types';
-import { Badge, Button, Card } from '../components/ui';
+import { Button, Card } from '../components/ui';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
+import { PhaseBadge } from '../components/EventTimeline';
 import { EventImportPanel } from '../components/EventImportPanel';
 
 export function EventsPage() {
@@ -126,7 +127,7 @@ export function EventsPage() {
   );
 }
 
+/** Phase-aware since PLAN.md 10.8: "Upcoming" / "Open" / "Judging" / "Results", or "Draft". */
 export function EventStatusBadge({ event }: { event: EventRecord }) {
-  const passed = new Date(event.end_at).getTime() < Date.now();
-  return <Badge status={passed ? 'danger' : 'info'}>{passed ? 'Deadline passed' : 'Open'}</Badge>;
+  return <PhaseBadge event={event} />;
 }

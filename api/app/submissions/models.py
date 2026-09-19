@@ -29,6 +29,11 @@ class Submission(SQLModel, table=True):
     title: str = ""
     description: str = ""
     track: str = ""
+    # Where judges can actually look at the project (PLAN.md Phase 10.5). Optional,
+    # http(s) only - validated in SubmissionUpdate - and shown as links, never embedded.
+    repo_url: str = ""
+    demo_url: str = ""
+    video_url: str = ""
     status: SubmissionStatus = Field(default=SubmissionStatus.draft)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())

@@ -59,10 +59,71 @@ docker compose down -v
 docker compose up --build
 ```
 
+## Email (optional) — self-service password resets
+
+Out of the box HackFlow sends no email and makes **zero** outbound network calls. Anyone who
+forgets their password gets a one-time reset link from an organizer (**Dashboard → Help
+someone sign in**).
+
+Point it at your own mail server and resets become fully self-service: **Forgot password?**
+on the login page emails a link that works once and expires in 30 minutes. It uses plain
+SMTP via Python's standard library — no email SDK, no hosted service.
+
+**Try it locally, with no internet:** a bundled test inbox catches every email.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mail.yml up
+```
+
+The app runs at `http://localhost:8000` as usual. Emails appear at **`http://localhost:8025`**.
+
+**Real delivery:** copy `.env.example` to `.env` (git ignores it), fill it in, then
+`docker compose up -d api`.
+
+| Setting | Gmail / Workspace | Outlook / Microsoft 365 |
+|---|---|---|
+| `SMTP_HOST` | `smtp.gmail.com` | `smtp.office365.com` |
+| `SMTP_PORT` | `587` | `587` |
+| `SMTP_SECURITY` | `starttls` | `starttls` |
+| `SMTP_USERNAME` | your address | your address |
+| `SMTP_PASSWORD` | an *app password* (needs 2-step verification) | an *app password* |
+| `SMTP_FROM` | `HackFlow <you@your-domain>` | same |
+| `APP_BASE_URL` | the URL people use to reach HackFlow (default `http://localhost:8000`) | same |
+
+Then sign in as an admin and press **Send test email** on the dashboard's **Email delivery**
+card — it reports the mail server's answer in plain language. Delivery itself is up to your
+provider: a brand-new sending address can land in spam until the domain has SPF/DKIM set up.
+
+**Locked-out admin?** `docker compose exec api python -m app.auth.reset_link you@example.com`
+prints a one-time reset link for any account.
+
 ## What's here
 
-- **Event lifecycle** — organizer/admin create and later edit an event's dates, tracks,
-  prizes, and team-size cap from a real settings screen, not a raw API call.
+- **Event lifecycle** — new events start as **drafts** only organizers can see, and go
+  public with **Publish**. Dates, rules, tracks, prizes and team-size cap are all editable
+  from Event settings, including **Close submissions now**. Every event shows its phase
+  (Upcoming / Open / Judging / Results) and a countdown worded for it.
+- **Multi-event judging** — each event has its own judge panel. Judges are invited *to an
+  event*, and assignment only ever draws from that event's panel. Judging opens when
+  submissions close, so nobody scores a project its team can still change.
+- **Judging progress** — "X of Y scores in", each judge's progress (furthest behind
+  first), removing a judge who dropped out (their scores stay; their unscored work is
+  re-assigned), email reminders, and judges can declare a conflict of interest.
+- **Winners** — each configured prize is awarded to a project, suggested from the
+  standings and confirmed by the organizer. Winners appear on the event page and
+  certificates at the results reveal.
+- **Announcements** — organizers post updates to everyone in an event. They appear on the
+  event page and participants' dashboards, can be emailed, and are sent to the event's
+  webhooks.
+- **Team management** — one team per person per event; members can leave; the captain
+  renames the team, removes members, hands over captaincy and replaces the invite link.
+- **Project links** — code, live demo and video links on every submission, validated
+  (http/https only), shown to judges and in the gallery. Linked, never embedded.
+- **Admin users** — search accounts, change roles, deactivate, and invite organizers by
+  link. The admin role is never granted from the UI.
+- **Sign-in protection** — failed logins are limited per account and per IP, and checked
+  before the password, so a correct guess made after the limit is still refused.
+  Responses take the same time whether or not the account exists.
 - **Team formation** — a participant creates a team or joins one via a shareable invite
   link (server-side expiry, not just a UI hide), capped at a per-event max team size
   (default 4, matching Dogfood's own rule) enforced server-side.

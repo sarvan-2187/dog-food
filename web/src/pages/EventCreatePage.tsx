@@ -55,7 +55,8 @@ function EventCreateForm() {
         prize_config: { prizes: prizes.filter((p) => p.rank.trim() && p.reward.trim()) },
         max_team_size: Number(maxTeamSize) || 4,
       });
-      navigate(`/events/${created.slug}`);
+      // New events start as drafts (PLAN.md 10.12); settings is where they're published.
+      navigate(`/events/${created.slug}/settings`);
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.message : 'Could not create the event.');
     } finally {

@@ -29,8 +29,32 @@
     "name": "Quiet Ledger",
     "event_slug": "dogfood-2026",
     "member_emails": [
-      "mara@example.com"
-    ],
-    "comment": "A one-person team, which the UI and the assignment algorithm both have to handle."
+      "quinn@example.com"
+    ]
+  },
+  {
+    "name": "Signal Hawks",
+    "event_slug": "judging-showcase-2026",
+    "member_emails": [
+      "jordan@example.com",
+      "riley@example.com"
+    ]
+  },
+  {
+    "name": "Lantern",
+    "event_slug": "judging-showcase-2026",
+    "member_emails": [
+      "kai@example.com",
+      "lena@example.com"
+    ]
+  },
+  {
+    "name": "Merge Queue",
+    "event_slug": "judging-showcase-2026",
+    "member_emails": [
+      "theo@example.com",
+      "nadia@example.com",
+      "dana@example.com"
+    ]
   }
 ]

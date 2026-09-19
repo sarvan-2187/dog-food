@@ -12,6 +12,18 @@ class CriterionWrite(BaseModel):
     label: str
     weight: float
     max_score: float = 10.0
+    # What the criterion means, shown to judges under the field and to
+    # participants on the event page (PLAN.md 10.8). Criteria are stored as
+    # JSON, so this needs no schema change.
+    description: str = ""
+
+    @field_validator("description")
+    @classmethod
+    def description_len(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) > 300:
+            raise ValueError("A criterion description must be 300 characters or fewer.")
+        return v
 
     @field_validator("key")
     @classmethod
@@ -118,6 +130,10 @@ class ScoringSheet(BaseModel):
     submission_title: str
     submission_description: str
     submission_track: str
+    submission_image_url: Optional[str] = None
+    repo_url: str = ""
+    demo_url: str = ""
+    video_url: str = ""
     rubrics: List[RubricGroup]
     my_values: Optional[dict] = None
     my_comment: str = ""

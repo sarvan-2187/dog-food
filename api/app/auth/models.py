@@ -30,6 +30,34 @@ class User(SQLModel, table=True):
     password_hash: str
     role: Role = Field(default=Role.participant)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+    # Signed into every session cookie and bumped on each password change or
+    # reset, so one bump signs the account out everywhere (PLAN.md Phase 9.1).
+    session_version: int = Field(default=0)
+    # False blocks sign-in and, with a session_version bump, ends every session
+    # (PLAN.md Phase 10.10). Admin accounts can't be deactivated.
+    is_active: bool = Field(default=True)
+
+
+class ResetChannel(str, enum.Enum):
+    email = "email"
+    organizer = "organizer"
+    cli = "cli"
+
+
+class PasswordReset(SQLModel, table=True):
+    """A single-use reset link (PLAN.md Phase 9). Only the SHA-256 of the token
+    is stored, so a database read never yields a working link."""
+
+    __tablename__ = "password_resets"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    token_hash: str = Field(unique=True, index=True)
+    channel: ResetChannel
+    issued_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+    expires_at: datetime = Field(sa_column=_ts_column())
+    used_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
 
 
 class UserPublic(SQLModel):

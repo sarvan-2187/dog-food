@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ImageUpload } from '../components/ImageUpload';
-import { Button, Card, RoleBadge } from '../components/ui';
+import { PasswordField } from '../components/auth/PasswordField';
+import { Button, Card, Input, RoleBadge } from '../components/ui';
+import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { runTour } from '../lib/tour';
 
@@ -46,7 +49,9 @@ export function ProfilePage() {
           <dl className="flex flex-col gap-3">
             <div>
               <dt className="text-label text-ink-500">Name</dt>
-              <dd className="text-body text-ink-800">{user.name}</dd>
+              <dd>
+                <NameEditor name={user.name} onSaved={() => refresh()} />
+              </dd>
             </div>
             <div>
               <dt className="text-label text-ink-500">Email</dt>
@@ -68,6 +73,157 @@ export function ProfilePage() {
           </div>
         </div>
       </Card>
+
+      <div className="mt-6">
+        <ChangePasswordCard />
+      </div>
     </div>
+  );
+}
+
+/**
+ * PLAN.md Phase 9.5. Changing the password bumps the account's session
+ * version on the server, which signs out every other device; this one gets a
+ * fresh cookie in the same response, so nothing here needs to re-login.
+ */
+function ChangePasswordCard() {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [currentError, setCurrentError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const nextError = touched && next.length < 8 ? 'Use at least 8 characters.' : undefined;
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setTouched(true);
+    setSaved(false);
+    setCurrentError(null);
+    setError(null);
+    if (!current || next.length < 8) {
+      if (!current) setCurrentError('Enter your current password.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post('/api/auth/password', { current_password: current, new_password: next });
+      setCurrent('');
+      setNext('');
+      setTouched(false);
+      setSaved(true);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Could not change your password. Please try again.';
+      // A wrong current password belongs next to that field, not in a toast.
+      if (err instanceof ApiError && err.status === 400) setCurrentError(message);
+      else setError(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card title="Change password">
+      <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
+        <p className="text-body text-ink-600">This signs you out on every other device.</p>
+        <PasswordField
+          label="Current password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          error={currentError ?? undefined}
+        />
+        <PasswordField
+          label="New password"
+          autoComplete="new-password"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+          onBlur={() => next && setTouched(true)}
+          error={nextError}
+          hint="At least 8 characters."
+        />
+        {error && (
+          <p role="alert" className="text-meta text-danger-fg">
+            {error}
+          </p>
+        )}
+        {saved && (
+          <p role="status" className="text-meta text-success-fg">
+            Password changed. Every other device has been signed out.
+          </p>
+        )}
+        <div>
+          <Button type="submit" variant="primary" loading={saving} loadingLabel="Saving...">
+            Change password
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+/** PLAN.md 10.13. Same 2-60 character rule as sign-up, checked inline. */
+function NameEditor({ name, onSaved }: { name: string; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmed = value.trim();
+  const inlineError = trimmed.length < 2 || trimmed.length > 60 ? 'Use 2-60 characters.' : undefined;
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (inlineError) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.patch('/api/auth/me', { name: trimmed });
+      onSaved();
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save your name.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <span className="flex flex-wrap items-center gap-3">
+        <span className="text-body text-ink-800">{name}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setValue(name);
+            setEditing(true);
+          }}
+        >
+          Edit
+        </Button>
+      </span>
+    );
+  }
+  return (
+    <form className="flex flex-col gap-2 sm:flex-row sm:items-start" onSubmit={save} noValidate>
+      <Input
+        label="Display name"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        error={error ?? inlineError}
+        className="sm:w-72"
+      />
+      <div className="flex gap-2 sm:mt-7">
+        <Button type="submit" variant="primary" size="sm" loading={saving} loadingLabel="Saving...">
+          Save
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

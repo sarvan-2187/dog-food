@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ProjectLinks } from '../components/EventSections';
 import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CertificateButton } from '../components/CertificateButton';
@@ -145,7 +146,17 @@ export function SubmissionDetailPage() {
             <img src={item.image_url} alt="" className="w-full object-cover" />
           </div>
         )}
+        {item.awards.length > 0 && (
+          <p className="mb-3 flex flex-wrap gap-1.5">
+            {item.awards.map((a) => (
+              <Badge key={a} status="success">{a}</Badge>
+            ))}
+          </p>
+        )}
         <p className="whitespace-pre-wrap text-body text-ink-700">{item.description}</p>
+        <div className="mt-4">
+          <ProjectLinks repo={item.repo_url} demo={item.demo_url} video={item.video_url} />
+        </div>
         <div className="mt-5 flex flex-wrap items-center gap-3">
           {user ? (
             <VoteButton

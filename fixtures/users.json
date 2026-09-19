@@ -72,10 +72,9 @@
     "role": "participant"
   },
   {
-    "email": "mara@example.com",
-    "name": "Mara Participant",
+    "email": "quinn@example.com",
+    "name": "Quinn Participant",
     "password": "participant-pass7",
-    "role": "participant",
-    "comment": "Solo entrant on Quiet Ledger. Added in Phase 10.2: jordan used to hold both Codehawks and Quiet Ledger in the same event, which the one-team-per-event rule now forbids."
+    "role": "participant"
   }
 ]

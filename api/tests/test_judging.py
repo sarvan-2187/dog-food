@@ -127,7 +127,7 @@ def _panel(session, event, *users) -> None:
     have to be enrolled on the event too, exactly as an organizer would.
     """
     for user in users:
-        session.add(EventJudge(event_id=event.id, judge_id=user.id))
+        session.add(EventJudge(event_id=event.id, user_id=user.id))
     session.commit()
 
 
@@ -147,14 +147,25 @@ def _event(session, slug: str) -> Event:
     event = Event(
         slug=slug,
         name="Judging Event",
-        start_at=utcnow() - timedelta(days=1),
-        end_at=utcnow() + timedelta(days=2),
+        # Submissions have closed: judging only opens after the deadline (PLAN.md 10.3).
+        start_at=utcnow() - timedelta(days=3),
+        end_at=utcnow() - timedelta(hours=1),
         created_by_id=owner.id,
     )
     session.add(event)
     session.commit()
     session.refresh(event)
     return event
+
+
+def _attach_judges(session, event: Event) -> None:
+    """Put every judge in the test database on this event's pool (PLAN.md 10.1).
+    Seeding is off under test, so "every judge" is exactly this test's judges."""
+    attached = {j.user_id for j in session.exec(select(EventJudge).where(EventJudge.event_id == event.id))}
+    for judge in session.exec(select(User).where(User.role == Role.judge)):
+        if judge.id not in attached:
+            session.add(EventJudge(event_id=event.id, user_id=judge.id))
+    session.commit()
 
 
 def _submitted(session, event: Event, team_name: str, title: str, members: list[User]) -> Submission:
@@ -203,6 +214,7 @@ def test_assignment_is_refused_when_the_combined_rubric_weights_do_not_sum_to_on
     ]
     client.post(f"/api/events/{event.id}/rubrics", json={"name": "Partial Rubric", "criteria": bad})
 
+    _attach_judges(session, event)
     r = client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 1})
     assert r.status_code == 409, r.text
     # The message must name the actual total, not just say "invalid".
@@ -237,10 +249,12 @@ def test_assignment_run_is_idempotent(client, session):
     _login_as(client, session, "assign-org@example.com", Role.organizer)
     client.post(f"/api/events/{event.id}/rubrics", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
 
+    _attach_judges(session, event)
     first = client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 3})
     assert first.status_code == 201, first.text
     assert first.json()["created"] == 3
 
+    _attach_judges(session, event)
     second = client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 3})
     assert second.status_code == 201
     assert second.json()["created"] == 0, "re-running must not duplicate assignments"
@@ -257,6 +271,7 @@ def test_assignment_requires_a_rubric_first(client, session):
     _user(session, "norubric-judge@example.com", Role.judge)
     _login_as(client, session, "norubric-org@example.com", Role.organizer)
 
+    _attach_judges(session, event)
     r = client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 3})
     assert r.status_code == 409
     assert "rubric" in r.json()["detail"].lower()
@@ -270,6 +285,7 @@ def test_assignment_reports_coverage_shortfall(client, session):
     _login_as(client, session, "short-org@example.com", Role.organizer)
     client.post(f"/api/events/{event.id}/rubrics", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
 
+    _attach_judges(session, event)
     r = client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 3})
     assert r.status_code == 201
     warnings = r.json()["coverage_warnings"]
@@ -287,6 +303,7 @@ def test_rubric_cannot_change_once_scoring_has_started(client, session):
     _login_as(client, session, "locked-org@example.com", Role.organizer)
     created = client.post(f"/api/events/{event.id}/rubrics", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
     rubric_id = created.json()["id"]
+    _attach_judges(session, event)
     client.post(f"/api/events/{event.id}/assignments", json={"judges_per_submission": 1})
 
     assignment = session.exec(select(JudgeAssignment).where(JudgeAssignment.judge_id == judge.id)).first()
@@ -308,9 +325,11 @@ def test_rubric_cannot_change_once_scoring_has_started(client, session):
 
 def test_judge_progress_counts_only_their_own_assignments(client, session):
     event = _event(session, "progress")
+    # One person per team: a participant can't be on two teams in one event (PLAN.md 10.2).
     p1 = _user(session, "prog-p@example.com", Role.participant)
+    p2 = _user(session, "prog-p2@example.com", Role.participant)
     s1 = _submitted(session, event, "Team P1", "Prog One", [p1])
-    s2 = _submitted(session, event, "Team P2", "Prog Two", [p1])
+    s2 = _submitted(session, event, "Team P2", "Prog Two", [p2])
     judge_a = _login_as(client, session, "prog-judge-a@example.com", Role.judge)
     judge_b = _user(session, "prog-judge-b@example.com", Role.judge)
 

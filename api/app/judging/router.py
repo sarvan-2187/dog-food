@@ -1,6 +1,5 @@
 """Rubric CRUD, assignment runs, and the judge progress dashboard."""
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .. import crypto
@@ -9,12 +8,13 @@ from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
 from ..events.models import Event
 from ..scoring.models import Score
+from ..storage.lookup import image_url_for
 from ..submissions.models import Submission
 from ..teams.models import TeamMembership
 from ..timeutil import utcnow
 from ..webhooks.service import notify
 from .assignment import assign_judges, coverage_report
-from .models import EventJudge, JudgeAssignment, Rubric
+from .models import EventJudge, JudgeAssignment, JudgeConflict, Rubric
 from .schemas import (
     WEIGHT_SUM_TOLERANCE,
     AssignmentPublic,
@@ -28,24 +28,6 @@ from .schemas import (
 )
 
 router = APIRouter(tags=["judging"])
-
-ORGANIZER = (Role.organizer, Role.admin)
-
-
-def _panel_judges(session: Session, event_id: int) -> list[User]:
-    """The judges enrolled on this event, in a stable order.
-
-    Ordered by id so an assignment run is reproducible: PLAN.md section 8 requires
-    the same inputs to produce the same assignment, and an unordered query gives
-    the algorithm its judges in whatever order the database felt like.
-    """
-    rows = session.exec(select(EventJudge).where(EventJudge.event_id == event_id)).all()
-    if not rows:
-        return []
-    judges = session.exec(
-        select(User).where(User.id.in_([r.judge_id for r in rows]), User.role == Role.judge)
-    ).all()
-    return sorted(judges, key=lambda u: u.id)
 
 
 def _event_or_404(session: Session, event_id: int) -> Event:
@@ -185,9 +167,18 @@ def run_assignment(
     user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> AssignmentSummary:
-    """Idempotent: re-running adds only the pairs that do not exist yet, so an
-    organizer can assign again after late submissions without duplicating work."""
-    _event_or_404(session, event_id)
+    """Idempotent: re-running only fills gaps - each submission is topped up to k
+    judges counting the ones it already has - so an organizer can assign again
+    after late submissions or a removed judge without duplicating work."""
+    event = _event_or_404(session, event_id)
+    # PLAN.md 10.3: judges must score the version that was actually submitted,
+    # so judging can't start while teams can still edit.
+    if utcnow() < event.end_at:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Judging opens when submissions close on {event.end_at.strftime('%d %b %Y at %H:%M UTC')}. "
+            "Close submissions early from Event settings if you need to.",
+        )
     rubrics = _rubrics_for_event(session, event_id)
     if not rubrics:
         raise HTTPException(
@@ -215,32 +206,39 @@ def run_assignment(
             status.HTTP_409_CONFLICT,
             "No submissions have been submitted for this event yet, so there is nothing to assign.",
         )
-    # Phase 10.1: this event's panel, not every judge account on the platform.
-    # Drawing from all of them handed a judge invited for one hackathon the
-    # submissions of every other one running at the same time.
-    judges = _panel_judges(session, event_id)
+    # PLAN.md 10.1: only this event's judges - never every judge on the platform.
+    judges = list(
+        session.exec(
+            select(User)
+            .join(EventJudge, EventJudge.user_id == User.id)
+            .where(EventJudge.event_id == event_id, User.role == Role.judge)
+        )
+    )
     if not judges:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "No judges have been added to this event yet. Invite or add judges to its panel "
-            "before running assignment.",
+            "This event has no judges yet. Invite some, or add existing judges, from the Judges card.",
         )
 
     team_ids = {s.team_id for s in submissions}
     memberships = list(session.exec(select(TeamMembership).where(TeamMembership.team_id.in_(team_ids))))
-
-    proposed = assign_judges(submissions, judges, memberships, k=payload.judges_per_submission)
-
-    existing = {
-        (a.submission_id, a.judge_id)
-        for a in session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id))
+    existing_rows = list(session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id)))
+    declared = {
+        (c.judge_id, c.submission_id)
+        for c in session.exec(select(JudgeConflict).where(JudgeConflict.event_id == event_id))
     }
-    created = 0
+
+    proposed = assign_judges(
+        submissions,
+        judges,
+        memberships,
+        k=payload.judges_per_submission,
+        existing=[(a.submission_id, a.judge_id) for a in existing_rows],
+        extra_conflicts=declared,
+    )
     for assignment in proposed:
-        if (assignment.submission_id, assignment.judge_id) in existing:
-            continue
         session.add(assignment)
-        created += 1
+    created = len(proposed)
     record(
         session,
         "assignments.run",
@@ -254,10 +252,10 @@ def run_assignment(
     notify(session, background_tasks, event_id, "assignments.run", created=created)
 
     titles = {s.id: s.title for s in submissions}
-    shortfall = coverage_report(submissions, proposed, k=payload.judges_per_submission)
+    shortfall = coverage_report(submissions, existing_rows + proposed, k=payload.judges_per_submission)
     return AssignmentSummary(
         created=created,
-        existing=len(proposed) - created,
+        existing=len(existing_rows),
         judges_per_submission=payload.judges_per_submission,
         coverage_warnings=[
             CoverageWarning(submission_id=sid, submission_title=titles.get(sid, ""), judges_short=short)
@@ -316,8 +314,17 @@ def my_progress(
     user: User = Depends(require_role(Role.judge)),
     session: Session = Depends(get_session),
 ) -> JudgeProgress:
-    """A judge sees only their own assignments -- never another judge's."""
-    assignments = list(session.exec(select(JudgeAssignment).where(JudgeAssignment.judge_id == user.id)))
+    """A judge sees only their own assignments -- never another judge's -- and
+    only from events whose judging has opened (PLAN.md 10.3). An assignment
+    made before judging was gated on the deadline would otherwise offer a
+    "Score now" the server refuses; /api/judge/events says when it opens."""
+    assignments = list(
+        session.exec(
+            select(JudgeAssignment)
+            .join(Event, Event.id == JudgeAssignment.event_id)
+            .where(JudgeAssignment.judge_id == user.id, Event.end_at <= utcnow())
+        )
+    )
     rows = _to_public(session, assignments)
     done = [r for r in rows if r.scored]
     return JudgeProgress(completed=len(done), total=len(rows), pending=[r for r in rows if not r.scored], done=done)
@@ -351,6 +358,10 @@ def scoring_sheet(
         submission_title=submission.title or "Untitled submission",
         submission_description=submission.description,
         submission_track=submission.track,
+        submission_image_url=image_url_for(session, "submission", submission.id),
+        repo_url=submission.repo_url,
+        demo_url=submission.demo_url,
+        video_url=submission.video_url,
         rubrics=[RubricGroup(rubric_id=r.id, rubric_name=r.name, criteria=r.criteria) for r in rubrics],
         my_values=mine.values if mine else None,
         my_comment=mine.comment if mine else "",
@@ -407,96 +418,3 @@ def participation_record(
         "issued_at": utcnow().isoformat(),
     }
     return crypto.sign_record(payload)
-
-
-# --------------------------------------------------------------------------
-# Event judge panel (Phase 10.1). Assignment draws from this, so an organizer
-# needs a way to see and edit it. Adding is deliberately restricted to accounts
-# that already hold the judge role: this endpoint composes a panel, it does not
-# grant the role. The only route into the role is still an invitation
-# (judging/invites.py), so this cannot become a privilege-escalation path.
-# --------------------------------------------------------------------------
-
-
-class PanelJudge(BaseModel):
-    judge_id: int
-    name: str
-    email: str
-
-
-class PanelAdd(BaseModel):
-    judge_id: int
-
-
-@router.get("/api/events/{event_id}/judges", response_model=list[PanelJudge])
-def list_panel(
-    event_id: int,
-    _: User = Depends(require_role(*ORGANIZER)),
-    session: Session = Depends(get_session),
-) -> list[PanelJudge]:
-    _event_or_404(session, event_id)
-    return [
-        PanelJudge(judge_id=j.id, name=j.name, email=j.email) for j in _panel_judges(session, event_id)
-    ]
-
-
-@router.post("/api/events/{event_id}/judges", response_model=PanelJudge, status_code=status.HTTP_201_CREATED)
-def add_to_panel(
-    event_id: int,
-    payload: PanelAdd,
-    user: User = Depends(require_role(*ORGANIZER)),
-    session: Session = Depends(get_session),
-) -> PanelJudge:
-    _event_or_404(session, event_id)
-    judge = session.get(User, payload.judge_id)
-    if not judge or judge.role != Role.judge:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            "That account is not a judge. Send them a judge invitation for this event first.",
-        )
-    existing = session.exec(
-        select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.judge_id == judge.id)
-    ).first()
-    if existing:
-        # Idempotent rather than a 409: the caller's intent ("this judge is on the
-        # panel") is already true, and failing here would make a double-click an error.
-        return PanelJudge(judge_id=judge.id, name=judge.name, email=judge.email)
-    session.add(EventJudge(event_id=event_id, judge_id=judge.id, added_by_id=user.id))
-    record(
-        session,
-        "event.judge_added",
-        actor=user,
-        entity_type="event",
-        entity_id=event_id,
-        judge_id=judge.id,
-    )
-    session.commit()
-    return PanelJudge(judge_id=judge.id, name=judge.name, email=judge.email)
-
-
-@router.delete("/api/events/{event_id}/judges/{judge_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_from_panel(
-    event_id: int,
-    judge_id: int,
-    user: User = Depends(require_role(*ORGANIZER)),
-    session: Session = Depends(get_session),
-) -> None:
-    _event_or_404(session, event_id)
-    row = session.exec(
-        select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.judge_id == judge_id)
-    ).first()
-    if not row:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "That judge is not on this event's panel.")
-    # Their existing assignments are left alone on purpose. Deleting scores already
-    # given would silently rewrite results; what happens to unfinished work is the
-    # organizer's call, which is 10.7's reassignment flow, not a side effect of this.
-    session.delete(row)
-    record(
-        session,
-        "event.judge_removed",
-        actor=user,
-        entity_type="event",
-        entity_id=event_id,
-        judge_id=judge_id,
-    )
-    session.commit()

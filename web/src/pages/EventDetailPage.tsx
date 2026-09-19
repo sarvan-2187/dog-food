@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { DeadlineCountdown } from '../components/DeadlineCountdown';
-import { ErrorState, InlineStatus, SkeletonRows } from '../components/feedback';
+import { Announcements, EventRules, JudgingCriteria, WinnersSection } from '../components/EventSections';
+import { EventTimeline, eventPhase } from '../components/EventTimeline';
+import { TeamManager } from '../components/TeamManager';
+import { ErrorState, SkeletonRows } from '../components/feedback';
 import { Button, Card, Input } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
@@ -15,6 +17,16 @@ export function EventDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [myTeam, setMyTeam] = useState<Team | null>(null);
   const [preview, setPreview] = useState<GalleryItem[] | null>(null);
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const isOrganizer = user?.role === 'organizer' || user?.role === 'admin';
+
+  useEffect(() => {
+    if (!isOrganizer) return;
+    api
+      .get<{ email: boolean }>('/api/auth/recovery-options')
+      .then((r) => setEmailEnabled(r.email))
+      .catch(() => setEmailEnabled(false));
+  }, [isOrganizer]);
 
   useEffect(() => {
     api
@@ -59,8 +71,17 @@ export function EventDetailPage() {
       <div>
         <h1 className="text-h1 text-ink-900">{event.name}</h1>
         <p className="mt-2 max-w-prose text-body-lg text-ink-600">{event.description}</p>
+        {event.status === 'draft' && (
+          <div role="status" className="mt-4 rounded-md border border-border bg-warning-bg px-4 py-3 text-body text-warning-fg">
+            This event is a draft - only organizers can see it. Publish it from{' '}
+            <Link to={`/events/${event.slug}/settings`} className="underline underline-offset-2">
+              Event settings
+            </Link>{' '}
+            when it's ready.
+          </div>
+        )}
         <div className="mt-4">
-          <DeadlineCountdown endAt={event.end_at} />
+          <EventTimeline event={event} />
         </div>
         {event.tracks.length > 0 && (
           <p className="mt-3 text-meta text-ink-500">Tracks: {event.tracks.join(', ')}</p>
@@ -76,8 +97,26 @@ export function EventDetailPage() {
         )}
       </div>
 
+      <WinnersSection eventId={event.id} />
+
+      <Announcements eventId={event.id} canPost={isOrganizer} emailEnabled={emailEnabled} />
+
       {user?.role === 'participant' && (
-        <Card title="Your team">{myTeam ? <TeamCard team={myTeam} /> : <TeamFormation eventId={event.id} onTeam={setMyTeam} />}</Card>
+        <Card title="Your team">
+          {myTeam ? (
+            <TeamManager
+              team={myTeam}
+              myId={user.id}
+              locked={eventPhase(event) !== 'open' && eventPhase(event) !== 'upcoming'}
+              onChange={setMyTeam}
+              onLeft={() => setMyTeam(null)}
+            />
+          ) : eventPhase(event) === 'open' || eventPhase(event) === 'upcoming' ? (
+            <TeamFormation eventId={event.id} onTeam={setMyTeam} />
+          ) : (
+            <p className="text-body text-ink-600">Submissions have closed, so new teams can't form.</p>
+          )}
+        </Card>
       )}
 
       {myTeam && (
@@ -112,7 +151,10 @@ export function EventDetailPage() {
         )}
       </Card>
 
-      {(user?.role === 'organizer' || user?.role === 'admin') && (
+      <EventRules event={event} />
+      <JudgingCriteria eventId={event.id} />
+
+      {isOrganizer && (
         <Card title="Organizing this event">
           <div className="flex flex-wrap gap-2">
             <Link to={`/events/${event.slug}/settings`}>
@@ -127,43 +169,6 @@ export function EventDetailPage() {
           </div>
         </Card>
       )}
-    </div>
-  );
-}
-
-function TeamCard({ team }: { team: Team }) {
-  const [copied, setCopied] = useState(false);
-  const inviteUrl = `${window.location.origin}/join/${team.invite_code}`;
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  }
-
-  const full = team.members.length >= team.max_team_size;
-
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-h3 text-ink-800">{team.name}</p>
-      <p className="text-meta text-ink-500">
-        {team.members.length} / {team.max_team_size} members: {team.members.map((m) => m.name).join(', ')}
-      </p>
-      {full ? (
-        <p className="text-meta text-ink-500">This team is full - the invite link is no longer usable.</p>
-      ) : (
-        <div className="flex flex-col gap-2 md:flex-row md:items-end">
-          <Input label="Invite link" readOnly value={inviteUrl} className="flex-1" />
-          <Button variant="secondary" onClick={copy}>
-            {copied ? 'Copied' : 'Copy'}
-          </Button>
-        </div>
-      )}
-      {copied && <InlineStatus state="saved" />}
     </div>
   );
 }

@@ -173,6 +173,30 @@ MATRIX = [
     ("get", "/api/events/{event_id}/export/assignments.csv", None, [Role.participant, Role.judge]),
     ("get", "/api/events/{event_id}/export/scores.csv", None, [Role.participant, Role.judge]),
     ("get", "/api/events/{event_id}/export/results.csv", None, [Role.participant, Role.judge]),
+
+    # --- PLAN.md Phase 9: recovery + email settings -----------------------
+    ("post", "/api/password-resets", {"email": "someone@example.com"}, [Role.participant, Role.judge]),
+    ("get", "/api/admin/email", None, [Role.participant, Role.judge, Role.organizer]),
+    ("post", "/api/admin/email/test", None, [Role.participant, Role.judge, Role.organizer]),
+
+    # --- PLAN.md Phase 10 --------------------------------------------------
+    ("get", "/api/events/{event_id}/judges", None, [Role.participant, Role.judge]),
+    ("post", "/api/events/{event_id}/judges", {"email": "someone@example.com"}, [Role.participant, Role.judge]),
+    ("delete", "/api/events/{event_id}/judges/{judge_id}", None, [Role.participant, Role.judge]),
+    ("post", "/api/events/{event_id}/judges/{judge_id}/remind", None, [Role.participant, Role.judge]),
+    # Another judge declaring a conflict on someone else's assignment is refused too.
+    ("post", "/api/assignments/{assignment_id}/conflict", {"reason": ""},
+     [Role.participant, Role.organizer, Role.admin, Role.judge]),
+    ("get", "/api/events/{event_id}/awards", None, [Role.participant, Role.judge]),
+    ("put", "/api/events/{event_id}/awards", {"prize_rank": "1st Place", "submission_id": None},
+     [Role.participant, Role.judge]),
+    ("post", "/api/events/{event_id}/announcements", {"title": "Hijacked", "body": "x"},
+     [Role.participant, Role.judge]),
+    ("post", "/api/events/{event_id}/publish", None, [Role.participant, Role.judge]),
+    ("post", "/api/events/{event_id}/unpublish", None, [Role.participant, Role.judge]),
+    ("get", "/api/admin/users", None, [Role.participant, Role.judge, Role.organizer]),
+    ("patch", "/api/admin/users/{judge_id}", {"is_active": False}, [Role.participant, Role.judge, Role.organizer]),
+    ("get", "/api/admin/integrity", None, [Role.participant, Role.judge, Role.organizer]),
 ]
 
 
@@ -183,7 +207,12 @@ MATRIX = [
 )
 def test_wrong_role_is_refused(client, session, world, method, url, body, role):
     _become(client, session, role)
-    target = url.format(event_id=world["event"].id, assignment_id=world["assignment"].id, rubric_id=world["rubric"].id)
+    target = url.format(
+        event_id=world["event"].id,
+        assignment_id=world["assignment"].id,
+        rubric_id=world["rubric"].id,
+        judge_id=world["owning_judge"].id,
+    )
     response = _call(client, method, target, body)
     assert response.status_code == 403, f"{method.upper()} {target} as {role.value} -> {response.status_code}"
 
@@ -195,7 +224,12 @@ def test_wrong_role_is_refused(client, session, world, method, url, body, role):
 )
 def test_anonymous_is_refused(client, session, world, method, url, body):
     client.post("/api/auth/logout")
-    target = url.format(event_id=world["event"].id, assignment_id=world["assignment"].id, rubric_id=world["rubric"].id)
+    target = url.format(
+        event_id=world["event"].id,
+        assignment_id=world["assignment"].id,
+        rubric_id=world["rubric"].id,
+        judge_id=world["owning_judge"].id,
+    )
     response = _call(client, method, target, body)
     assert response.status_code == 401, f"{method.upper()} {target} anonymously -> {response.status_code}"
 

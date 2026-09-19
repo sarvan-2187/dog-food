@@ -78,6 +78,9 @@ export function NavBar() {
   if (user?.role === 'judge') {
     links.push({ to: '/judge', label: 'Judging', tour: 'nav-judge' });
   }
+  if (user?.role === 'admin') {
+    links.push({ to: '/admin/users', label: 'Users', tour: 'nav-users' });
+  }
   if (user) {
     links.push({ to: '/profile', label: 'Profile', tour: 'nav-profile' });
   } else {

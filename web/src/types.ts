@@ -39,6 +39,10 @@ export interface EventRecord {
   results_hidden_until: string | null;
   /** Organizer-supplied cover art; null falls back to a bundled photo (lib/event-cover.ts). */
   cover_image_url: string | null;
+  /** PLAN.md 10.12 - drafts are only ever returned to organizers/admins. */
+  status: 'draft' | 'published';
+  /** PLAN.md 10.8 - plain text, rendered as text, never as HTML. */
+  rules: string;
 }
 
 export interface TeamMember {
@@ -54,6 +58,9 @@ export interface Team {
   invite_code: string;
   members: TeamMember[];
   max_team_size: number;
+  /** PLAN.md 10.9 - whoever created the team; may rename, remove, hand over. */
+  captain_id: number | null;
+  invite_code_expires_at: string | null;
 }
 
 export type SubmissionStatus = 'draft' | 'submitted';
@@ -69,6 +76,9 @@ export interface Submission {
   created_at: string;
   updated_at: string;
   image_url: string | null;
+  repo_url: string;
+  demo_url: string;
+  video_url: string;
 }
 
 // --- Phase 2: judging ------------------------------------------------------
@@ -78,6 +88,8 @@ export interface Criterion {
   label: string;
   weight: number;
   max_score: number;
+  /** What the criterion means - shown to judges and entrants (PLAN.md 10.8). */
+  description?: string;
 }
 
 export interface Rubric {
@@ -131,6 +143,10 @@ export interface ScoringSheet {
   submission_title: string;
   submission_description: string;
   submission_track: string;
+  submission_image_url: string | null;
+  repo_url: string;
+  demo_url: string;
+  video_url: string;
   rubrics: RubricGroup[];
   my_values: Record<string, number> | null;
   my_comment: string;
@@ -177,6 +193,11 @@ export interface GalleryItem {
   votes: number | null;
   voted_by_me: boolean;
   image_url: string | null;
+  repo_url: string;
+  demo_url: string;
+  video_url: string;
+  /** Prize labels won - empty until results are visible to the viewer (PLAN.md 10.6). */
+  awards: string[];
 }
 
 export interface VoteResult {
@@ -215,9 +236,8 @@ export interface JudgeInvite {
   redeemed_at: string | null;
   redeemed_by_name: string | null;
   status: JudgeInviteStatus;
-  /** Which event this judge was invited for. Null on pre-Phase-10.1 invitations. */
   event_id: number | null;
-  event_name: string | null;
+  grants_role: 'judge' | 'organizer';
 }
 
 /** Deliberately carries no invitee identity — see the backend's InvitePreview. */
@@ -225,6 +245,8 @@ export interface JudgeInvitePreview {
   valid: boolean;
   reason: string;
   expires_at: string | null;
+  grants_role?: 'judge' | 'organizer';
+  event_name?: string | null;
 }
 
 export interface JudgeInviteRedeemResult {
@@ -234,12 +256,6 @@ export interface JudgeInviteRedeemResult {
   event_name: string | null;
 }
 
-/** A judge on one event's panel (GET /api/events/:id/judges). */
-export interface PanelJudge {
-  judge_id: number;
-  name: string;
-  email: string;
-}
 
 /** Mirrors api/app/audit/router.py's AuditEntry (GET /api/audit, organizer+admin). */
 export interface AuditEntry {
@@ -270,4 +286,152 @@ export interface EventBackup {
   rubrics: { name: string; criteria: unknown[] }[];
   teams: { name: string }[];
   submissions: { team_name: string; title: string; description: string; track: string; status: string }[];
+}
+
+/** Password recovery (PLAN.md Phase 9). */
+export interface ResetPreview {
+  valid: boolean;
+  reason: '' | 'unknown' | 'expired' | 'used';
+  first_name: string | null;
+  email_enabled: boolean;
+}
+
+export interface RedeemResult {
+  user: User;
+  issued_by_name: string | null;
+}
+
+export interface IssuedResetLink {
+  url: string;
+  expires_at: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
+export interface EmailStatus {
+  enabled: boolean;
+  host: string;
+  port: number;
+  security: 'starttls' | 'ssl' | 'none';
+  sender: string;
+  username_set: boolean;
+  base_url: string;
+}
+
+// --- PLAN.md Phase 10 --------------------------------------------------------
+
+export interface JudgeConflictRecord {
+  submission_id: number;
+  submission_title: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface EventJudgeRow {
+  user_id: number;
+  name: string;
+  email: string;
+  assigned: number;
+  scored: number;
+  last_activity: string | null;
+  conflicts: JudgeConflictRecord[];
+}
+
+export interface EventJudges {
+  scored: number;
+  assigned: number;
+  judges: EventJudgeRow[];
+  email_enabled: boolean;
+}
+
+export interface JudgeEvent {
+  event_id: number;
+  name: string;
+  slug: string;
+  end_at: string;
+  judging_open: boolean;
+}
+
+export interface PrizeSlot {
+  prize_rank: string;
+  reward: string;
+  submission_id: number | null;
+  note: string;
+  suggested_submission_id: number | null;
+  track: string | null;
+}
+
+export interface AwardCandidate {
+  submission_id: number;
+  title: string;
+  team_name: string;
+  track: string;
+  rank: number | null;
+}
+
+export interface AwardsView {
+  prizes: PrizeSlot[];
+  results_visible_to_public: boolean;
+  candidates: AwardCandidate[];
+}
+
+export interface Winner {
+  prize_rank: string;
+  reward: string;
+  submission_id: number;
+  title: string;
+  team_name: string;
+  note: string;
+}
+
+export interface WinnersView {
+  visible: boolean;
+  winners: Winner[];
+}
+
+export interface Announcement {
+  id: number;
+  event_id: number;
+  event_name: string;
+  event_slug: string;
+  title: string;
+  body: string;
+  author_name: string;
+  emailed_count: number;
+  created_at: string;
+  updated_at: string;
+  email_queued: number | null;
+}
+
+export interface PublicCriterion {
+  rubric: string;
+  label: string;
+  weight: number;
+  max_score: number;
+  description: string;
+}
+
+export interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  role: Role;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface UserPage {
+  users: AdminUser[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface DuplicateMembership {
+  event_id: number;
+  event_name: string;
+  user_id: number;
+  user_name: string;
+  teams: number;
 }

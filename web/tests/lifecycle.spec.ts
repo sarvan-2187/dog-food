@@ -37,9 +37,9 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   // to /events ("Browse events", "All events"); Playwright matches accessible
   // names by substring unless told otherwise. The nav tab is the one meant here.
   await page.getByRole('link', { name: 'Events', exact: true }).click();
-  await page.getByText('HackFlow Hackathon 2026').click();
+  await page.getByText('HackFlow Hackathon 2026', { exact: true }).click();
   // The deadline is on screen before anything is typed (PLAN.md 4.1).
-  await expect(page.getByText(/remaining|Deadline passed/)).toBeVisible();
+  await expect(page.getByText(/Submissions close in|Starts in|remaining|Deadline passed/).first()).toBeVisible();
 
   // --- form a team ---------------------------------------------------------
   await page.getByRole('button', { name: 'Create a team' }).click();
@@ -73,7 +73,7 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
 
   // --- it shows up in the event's gallery, and search finds it -------------
   await page.getByRole('link', { name: 'Gallery' }).click();
-  await page.getByText('HackFlow Hackathon 2026').click();
+  await page.getByText('HackFlow Hackathon 2026', { exact: true }).click();
   await expect(page.getByText(projectTitle)).toBeVisible();
   await page.getByLabel('Search').fill(projectTitle);
   await expect(page.getByText(projectTitle)).toBeVisible();

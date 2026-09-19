@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { eventCover } from '../lib/event-cover';
-import type { AuditEntry, EventRecord, GalleryItem, JudgeProgress, Team } from '../types';
+import type { Announcement, AuditEntry, EventRecord, GalleryItem, JudgeProgress, Team } from '../types';
 import { Badge, Button, Card, MetricTile, RoleBadge } from '../components/ui';
 import { EmptyState, ErrorState, SkeletonRows } from '../components/feedback';
+import { EmailDeliveryPanel, HelpSignInPanel } from '../components/AccountRecoveryPanels';
 
 /**
  * One /dashboard route, four different landings.
@@ -74,6 +75,8 @@ function ParticipantDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
+      <LatestAnnouncements />
+
       <div className="grid gap-4 sm:grid-cols-3">
         <MetricTile label="Teams you're on" value={teams.data?.length ?? '—'} caption="Across all events" accent />
         <MetricTile label="Open events" value={open.length || '—'} caption="Accepting submissions" />
@@ -232,6 +235,8 @@ function OrganizerDashboard({ userId }: { userId: number }) {
           </ul>
         )}
       </Card>
+
+      <HelpSignInPanel />
     </div>
   );
 }
@@ -292,6 +297,34 @@ function AdminDashboard() {
           )}
         </Card>
       </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <HelpSignInPanel />
+        <EmailDeliveryPanel />
+      </div>
     </div>
+  );
+}
+
+/** PLAN.md 10.11: the latest from every event you're on a team in. */
+function LatestAnnouncements() {
+  const items = useResource<Announcement[]>('/api/announcements/mine', 'Could not load announcements.');
+  if (!items.data || items.data.length === 0) return null;
+  return (
+    <Card title="Announcements">
+      <ul className="flex flex-col divide-y divide-border-subtle">
+        {items.data.map((a) => (
+          <li key={a.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+            <span className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-label text-ink-900">{a.title}</span>
+              <Link to={`/events/${a.event_slug}`} className="text-meta text-brand-500">
+                {a.event_name}
+              </Link>
+            </span>
+            <p className="whitespace-pre-line text-body text-ink-700">{a.body}</p>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
