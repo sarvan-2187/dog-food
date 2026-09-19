@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { CertificateButton } from '../components/CertificateButton';
 import { DeadlineCountdown } from '../components/DeadlineCountdown';
 import { ErrorState, InlineStatus, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import type { SaveState } from '../components/feedback';
@@ -242,15 +243,25 @@ export function SubmissionPage() {
               />
             </div>
           )}
-          <Button
-            variant="primary"
-            loading={submitLoading}
-            loadingLabel="Submitting..."
-            disabled={deadlinePassed}
-            onClick={onFinalSubmit}
-          >
-            {submission.status === 'submitted' ? 'Re-submit' : 'Submit for judging'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="primary"
+              loading={submitLoading}
+              loadingLabel="Submitting..."
+              disabled={deadlinePassed}
+              onClick={onFinalSubmit}
+            >
+              {submission.status === 'submitted' ? 'Re-submit' : 'Submit for judging'}
+            </Button>
+            {/* Only a submitted entry has a certificate to earn; the API still
+                refuses one until results are revealed, and says when that is. */}
+            {submission.status === 'submitted' && submission.id > 0 && (
+              <CertificateButton
+                submissionId={submission.id}
+                onToast={(message, ok) => setToast({ message, ok })}
+              />
+            )}
+          </div>
         </div>
       </Card>
       <ToastRegion>

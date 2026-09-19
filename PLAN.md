@@ -323,7 +323,7 @@ and a shared client fingerprint is recorded in the audit log **without** blockin
 - [ ] Pairwise Mode / Bradley-Terry — not attempted, per its own gate ("only with 10+ hours of confirmed slack"), which this session does not have.
 
 ### UX checklist (if any T4 work touches the UI)
-- [ ] **Gap, disclosed rather than hidden: none of T4's new endpoints have frontend UI yet.** Certificates, bulk export/import, and participation records are all real, tested, working API endpoints — reachable with `curl`/an API client and covered by `api/tests/test_phase4.py` — but there is no button, page, or download link wired up in `web/`. Loading/success/error states therefore don't apply yet because there is no UI surface for them to apply to. This is the honest state, not a claim of completion beyond the backend.
+- [x] **T4 frontend UI** (was a disclosed gap; closed 2026-09-19). Certificates: "Download certificate" on the team's own submission page once submitted, and on the public submission page for organizers/admins (`CertificateButton`). Event backup: "Download event backup" on event settings; "Import an event" on `/events` for organizers/admins (`EventImportPanel` flattens the export's nested `event` into the import payload and pre-fills a free `-copy` slug, since re-importing into the same database otherwise 409s). Signed participation records: one download per event on the judge dashboard, with a pointer to `/api/public-key`; `AssignmentPublic` gained `event_id`/`event_name` to make that possible. Every server refusal (425 before reveal, 403 off-team, 409 duplicate slug) surfaces as its own message in a toast via `api.download`/`ApiError`. Not built: an organizer-side per-judge record list; organizers can still fetch any judge's record via the API.
 
 ---
 
@@ -573,9 +573,9 @@ calls at runtime, registers no service, and needs no account or key — so
 checked after install: it introduces no new vulnerability. `docker-compose.yml` stays at
 exactly `db` + `api`.
 
-### 8.1 — Role-aware guided tour (driver.js)
+### 8.1 — Role-aware guided tour (driver.js) — DONE
 
-- [ ] `web/src/lib/tour.ts` — one step list per role, written for a **layman**: no "rubric
+- [x] `web/src/lib/tour.ts` — one step list per role, written for a **layman**: no "rubric
       weights sum to 1.0", but "the weights have to add up to 100%, and the page tells you
       live whether they do". Participants get find-event → join-team → draft/autosave →
       gallery/voting. Judges get their assigned list → how scoring works → why they cannot
@@ -583,45 +583,76 @@ exactly `db` + `api`.
       explanation is the single most valuable thing to tell a nervous first-time judge, and
       it is the one a support email always ends up having to explain). Organizers get create
       → rubric → invite/assign → results/reveal/export → optional webhooks.
-- [ ] Steps are a per-role **superset filtered at runtime** by whether each selector is
+- [x] Steps are a per-role **superset filtered at runtime** by whether each selector is
       present *and visibly rendered*. This is what lets one definition run from any screen
       without choreographing navigation between steps, and it is why the tour degrades
       rather than breaks: an absent anchor costs one step, not the tour. The visibility half
       of the check matters specifically because the desktop nav stays in the DOM at phone
       widths behind `hidden md:flex` — a presence-only check would spotlight a zero-size box.
-- [ ] Anchor via `data-tour="..."` attributes, never link text or tab order — both are fair
+- [x] Anchor via `data-tour="..."` attributes, never link text or tab order — both are fair
       game to reword later, and a tour that silently stops matching is worse than no tour.
-- [ ] Auto-start once per role per browser, remembered in `localStorage` (**not** a DB
+- [x] Auto-start once per role per browser, remembered in `localStorage` (**not** a DB
       column: this is a per-browser convenience, it must survive nothing, and adding a
       schema change for it would be unjustified). Every read/write wrapped — blocked storage
       in private browsing must degrade to "offer the tour again", never throw.
-- [ ] Replayable on demand from `/profile`, and the tour's own closing step says so.
-- [ ] Popover restyled onto this repo's own tokens in `index.css` (driver.js's stock look is
+- [x] Replayable on demand from `/profile`, and the tour's own closing step says so.
+- [x] Popover restyled onto this repo's own tokens in `index.css` (driver.js's stock look is
       a blue on a system font stack). Keyboard-operable with a visible focus ring, since the
       tour is fully keyboard-driven and PLAN.md's UX bar applies to it like any other screen.
 
-### 8.2 — `USER-MANUAL.md` v1 (illustrated, step-by-step)
+**Found while verifying, and fixed — the suite was passing by luck.** The full Playwright
+suite went green on the first run *with* the tour live, which was not evidence of safety: a
+globally-mounted overlay that appears on a 700ms timer means every spec that logs in is
+racing it, and fast specs simply won the race. That is flakiness by construction, and this
+repo already carries an Open Questions entry about keeping runs deterministic. Fixed
+properly rather than left to timing: `tests/tour-state.ts` pre-seeds the tour's own
+"already seen" flags as Playwright `storageState`, so no spec ever meets the overlay by
+accident. `lifecycle.spec.ts` builds its own context via `browser.newContext()`, which does
+not inherit the `use` block, so it passes the same state explicitly — it would otherwise
+have been the single remaining racing context. **`tests/tour.spec.ts` (5 cases) deliberately
+opts back out** and is the one place the tour is genuinely exercised: first-login appearance,
+dismissal persisting across a reload, replay from `/profile`, judge-vs-organizer step
+divergence, and the negative case that a signed-out visitor is never interrupted.
 
-- [ ] A genuine manual, not a feature tour: written per role, in the order a real person
+### 8.2 — `USER-MANUAL.md` v1 (illustrated, step-by-step) — DONE
+
+- [x] A genuine manual, not a feature tour: written per role, in the order a real person
       hits each screen, with a real screenshot at each step.
-- [ ] Screenshots captured **live against the running stack on fixture data** — the same
+- [x] Screenshots captured **live against the running stack on fixture data** — the same
       non-negotiable rule §1 already applies to `acceptance-report.txt` and the README's
       existing screenshots. No mockups, no hand-drawn diagrams standing in for a real UI.
-- [ ] Stored under `docs/screenshots/manual/`, alongside the existing `docs/screenshots/`.
-- [ ] Covers: signing up, the four seeded logins, participant path (find event → team →
+      18 images, all captured in the same session as the prose describing them.
+- [x] Stored under `docs/screenshots/manual/`, alongside the existing `docs/screenshots/`.
+- [x] Covers: signing up, the four seeded logins, participant path (find event → team →
       invite → draft → submit → gallery), judge path (accept invite → dashboard → score
       form → what normalization does to your scores), organizer path (create → settings →
       rubric → judges → assignment → results/reveal → CSV export → webhooks), plus the
       guided tour itself and a short troubleshooting section.
-- [ ] Linked from `README.md`'s Documentation list so it is discoverable from the front door.
+- [x] Linked from `README.md`'s Documentation list so it is discoverable from the front door.
 
-**Definition of Done — Phase 8 gate:** the tour starts once per role for all four roles and
-is replayable from `/profile`, verified **live in a real browser**, not merely compiled;
-`npm run build` clean; the full existing suite (308) still green, since a component mounted
-globally in `App.tsx` can regress any page; every manual screenshot regenerated from the
-live stack in the same session as the prose describing it; `docker-compose.yml` still
-exactly `db` + `api`; and the phase's tier-neutrality stated plainly in both
-`acceptance-report.txt` and this file rather than quietly implied.
+**A seeded-data gap this phase surfaced and closed.** Writing the manual meant photographing
+what a reader actually sees after `docker compose up` — and the event page had no prizes on
+it. Cause: `seed.py` read `tracks` from the fixture but never `prize_config` or
+`max_team_size`, so Phase 7.1's prize configuration had **no seeded demonstration at all**,
+despite being a named T1 requirement ("configurable dates, tracks and prizes"). A reader
+following the manual, or a judge running the acceptance suite, would have seen an events
+page with tracks and no prizes and reasonably concluded the feature was missing. Fixed by
+reading both fields in `_seed_events` and giving the fixture event three real prizes. No
+schema change — both columns already existed since Phase 7; they were simply never
+populated from fixture data.
+
+**Definition of Done — Phase 8 gate: MET.** Verified live in a real browser, not merely
+compiled: the participant tour ran on 8 steps, the judge tour on 8, the organizer tour on 9,
+each spotlighting its own role's real navigation, and replay from `/profile` correctly
+re-ran with 7 steps there — one fewer, because the `event-list` anchor does not exist on the
+profile page and the runtime filter dropped that step exactly as designed. `npm run build`
+clean. Full suite green and **larger than before**: 215 backend + 9 Vitest + **89** Playwright
+(84 pre-existing, all still passing, + 5 new tour cases) = **313**. `docker-compose.yml`
+unchanged at exactly `db` + `api`; `driver.js` pinned to 1.8.0 with `--save-exact`, adds no
+`npm audit` vulnerability, and makes zero runtime network calls. Tier-neutrality is stated
+plainly in this phase's own header and in `acceptance-report.txt` Addendum 7 — this phase
+scores under Adoptability & Operability (20%), not the tier ladder, and was only appropriate
+because T1–T4 were already finished.
 
 ---
 
