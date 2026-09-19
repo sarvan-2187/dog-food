@@ -3,7 +3,8 @@
 ## Shape: a modular monolith, two runtime containers
 
 Everything runs from `docker compose up`, no manual steps, no `.env` to hand-fill (PLAN.md
-§1). At runtime there are exactly two containers:
+§1). At runtime there are exactly two containers. An optional third, a local Mailpit test
+inbox, is added only by `docker-compose.mail.yml` (see "Password recovery and email"):
 
 ```
 ┌──────────────┐        ┌──────────────────────────────────────────┐
@@ -38,20 +39,33 @@ process keep those guarantees cheap and the whole system simple enough to fully 
 
 ```
 api/app/
-├── main.py         # FastAPI app entry: lifespan (create tables + seed), mounts every
-│                    #   router, then the SPA static mount + catch-all
-├── db.py           # the one engine + get_session() dependency; nothing else builds
-│                    #   its own engine
-├── seed.py         # idempotent fixture seeding, run automatically on every boot
-├── timeutil.py     # utcnow() / ensure_utc() — the only source of "now" in the app
-├── auth/           # User model, Role enum, password hashing, session cookies,
-│                    #   get_current_user(), require_role() — imported everywhere else
-├── events/         # Event model + CRUD
-├── teams/          # Team + TeamMembership, invite-link create/redeem
-├── submissions/     # Submission model, autosave PATCH, deadline enforcement, gallery
-├── judging/         # Rubric + JudgeAssignment models, the assignment algorithm
-├── scoring/         # Score model, normalization pipeline, CSV export
-├── voting/          # Vote + Comment models, rate limiting, duplicate detection
+├── main.py          # FastAPI app entry: lifespan (schema + upgrades + seed), mounts
+│                     #   every router, then the SPA static mount + catch-all
+├── db.py            # the one engine + get_session(); create_db_and_tables() also runs
+│                     #   add_missing_columns(), add_guarded_indexes(), run_backfills()
+├── seed.py          # idempotent fixture seeding, run automatically on every boot
+├── timeutil.py      # utcnow() / ensure_utc() — the only source of "now" in the app
+├── ratelimit.py     # the in-process token bucket, and every limiter the app uses
+├── crypto.py        # the Ed25519 signing key (participation records, webhook payloads)
+├── auth/            # User model, Role enum, password hashing, versioned session cookies,
+│   │                 #   get_current_user(), require_role() — imported everywhere else
+│   ├── recovery.py   #   reset links (emailed / organizer-issued / CLI), admin email card
+│   ├── mailer.py     #   opt-in SMTP over stdlib smtplib; off unless SMTP_HOST is set
+│   ├── admin_users.py #  admin user management: roles, deactivation, integrity warning
+│   └── reset_link.py #   break-glass CLI: python -m app.auth.reset_link <email>
+├── events/          # Event model + CRUD, draft/publish, public criteria
+│   └── announcements.py # organizer announcements (page, dashboards, email, webhook)
+├── teams/           # Team + TeamMembership, invites, one-team-per-event, captain actions
+├── submissions/     # Submission model, autosave PATCH, links, deadline enforcement,
+│                     #   gallery
+├── judging/         # Rubric, JudgeAssignment, JudgeInvite, EventJudge, JudgeConflict,
+│   │                 #   the assignment algorithm
+│   └── event_judges.py # an event's judge panel, progress, removal, reminders, conflicts
+├── scoring/         # Score model, normalization pipeline, CSV export, backup, certificates
+│   └── awards.py     #   winners: suggestions from the standings, reveal-gated publishing
+├── voting/          # Vote + Comment models, duplicate detection
+├── storage/         # StorageService + LocalStorage for uploaded images
+├── webhooks/        # opt-in signed outbound webhooks
 └── audit/           # append-only log writer + query endpoint
 ```
 
@@ -75,6 +89,11 @@ web/src/
 ├── components/
 │   ├── ui/         # Button, Input, Card, Badge — built once in Phase 0, before any
 │   │                #   feature page existed
+│   ├── EventTimeline.tsx  # event phase (Upcoming/Open/Judging/Results) + countdown
+│   ├── EventSections.tsx  # rules, public criteria, winners, announcements, project links
+│   ├── TeamManager.tsx    # leave / rename / remove / captaincy / new invite link
+│   ├── JudgePanelCard.tsx # an event's judges and their progress (organizer view)
+│   └── AccountRecoveryPanels.tsx # "Help someone sign in" + admin "Email delivery"
 │   ├── feedback/    # Toast, Skeleton, EmptyState, ErrorState, InlineStatus — the
 │   │                #   loading/empty/error states every screen reuses
 │   ├── auth/        # RequireAuth / RequireRole route guards
@@ -95,10 +114,19 @@ Phase 5 audit specifically checks for.
 ## Auth: server-side sessions, not a token the client can forge
 
 Registration and login set an `itsdangerous`-signed, `httponly`, `samesite=lax` cookie
-carrying the user id; `get_current_user()` reads and verifies it on every request that
-needs identity. There is no JWT, no client-side role claim to trust — every role check
-happens against the `role` column read fresh from the database on that request. Passwords
-are hashed with `passlib[bcrypt]`; `password_hash` is never part of any response schema.
+carrying the user id and the account's `session_version`. `get_current_user()` reads and
+verifies it on every request that needs identity, and refuses it if the version is stale
+or the account is deactivated. There is no JWT, no client-side role claim to trust —
+every role check happens against the `role` column read fresh from the database on that
+request. Passwords are hashed with `passlib[bcrypt]`; `password_hash` is never part of any
+response schema.
+
+Login counts **failed** attempts only: 10 per account and 30 per IP per 15 minutes
+(`app/ratelimit.py`). Both buckets are checked *before* the password, so once an account
+or address is throttled, even a correct guess is refused. Otherwise someone trying one
+password across many accounts could ignore the 429s. An unknown email still runs bcrypt
+against a dummy hash, so response time doesn't reveal which emails are registered. A
+successful login clears that account's count.
 
 ## Deployment / no-network-calls constraint
 
@@ -160,11 +188,60 @@ startup only when `information_schema` says the column is absent. That replaces
 `ADD COLUMN IF NOT EXISTS` on its own still takes an exclusive table lock on every boot,
 which hung the test suite when it was tried.
 
+## Many events, one platform (Phase 10)
+
+Phases 0–8 ran *an* event correctly. Running dozens exposed rules that only break once
+several events exist, and those are now enforced in the API, not the UI:
+
+- **Judges belong to events.** Assignment draws only from the event's `event_judges`
+  panel. A judge invitation carries an `event_id`, and redeeming it enrols the judge on
+  that panel only. Organizers can also add an existing judge by email; that requires an
+  account that already has the judge role, so it isn't a second way into the role.
+- **One team per person per event.** Checked in `create_team`/`join_team`, and held by a
+  unique index on `team_memberships(event_id, user_id)`. `event_id` is stamped onto each
+  membership by a SQLAlchemy `before_insert` listener, so no caller can forget it.
+- **Judging opens only when submissions close.** Assignment and scoring are refused
+  before `end_at`, and a judge's list only includes events whose judging is open. Every
+  score is therefore of the version that was actually submitted.
+- **Gap-filling assignment.** Existing assignments count toward each submission's `k` and
+  each judge's load, and declared conflicts (`judge_conflicts`) join the same-team
+  conflict set. Removing a judge and re-running tops submissions back up to `k`, never
+  past it. See JUDGING.md.
+- **Drafts.** New and imported events start as `status = "draft"`. They're left out of
+  lists and the gallery, and return 404 (not 403) to anyone but organizers.
+- **Winners** (`scoring/awards.py`) are suggested from the normalised standings, confirmed
+  by the organizer, and withheld through the same `may_see_results` gate as the
+  standings.
+
+The event phase shown in the UI (Upcoming / Open / Judging / Results) is computed in the
+browser from the same `start_at` / `end_at` / `results_hidden_until` the server enforces,
+so the page and the API can't disagree.
+
+## Upgrading an existing database without a migration tool
+
+There is still no migration framework. `create_all()` creates missing tables, and three
+idempotent steps run after it on every boot (`api/app/db.py`):
+
+1. **`add_missing_columns()`** adds each new column on an existing table, but only after
+   `information_schema` confirms it's absent. `ADD COLUMN IF NOT EXISTS` alone takes an
+   exclusive table lock every boot, and that hung the test suite behind an open
+   transaction.
+2. **`add_guarded_indexes()`** creates the one-team-per-event unique index only when the
+   existing data already satisfies it. A volume with duplicates from before the rule
+   still boots: the duplicates are logged, and the admin **Users** page lists them until
+   they're resolved.
+3. **`run_backfills()`** fills new columns for old rows: membership event ids, team
+   captains, and event-judge panels built from existing assignments.
+
+The result: `docker compose up` on an old volume upgrades it in place, and
+`docker compose down -v` is only for wanting a clean slate.
+
 ## Outbound webhooks: fire-and-forget, signed, opt-in
 
 An organizer can subscribe an event to a URL (`WebhookSubscription`, DATA-MODEL.md) for
-four topics: `submission.submitted`, `assignments.run`, `score.submitted`, and
-`event.results_revealed`. `webhooks/service.py`'s `notify()` looks up that event's active
+five topics: `submission.submitted`, `assignments.run`, `score.submitted`,
+`event.results_revealed`, and `announcement.posted`, so organizer announcements reach a
+Discord or Slack channel automatically. `webhooks/service.py`'s `notify()` looks up that event's active
 subscriptions and, for each one, schedules delivery via FastAPI `BackgroundTasks` so the
 triggering request (a submission, an assignment run, a score, a results read) never waits
 on a third party's server. Delivery is single-attempt with no retry queue — a deliberate
@@ -184,6 +261,12 @@ results being *publicly* visible so an organizer's own early access can't trigge
 - **Frontend unit** (`web/src/**/*.test.ts(x)`, Vitest): pure functions and small
   components, mocking `fetch` rather than hitting a real backend.
 - **Browser end-to-end** (`web/tests/*.spec.ts`, Playwright): runs against the actual
-  `docker compose` stack on `localhost:8000`, the same way a judge would use it — no
-  mocks, real Postgres, real cookies. `lifecycle.spec.ts` is deliberately the rehearsed
-  path a demo video narrates.
+  `docker compose` stack on `localhost:8000` (or `BASE_URL`), the same way a judge would
+  use it — no mocks, real Postgres, real cookies. `lifecycle.spec.ts` is deliberately the
+  rehearsed path a demo video narrates. `phase10.spec.ts` and `recovery.spec.ts` register
+  their own accounts and restore any shared state they change, so specs can run in
+  parallel and be repeated. The emailed reset flow reads the Mailpit inbox's local API,
+  and skips itself when that inbox isn't running.
+- **Email in tests.** The backend suite replaces `smtplib.SMTP` with a fake that records
+  messages. Its "email off" fixture makes any SMTP connection attempt fail the test, which
+  is how the zero-outbound-calls default is asserted rather than assumed.

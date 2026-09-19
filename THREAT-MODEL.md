@@ -1,8 +1,9 @@
 # THREAT-MODEL.md — HackFlow
 
 Bonus challenge (PLAN.md Phase 4): each attack paired with the mitigation
-already built, not new work — this is a write-up of what Phases 0–4 already
-enforce, cross-checked against the code that enforces it.
+already built, not new work — a write-up of what the platform already enforces,
+cross-checked against the code that enforces it. Entries 1–11 cover Phases 0–4,
+12–16 account recovery (Phase 9), and 17–24 the multi-event audit (Phase 10).
 
 | # | Attack | Mitigation already built | Where |
 |---|--------|---------------------------|-------|

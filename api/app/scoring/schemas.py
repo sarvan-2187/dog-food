@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, field_validator
 
+from ..submissions.schemas import safe_link
+
 
 class ScoreWrite(BaseModel):
     """`values` maps criterion key -> raw value. Completeness and range are
@@ -57,6 +59,16 @@ class SubmissionImport(BaseModel):
     description: str = ""
     track: str = ""
     status: str = "draft"
+    # PLAN.md 10.5 - a backup file is untrusted input, so links get the same
+    # http(s)-only rule as the submission form.
+    repo_url: str = ""
+    demo_url: str = ""
+    video_url: str = ""
+
+    @field_validator("repo_url", "demo_url", "video_url")
+    @classmethod
+    def link(cls, v: str) -> str:
+        return safe_link(v) or ""
 
 
 class TeamImport(BaseModel):
@@ -73,6 +85,7 @@ class EventImportPayload(BaseModel):
     prize_config: Dict[str, Any] = {}
     voting_enabled: bool = False
     results_hidden_until: Optional[str] = None
+    rules: str = ""
     rubrics: List[RubricImport] = []
     teams: List[TeamImport] = []
     submissions: List[SubmissionImport] = []
