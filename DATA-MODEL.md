@@ -22,6 +22,21 @@ exist — a schema change means a fresh `docker compose down -v` in development.
 | `role` | enum | `participant` \| `judge` \| `organizer` \| `admin`. Public registration always creates `participant`; the other three roles exist only via `fixtures/users.json` seeding |
 | `avatar_url` | str, nullable | Set via the `stored_files` upload flow below; `null` until the user uploads one |
 | `created_at` | timestamptz | |
+| `session_version` | int, default 0 | Signed into every session cookie; incremented on each password change or reset, which invalidates every older cookie at once (PLAN.md Phase 9.1). Added to existing volumes at boot by `db.add_missing_columns()` |
+
+### `password_resets` (`api/app/auth/models.py`)
+
+One row per reset link, whichever way it was issued (PLAN.md Phase 9).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `user_id` | int, FK → `users.id` | The account the link resets |
+| `token_hash` | str, unique | SHA-256 hex of the token. The raw token exists only in the email, the organizer's one-time response, or the CLI's output — never in the database |
+| `channel` | enum | `email` (self-service, 30 min) \| `organizer` (hand-delivered, 60 min) \| `cli` (break-glass, 60 min) |
+| `issued_by_id` | int, FK → `users.id`, nullable | The organizer/admin who issued it; `null` for `email` and `cli` |
+| `created_at`, `expires_at` | timestamptz | Issuing a new link sets any earlier unused link's `expires_at` to now |
+| `used_at` | timestamptz, nullable | Set on redeem; a link with `used_at` set is dead. Previewing a link never sets it |
 
 ### `events` (`api/app/events/models.py`)
 

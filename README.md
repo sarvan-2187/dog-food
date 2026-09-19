@@ -59,6 +59,44 @@ docker compose down -v
 docker compose up --build
 ```
 
+## Email (optional) — self-service password resets
+
+Out of the box HackFlow sends no email and makes **zero** outbound network calls. Anyone who
+forgets their password gets a one-time reset link from an organizer (**Dashboard → Help
+someone sign in**).
+
+Point it at your own mail server and resets become fully self-service: **Forgot password?**
+on the login page emails a link that works once and expires in 30 minutes. It uses plain
+SMTP via Python's standard library — no email SDK, no hosted service.
+
+**Try it locally, with no internet:** a bundled test inbox catches every email.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mail.yml up
+```
+
+The app runs at `http://localhost:8000` as usual. Emails appear at **`http://localhost:8025`**.
+
+**Real delivery:** copy `.env.example` to `.env` (git ignores it), fill it in, then
+`docker compose up -d api`.
+
+| Setting | Gmail / Workspace | Outlook / Microsoft 365 |
+|---|---|---|
+| `SMTP_HOST` | `smtp.gmail.com` | `smtp.office365.com` |
+| `SMTP_PORT` | `587` | `587` |
+| `SMTP_SECURITY` | `starttls` | `starttls` |
+| `SMTP_USERNAME` | your address | your address |
+| `SMTP_PASSWORD` | an *app password* (needs 2-step verification) | an *app password* |
+| `SMTP_FROM` | `HackFlow <you@your-domain>` | same |
+| `APP_BASE_URL` | the URL people use to reach HackFlow (default `http://localhost:8000`) | same |
+
+Then sign in as an admin and press **Send test email** on the dashboard's **Email delivery**
+card — it reports the mail server's answer in plain language. Delivery itself is up to your
+provider: a brand-new sending address can land in spam until the domain has SPF/DKIM set up.
+
+**Locked-out admin?** `docker compose exec api python -m app.auth.reset_link you@example.com`
+prints a one-time reset link for any account.
+
 ## What's here
 
 - **Event lifecycle** — organizer/admin create and later edit an event's dates, tracks,

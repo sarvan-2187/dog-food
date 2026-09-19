@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, field_validator
 
 
@@ -17,6 +19,14 @@ class TeamJoin(BaseModel):
     invite_code: str
 
 
+class TeamRename(TeamCreate):
+    """Same 3-40 character rule as creation (PLAN.md 10.9)."""
+
+
+class CaptainChange(BaseModel):
+    user_id: int
+
+
 class TeamMemberPublic(BaseModel):
     id: int
     name: str
@@ -30,3 +40,6 @@ class TeamPublic(BaseModel):
     invite_code: str
     members: list[TeamMemberPublic]
     max_team_size: int
+    captain_id: int | None = None
+    invite_code_expires_at: datetime | None = None
+

@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ImageUpload } from '../components/ImageUpload';
+import { PasswordField } from '../components/auth/PasswordField';
 import { Button, Card, RoleBadge } from '../components/ui';
+import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { runTour } from '../lib/tour';
 
@@ -68,6 +71,93 @@ export function ProfilePage() {
           </div>
         </div>
       </Card>
+
+      <div className="mt-6">
+        <ChangePasswordCard />
+      </div>
     </div>
+  );
+}
+
+/**
+ * PLAN.md Phase 9.5. Changing the password bumps the account's session
+ * version on the server, which signs out every other device; this one gets a
+ * fresh cookie in the same response, so nothing here needs to re-login.
+ */
+function ChangePasswordCard() {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [currentError, setCurrentError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const nextError = touched && next.length < 8 ? 'Use at least 8 characters.' : undefined;
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setTouched(true);
+    setSaved(false);
+    setCurrentError(null);
+    setError(null);
+    if (!current || next.length < 8) {
+      if (!current) setCurrentError('Enter your current password.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post('/api/auth/password', { current_password: current, new_password: next });
+      setCurrent('');
+      setNext('');
+      setTouched(false);
+      setSaved(true);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Could not change your password. Please try again.';
+      // A wrong current password belongs next to that field, not in a toast.
+      if (err instanceof ApiError && err.status === 400) setCurrentError(message);
+      else setError(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card title="Change password">
+      <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
+        <p className="text-body text-ink-600">This signs you out on every other device.</p>
+        <PasswordField
+          label="Current password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          error={currentError ?? undefined}
+        />
+        <PasswordField
+          label="New password"
+          autoComplete="new-password"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+          onBlur={() => next && setTouched(true)}
+          error={nextError}
+          hint="At least 8 characters."
+        />
+        {error && (
+          <p role="alert" className="text-meta text-danger-fg">
+            {error}
+          </p>
+        )}
+        {saved && (
+          <p role="status" className="text-meta text-success-fg">
+            Password changed. Every other device has been signed out.
+          </p>
+        )}
+        <div>
+          <Button type="submit" variant="primary" loading={saving} loadingLabel="Saving...">
+            Change password
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }

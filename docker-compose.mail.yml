@@ -1,0 +1,27 @@
+# Optional local test inbox for password-reset email (PLAN.md Phase 9.3).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mail.yml up
+#
+# Adds Mailpit, which catches every email HackFlow sends and shows it in a
+# browser inbox at http://localhost:8025. Nothing leaves this machine, so the
+# whole "Forgot password?" flow can be tried with the network unplugged.
+# A plain `docker compose up` never starts this file.
+services:
+  mailpit:
+    container_name: hackflow-mailpit
+    image: axllent/mailpit:v1.31.1
+    environment:
+      # Keep Mailpit itself offline too - no "is there a newer version?" call.
+      MP_DISABLE_VERSION_CHECK: "true"
+    ports:
+      - "8025:8025"
+
+  api:
+    environment:
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_SECURITY: none
+      SMTP_FROM: HackFlow <hackflow@localhost>
+    depends_on:
+      mailpit:
+        condition: service_started

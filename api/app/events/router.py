@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..audit.log import record
-from ..auth import Role, User, require_role
+from ..auth import Role, User, get_current_user_optional, require_role
 from ..db import get_session
 from ..submissions.models import Submission
 from ..teams.models import Team
+from ..judging.models import Rubric
 from .models import Event
 from .schemas import EventCreate, EventUpdate
 
@@ -20,7 +22,9 @@ def create_event(
 ) -> Event:
     if session.exec(select(Event).where(Event.slug == payload.slug)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "An event with this slug already exists.")
-    event = Event(**payload.model_dump(), created_by_id=user.id)
+    # PLAN.md 10.12: new events start as drafts, visible only to organizers
+    # until they're published.
+    event = Event(**payload.model_dump(), created_by_id=user.id, status="draft")
     session.add(event)
     session.flush()
     record(session, "event.created", actor=user, entity_type="event", entity_id=event.id, slug=event.slug)
@@ -29,27 +33,118 @@ def create_event(
     return event
 
 
-@router.get("", response_model=list[Event])
-def list_events(session: Session = Depends(get_session)) -> list[Event]:
-    return list(session.exec(select(Event).order_by(Event.start_at)))
+def _can_see_drafts(user: "User | None") -> bool:
+    return user is not None and user.role in (Role.organizer, Role.admin)
 
 
-@router.get("/id/{event_id}", response_model=Event)
-def get_event_by_id(event_id: int, session: Session = Depends(get_session)) -> Event:
-    """By id, for screens that hold an event_id rather than a slug -- the
-    submission page needs the deadline and only knows its team's event_id.
-    Declared before /{slug} so the literal segment wins."""
-    event = session.get(Event, event_id)
-    if not event:
+def visible_or_404(event: "Event | None", user: "User | None") -> Event:
+    """A draft is 404, not 403, to everyone but organizers, so its existence
+    doesn't leak (PLAN.md 10.12)."""
+    if event is None or (event.status != "published" and not _can_see_drafts(user)):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
     return event
 
 
+@router.get("", response_model=list[Event])
+def list_events(
+    user: "User | None" = Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+) -> list[Event]:
+    stmt = select(Event).order_by(Event.start_at)
+    if not _can_see_drafts(user):
+        stmt = stmt.where(Event.status == "published")
+    return list(session.exec(stmt))
+
+
+@router.get("/id/{event_id}", response_model=Event)
+def get_event_by_id(
+    event_id: int,
+    user: "User | None" = Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+) -> Event:
+    """By id, for screens that hold an event_id rather than a slug -- the
+    submission page needs the deadline and only knows its team's event_id.
+    Declared before /{slug} so the literal segment wins."""
+    return visible_or_404(session.get(Event, event_id), user)
+
+
 @router.get("/{slug}", response_model=Event)
-def get_event(slug: str, session: Session = Depends(get_session)) -> Event:
-    event = session.exec(select(Event).where(Event.slug == slug)).first()
+def get_event(
+    slug: str,
+    user: "User | None" = Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+) -> Event:
+    return visible_or_404(session.exec(select(Event).where(Event.slug == slug)).first(), user)
+
+
+class CriterionPublic(BaseModel):
+    rubric: str
+    label: str
+    weight: float
+    max_score: float
+    description: str = ""
+
+
+@router.get("/{event_id}/criteria", response_model=list[CriterionPublic])
+def public_criteria(
+    event_id: int,
+    user: "User | None" = Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+) -> list[CriterionPublic]:
+    """What projects are judged on - names, weights and descriptions, never a
+    score (PLAN.md 10.8). Public, because entrants should know the rules."""
+    visible_or_404(session.get(Event, event_id), user)
+    return [
+        CriterionPublic(
+            rubric=rubric.name,
+            label=c["label"],
+            weight=c["weight"],
+            max_score=c.get("max_score", 10),
+            description=c.get("description", ""),
+        )
+        for rubric in session.exec(select(Rubric).where(Rubric.event_id == event_id).order_by(Rubric.id))
+        for c in rubric.criteria
+    ]
+
+
+@router.post("/{event_id}/publish", response_model=Event)
+def publish_event(
+    event_id: int,
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
+    session: Session = Depends(get_session),
+) -> Event:
+    event = session.get(Event, event_id)
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
+    event.status = "published"
+    session.add(event)
+    record(session, "event.published", actor=user, entity_type="event", entity_id=event.id)
+    session.commit()
+    session.refresh(event)
+    return event
+
+
+@router.post("/{event_id}/unpublish", response_model=Event)
+def unpublish_event(
+    event_id: int,
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
+    session: Session = Depends(get_session),
+) -> Event:
+    """Only while nobody has joined: hiding an event with teams would strand them."""
+    event = session.get(Event, event_id)
+    if not event:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
+    teams = len(session.exec(select(Team).where(Team.event_id == event_id)).all())
+    if teams:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{teams} team(s) have already joined, so this event can't go back to being a draft.",
+        )
+    event.status = "draft"
+    session.add(event)
+    record(session, "event.unpublished", actor=user, entity_type="event", entity_id=event.id)
+    session.commit()
+    session.refresh(event)
     return event
 
 

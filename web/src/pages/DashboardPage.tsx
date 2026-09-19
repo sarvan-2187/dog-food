@@ -6,6 +6,7 @@ import { eventCover } from '../lib/event-cover';
 import type { AuditEntry, EventRecord, GalleryItem, JudgeProgress, Team } from '../types';
 import { Badge, Button, Card, MetricTile, RoleBadge } from '../components/ui';
 import { EmptyState, ErrorState, SkeletonRows } from '../components/feedback';
+import { EmailDeliveryPanel, HelpSignInPanel } from '../components/AccountRecoveryPanels';
 
 /**
  * One /dashboard route, four different landings.
@@ -135,6 +136,11 @@ function ParticipantDashboard() {
           )}
         </Card>
       </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <HelpSignInPanel />
+        <EmailDeliveryPanel />
+      </div>
     </div>
   );
 }
@@ -232,6 +238,8 @@ function OrganizerDashboard({ userId }: { userId: number }) {
           </ul>
         )}
       </Card>
+
+      <HelpSignInPanel />
     </div>
   );
 }

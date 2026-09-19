@@ -8,12 +8,13 @@ from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
 from ..events.models import Event
 from ..scoring.models import Score
+from ..storage.lookup import image_url_for
 from ..submissions.models import Submission
 from ..teams.models import TeamMembership
 from ..timeutil import utcnow
 from ..webhooks.service import notify
 from .assignment import assign_judges, coverage_report
-from .models import JudgeAssignment, Rubric
+from .models import EventJudge, JudgeAssignment, JudgeConflict, Rubric
 from .schemas import (
     WEIGHT_SUM_TOLERANCE,
     AssignmentPublic,
@@ -166,9 +167,18 @@ def run_assignment(
     user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> AssignmentSummary:
-    """Idempotent: re-running adds only the pairs that do not exist yet, so an
-    organizer can assign again after late submissions without duplicating work."""
-    _event_or_404(session, event_id)
+    """Idempotent: re-running only fills gaps - each submission is topped up to k
+    judges counting the ones it already has - so an organizer can assign again
+    after late submissions or a removed judge without duplicating work."""
+    event = _event_or_404(session, event_id)
+    # PLAN.md 10.3: judges must score the version that was actually submitted,
+    # so judging can't start while teams can still edit.
+    if utcnow() < event.end_at:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Judging opens when submissions close on {event.end_at.strftime('%d %b %Y at %H:%M UTC')}. "
+            "Close submissions early from Event settings if you need to.",
+        )
     rubrics = _rubrics_for_event(session, event_id)
     if not rubrics:
         raise HTTPException(
@@ -196,25 +206,39 @@ def run_assignment(
             status.HTTP_409_CONFLICT,
             "No submissions have been submitted for this event yet, so there is nothing to assign.",
         )
-    judges = list(session.exec(select(User).where(User.role == Role.judge)))
+    # PLAN.md 10.1: only this event's judges - never every judge on the platform.
+    judges = list(
+        session.exec(
+            select(User)
+            .join(EventJudge, EventJudge.user_id == User.id)
+            .where(EventJudge.event_id == event_id, User.role == Role.judge)
+        )
+    )
     if not judges:
-        raise HTTPException(status.HTTP_409_CONFLICT, "There are no judge accounts to assign.")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This event has no judges yet. Invite some, or add existing judges, from the Judges card.",
+        )
 
     team_ids = {s.team_id for s in submissions}
     memberships = list(session.exec(select(TeamMembership).where(TeamMembership.team_id.in_(team_ids))))
-
-    proposed = assign_judges(submissions, judges, memberships, k=payload.judges_per_submission)
-
-    existing = {
-        (a.submission_id, a.judge_id)
-        for a in session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id))
+    existing_rows = list(session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id)))
+    declared = {
+        (c.judge_id, c.submission_id)
+        for c in session.exec(select(JudgeConflict).where(JudgeConflict.event_id == event_id))
     }
-    created = 0
+
+    proposed = assign_judges(
+        submissions,
+        judges,
+        memberships,
+        k=payload.judges_per_submission,
+        existing=[(a.submission_id, a.judge_id) for a in existing_rows],
+        extra_conflicts=declared,
+    )
     for assignment in proposed:
-        if (assignment.submission_id, assignment.judge_id) in existing:
-            continue
         session.add(assignment)
-        created += 1
+    created = len(proposed)
     record(
         session,
         "assignments.run",
@@ -228,10 +252,10 @@ def run_assignment(
     notify(session, background_tasks, event_id, "assignments.run", created=created)
 
     titles = {s.id: s.title for s in submissions}
-    shortfall = coverage_report(submissions, proposed, k=payload.judges_per_submission)
+    shortfall = coverage_report(submissions, existing_rows + proposed, k=payload.judges_per_submission)
     return AssignmentSummary(
         created=created,
-        existing=len(proposed) - created,
+        existing=len(existing_rows),
         judges_per_submission=payload.judges_per_submission,
         coverage_warnings=[
             CoverageWarning(submission_id=sid, submission_title=titles.get(sid, ""), judges_short=short)
@@ -325,6 +349,10 @@ def scoring_sheet(
         submission_title=submission.title or "Untitled submission",
         submission_description=submission.description,
         submission_track=submission.track,
+        submission_image_url=image_url_for(session, "submission", submission.id),
+        repo_url=submission.repo_url,
+        demo_url=submission.demo_url,
+        video_url=submission.video_url,
         rubrics=[RubricGroup(rubric_id=r.id, rubric_name=r.name, criteria=r.criteria) for r in rubrics],
         my_values=mine.values if mine else None,
         my_comment=mine.comment if mine else "",

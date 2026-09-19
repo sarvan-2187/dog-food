@@ -107,6 +107,14 @@ const JUDGE: TourStep[] = [
   OUTRO,
 ];
 
+// PLAN.md Phase 9.4: shown on the dashboard, where the card lives.
+const HELP_SIGN_IN: TourStep = {
+  selector: '[data-tour="help-sign-in"]',
+  title: "When someone can't sign in",
+  description:
+    "If a participant or judge is locked out and the email reset isn't an option, type their email here to get a one-time reset link to send them. It works once, for an hour.",
+};
+
 const ORGANIZER: TourStep[] = [
   INTRO,
   {
@@ -141,6 +149,7 @@ const ORGANIZER: TourStep[] = [
     description:
       "Each event's settings page can also post a signed notification to a web address of yours whenever something happens — a project is submitted, judging is assigned, a score lands, results go live. Useful for wiring HackFlow into a Discord or Slack channel. Entirely optional.",
   },
+  HELP_SIGN_IN,
   {
     selector: '[data-tour="nav-profile"]',
     title: 'Your account',
@@ -149,11 +158,23 @@ const ORGANIZER: TourStep[] = [
   OUTRO,
 ];
 
+// Admins get the organizer tour plus the one card only they can see.
+const ADMIN: TourStep[] = [
+  ...ORGANIZER.slice(0, ORGANIZER.indexOf(HELP_SIGN_IN) + 1),
+  {
+    selector: '[data-tour="email-delivery"]',
+    title: 'Password reset emails',
+    description:
+      'Off by default, so HackFlow makes no outbound connections. Point it at your own mail server and people who forget their password can reset it themselves by email. <b>Send test email</b> confirms the settings work before anyone needs them.',
+  },
+  ...ORGANIZER.slice(ORGANIZER.indexOf(HELP_SIGN_IN) + 1),
+];
+
 const TOURS: Record<Role, TourStep[]> = {
   participant: PARTICIPANT,
   judge: JUDGE,
   organizer: ORGANIZER,
-  admin: ORGANIZER,
+  admin: ADMIN,
 };
 
 const seenKey = (role: Role) => `hackflow.tour.seen.${role}`;

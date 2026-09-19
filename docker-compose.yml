@@ -27,6 +27,16 @@ services:
       STATIC_DIR: /app/static
       KEYS_DIR: /app/keys
       UPLOAD_DIR: /app/uploads
+      # Optional password-reset email (PLAN.md Phase 9.3). All empty by
+      # default: email stays off and the app makes zero outbound calls. Set
+      # them in a .env file next to this one (see .env.example) - never here.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURITY: ${SMTP_SECURITY:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-}
     ports:
       - "8000:8000"
     volumes:
