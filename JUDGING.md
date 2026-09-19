@@ -55,9 +55,31 @@ assign_judges(submissions, judges, team_memberships, k) -> list[JudgeAssignment]
 3. **Deliberately greedy, not a max-flow solver.** If there aren't enough eligible judges
    to reach `k` for every submission, the shortfall is reported via `coverage_report()`
    rather than silently relaxing the conflict rule or leaving it undiscoverable.
-4. **Idempotent.** Re-running the assignment for an event that already has assignments
-   does not create duplicates — the unique constraint on `(submission_id, judge_id)` is
-   the hard guard, and the endpoint reports that nothing was left to do.
+4. **Idempotent, and it only fills gaps.** Re-running the assignment for an event that
+   already has assignments does not create duplicates — the unique constraint on
+   `(submission_id, judge_id)` is the hard guard, and the endpoint reports that nothing was
+   left to do. Since Phase 10.7, existing assignments count toward each submission's `k`
+   and toward each judge's load. So after a judge is removed, a re-run tops each
+   submission back up to `k`, never past it. With nothing assigned yet, the result is
+   identical to before.
+5. **Only this event's judges (Phase 10.1).** The pool is the event's panel
+   (`event_judges`), never every judge account on the platform.
+6. **Declared conflicts (Phase 10.7).** A judge's `judge_conflicts` rows are added to the
+   conflict set, so a submission they stepped back from is never handed back to them.
+7. **Only after submissions close (Phase 10.3).** Assignment and scoring are refused
+   before the event's `end_at`, so every score is of the version that was actually
+   submitted. A judge's list only shows assignments from events whose judging has opened.
+
+### Award suggestions (Phase 10.6)
+
+Each prize in `prize_config` gets a suggested winner from the normalised standings:
+- A prize whose label names one of the event's tracks ("Best Developer Tool" ↔
+  "Developer Tools") suggests that track's top-ranked project.
+- Every other prize takes the next-ranked project not already suggested, in the order the
+  prizes are configured.
+
+Suggestions only pre-fill the picker: the organizer confirms every award. Awards follow
+the same visibility rule as standings (`may_see_results`).
 
 ## Normalization
 

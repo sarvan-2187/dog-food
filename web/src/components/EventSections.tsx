@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Badge, Button, Card, Input } from './ui';
 import { EmptyState, ErrorState, SkeletonRows } from './feedback';
 import { ApiError, api } from '../lib/api';
-import type { Announcement, EventRecord, PublicCriterion, WinnersView } from '../types';
+import type { Announcement, AwardsView, EventRecord, PrizeSlot, PublicCriterion, WinnersView } from '../types';
 
 /** Plain text with its line breaks kept - never parsed as HTML (PLAN.md 10.8). */
 function Paragraphs({ text }: { text: string }) {
@@ -245,5 +245,144 @@ export function Announcements({
         )}
       </div>
     </Card>
+  );
+}
+
+
+/**
+ * PLAN.md 10.6 - organizer side. Each configured prize gets a project picker,
+ * pre-filled from the standings (overall prizes in rank order; a track prize
+ * from that track's best), which the organizer confirms or changes. Nothing
+ * here is public until the results reveal.
+ */
+export function WinnersEditor({ eventId, onToast }: { eventId: number; onToast: (message: string, ok: boolean) => void }) {
+  const [view, setView] = useState<AwardsView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setError(null);
+    api
+      .get<AwardsView>(`/api/events/${eventId}/awards`)
+      .then(setView)
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load the prizes.'));
+  }, [eventId]);
+
+  useEffect(load, [load]);
+
+  async function save(slot: PrizeSlot, submissionId: number | null) {
+    setSaving(slot.prize_rank);
+    try {
+      setView(
+        await api.put<AwardsView>(`/api/events/${eventId}/awards`, {
+          prize_rank: slot.prize_rank,
+          submission_id: submissionId,
+          note: slot.note,
+        }),
+      );
+      onToast(submissionId ? `${slot.prize_rank} saved.` : `${slot.prize_rank} cleared.`, true);
+    } catch (err) {
+      onToast(err instanceof ApiError ? err.message : 'Could not save that prize.', false);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (error) return <ErrorState description={error} onRetry={load} />;
+  if (!view) return <SkeletonRows rows={3} cols={2} />;
+  if (view.prizes.length === 0) {
+    return (
+      <Card title="Winners">
+        <EmptyState title="No prizes set up" description="Add prizes in Event settings, then pick the winners here." />
+      </Card>
+    );
+  }
+
+  const titleOf = (id: number | null) => view.candidates.find((c) => c.submission_id === id)?.title ?? '';
+  const counts = new Map<number, number>();
+  view.prizes.forEach((p) => p.submission_id && counts.set(p.submission_id, (counts.get(p.submission_id) ?? 0) + 1));
+
+  return (
+    <Card
+      title="Winners"
+      meta={view.results_visible_to_public ? 'Public now' : 'Hidden until the results reveal'}
+    >
+      <div data-tour="winners" className="flex flex-col gap-4">
+        <p className="text-body text-ink-600">
+          Suggestions come from the standings: overall prizes in rank order, track prizes from that track's
+          best. Confirm each one - nothing is announced until the results reveal.
+        </p>
+        <ul className="flex flex-col divide-y divide-border-subtle">
+          {view.prizes.map((slot) => {
+            const selected = slot.submission_id ?? '';
+            const suggestion = slot.suggested_submission_id;
+            return (
+              <li key={slot.prize_rank} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+                <span className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-label text-ink-900">{slot.prize_rank}</span>
+                  <span className="text-meta text-ink-500">
+                    {slot.reward}
+                    {slot.track ? ` · ${slot.track} track` : ''}
+                  </span>
+                </span>
+                <label className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="sr-only">Winner of {slot.prize_rank}</span>
+                  <select
+                    className="h-10 rounded-md border border-border bg-surface-0 px-3 text-body text-ink-800 focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20 sm:w-96"
+                    value={selected}
+                    disabled={saving === slot.prize_rank}
+                    onChange={(e) => save(slot, e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">Not awarded yet</option>
+                    {view.candidates.map((c) => (
+                      <option key={c.submission_id} value={c.submission_id}>
+                        {c.rank ? `#${c.rank} ` : ''}
+                        {c.title} - {c.team_name}
+                      </option>
+                    ))}
+                  </select>
+                  {!slot.submission_id && suggestion && (
+                    <Button variant="secondary" size="sm" onClick={() => save(slot, suggestion)}>
+                      Use suggestion: {titleOf(suggestion)}
+                    </Button>
+                  )}
+                </label>
+                {slot.submission_id && (counts.get(slot.submission_id) ?? 0) > 1 && (
+                  <span className="text-meta text-warning-fg">This project has won more than one prize.</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </Card>
+  );
+}
+
+/** Links out, never embedded (PLAN.md 10.5 and section 1: no third-party content in the app). */
+export function ProjectLinks({ repo, demo, video }: { repo: string; demo: string; video: string }) {
+  const links = [
+    { href: repo, label: 'Code' },
+    { href: demo, label: 'Live demo' },
+    { href: video, label: 'Video' },
+  ].filter((l) => l.href);
+  if (links.length === 0) {
+    return <p className="text-meta text-ink-500">The team didn't add any links.</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {links.map((l) => (
+        <a
+          key={l.label}
+          href={l.href}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="inline-flex h-9 items-center rounded-md border border-border bg-surface-0 px-3 text-label text-ink-800 hover:bg-surface-100 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20"
+        >
+          {l.label}
+          <span className="sr-only"> (opens in a new tab)</span>
+        </a>
+      ))}
+    </div>
   );
 }

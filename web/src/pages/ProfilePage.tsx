@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ImageUpload } from '../components/ImageUpload';
 import { PasswordField } from '../components/auth/PasswordField';
-import { Button, Card, RoleBadge } from '../components/ui';
+import { Button, Card, Input, RoleBadge } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { runTour } from '../lib/tour';
@@ -49,7 +49,9 @@ export function ProfilePage() {
           <dl className="flex flex-col gap-3">
             <div>
               <dt className="text-label text-ink-500">Name</dt>
-              <dd className="text-body text-ink-800">{user.name}</dd>
+              <dd>
+                <NameEditor name={user.name} onSaved={() => refresh()} />
+              </dd>
             </div>
             <div>
               <dt className="text-label text-ink-500">Email</dt>
@@ -159,5 +161,69 @@ function ChangePasswordCard() {
         </div>
       </form>
     </Card>
+  );
+}
+
+/** PLAN.md 10.13. Same 2-60 character rule as sign-up, checked inline. */
+function NameEditor({ name, onSaved }: { name: string; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmed = value.trim();
+  const inlineError = trimmed.length < 2 || trimmed.length > 60 ? 'Use 2-60 characters.' : undefined;
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (inlineError) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.patch('/api/auth/me', { name: trimmed });
+      onSaved();
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save your name.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <span className="flex flex-wrap items-center gap-3">
+        <span className="text-body text-ink-800">{name}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setValue(name);
+            setEditing(true);
+          }}
+        >
+          Edit
+        </Button>
+      </span>
+    );
+  }
+  return (
+    <form className="flex flex-col gap-2 sm:flex-row sm:items-start" onSubmit={save} noValidate>
+      <Input
+        label="Display name"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        error={error ?? inlineError}
+        className="sm:w-72"
+      />
+      <div className="flex gap-2 sm:mt-7">
+        <Button type="submit" variant="primary" size="sm" loading={saving} loadingLabel="Saving...">
+          Save
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

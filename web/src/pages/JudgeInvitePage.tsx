@@ -92,6 +92,32 @@ export function JudgeInvitePage() {
     );
   }
 
+  const forOrganizer = preview?.grants_role === 'organizer';
+  const invitedTitle = forOrganizer
+    ? "You've been invited to organize on HackFlow"
+    : preview?.event_name
+      ? `You've been invited to judge ${preview.event_name}`
+      : "You've been invited to judge";
+
+  if (result && result.role === 'organizer') {
+    return (
+      <div className="mx-auto max-w-md px-4 py-section">
+        <Card title="You're an organizer now">
+          <div className="flex flex-col gap-4">
+            <p className="text-body text-ink-700">
+              Your account can now create and run events. Your dashboard shows your events and everything you can do.
+            </p>
+            <Link to="/dashboard">
+              <Button variant="primary" className="w-full">
+                Go to your dashboard
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   if (result) {
     return (
       <div className="mx-auto max-w-md px-4 py-section">
@@ -118,11 +144,11 @@ export function JudgeInvitePage() {
   if (!user) {
     return (
       <div className="mx-auto max-w-md px-4 py-section">
-        <Card title="You've been invited to judge">
+        <Card title={invitedTitle}>
           <div className="flex flex-col gap-4">
             <p className="text-body text-ink-700">
-              Sign in or create an account first — the invitation gives the judge role to whichever account
-              accepts it, so we need to know which one that is.
+              Sign in or create an account first — the invitation gives the {forOrganizer ? 'organizer' : 'judge'} role
+              to whichever account accepts it, so we need to know which one that is.
             </p>
             <Link to={`/login?next=/judge-invite/${token}`}>
               <Button variant="primary" className="w-full">
@@ -141,23 +167,31 @@ export function JudgeInvitePage() {
     );
   }
 
-  const isOrganizer = user.role === 'organizer' || user.role === 'admin';
+  // A judge invitation would demote an organizer; an organizer invitation would demote an admin.
+  const isOrganizer = forOrganizer ? user.role === 'admin' : user.role === 'organizer' || user.role === 'admin';
 
   return (
     <div className="mx-auto max-w-md px-4 py-section">
-      <Card title="You've been invited to judge" meta={user.role}>
+      <Card title={invitedTitle} meta={user.role}>
         <div className="flex flex-col gap-4">
-          <p className="text-body text-ink-700">
-            Accepting this gives <strong className="text-ink-900">{user.email}</strong> the judge role. You'll be
-            able to score the submissions an organizer assigns to you, and nothing else changes about your account.
-          </p>
+          {forOrganizer ? (
+            <p className="text-body text-ink-700">
+              Accepting this gives <strong className="text-ink-900">{user.email}</strong> the organizer role: you'll be
+              able to create events, set their rubrics and invite judges.
+            </p>
+          ) : (
+            <p className="text-body text-ink-700">
+              Accepting this gives <strong className="text-ink-900">{user.email}</strong> the judge role. You'll be
+              able to score the submissions an organizer assigns to you, and nothing else changes about your account.
+            </p>
+          )}
 
           {/* State the consequence before the irreversible-feeling action (4.3). */}
           {isOrganizer ? (
             <div role="alert" className="rounded-md border border-border bg-warning-bg px-4 py-3 text-body text-warning-fg">
-              You're signed in as an {user.role}. Accepting would replace that with the judge role and remove your
-              ability to run events, so this has been left alone — sign in as the account that should judge, then
-              open this link again.
+              {forOrganizer
+                ? "You're signed in as an admin, which already includes everything an organizer can do. Sign in as the account that should become an organizer, then open this link again."
+                : `You're signed in as an ${user.role}. Accepting would replace that with the judge role and remove your ability to run events, so this has been left alone — sign in as the account that should judge, then open this link again.`}
             </div>
           ) : (
             <p className="text-meta text-ink-500">

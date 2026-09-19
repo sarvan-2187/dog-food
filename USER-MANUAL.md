@@ -370,6 +370,42 @@ It prints a one-time reset link for that account.
 See the README's "Email (optional)" section. Once it's set, press **Send test email** on the
 dashboard's **Email delivery** card to check it works before anyone needs it.
 
+**I'm already on a team, but I want to join a different one.**
+You can be on one team per hackathon. Open the event, choose **Leave team** in the "Your team"
+card, then join the other one. If you were the captain, the longest-standing member takes
+over. The last member of a team can't leave once it has submitted.
+
+**Someone on my team shouldn't be on it (captains).**
+In the "Your team" card, **Remove** takes them off. **Make captain** hands the role on, and
+**New link** replaces the invite link, so the old one stops working immediately.
+
+**Where do judges see my code and demo?**
+On your submission page, fill in **Code repository**, **Live demo** and **Demo video**. They
+save as you type (click away from the field), and judges see them on their scoring screen.
+
+**I'm a judge and I know one of the teams.**
+Open that project and choose **I have a conflict of interest with this project**. It goes to
+another judge and won't be assigned to you again. The organizer sees your note.
+
+**I'm a judge and my list is empty.**
+Judging opens once an event's submissions close. The **Coming up** card on your Judging page
+says when that is for each of your events.
+
+**How do I pick the winners? (organizers)**
+**Assignments & results → Winners.** Each prize comes with a suggestion from the standings
+(overall prizes in rank order; a track prize from that track's best). Confirm or change it.
+Nobody sees the winners until your results reveal time.
+
+**How do I add a new organizer? (admins)**
+**Users → Invite an organizer** makes a single-use link. Or find an existing account in
+**Users** and change its role.
+
+**My new event doesn't show up for participants.**
+New events start as drafts. Open **Event settings → Publish event**.
+
+**I want to change my name.**
+**Profile → Name → Edit.**
+
 **I want the tour again.**
 **Profile** → **Replay the guided tour**.
 

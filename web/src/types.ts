@@ -245,6 +245,8 @@ export interface JudgeInvitePreview {
   valid: boolean;
   reason: string;
   expires_at: string | null;
+  grants_role?: 'judge' | 'organizer';
+  event_name?: string | null;
 }
 
 export interface JudgeInviteRedeemResult {
