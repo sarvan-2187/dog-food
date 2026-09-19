@@ -102,7 +102,7 @@ def session():
 def _reset_rate_limits():
     """The limiter is process-global by design, so one test's spending would
     otherwise starve the next."""
-    from app.voting.ratelimit import reset_all
+    from app.ratelimit import reset_all
 
     reset_all()
     yield

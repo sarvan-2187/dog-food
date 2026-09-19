@@ -88,7 +88,31 @@ def _seed_events(session: Session, email_to_id: dict[str, int]) -> dict[str, int
         session.add(event)
         session.flush()
         slug_to_id[row["slug"]] = event.id
+    _seed_event_judges(session, email_to_id, slug_to_id)
     return slug_to_id
+
+
+def _seed_event_judges(session: Session, email_to_id: dict[str, int], slug_to_id: dict[str, int]) -> None:
+    """Phase 10.1: assignment draws from an event's panel, so the seeded demo event
+    needs one or `docker compose up` produces an event nobody can judge."""
+    from .judging.models import EventJudge
+
+    for row in load_fixture("events.json"):
+        event_id = slug_to_id.get(row["slug"])
+        if event_id is None:
+            continue
+        for email in row.get("judges", []):
+            judge_id = email_to_id.get(email)
+            if judge_id is None:
+                continue
+            existing = session.exec(
+                select(EventJudge).where(
+                    EventJudge.event_id == event_id, EventJudge.judge_id == judge_id
+                )
+            ).first()
+            if not existing:
+                session.add(EventJudge(event_id=event_id, judge_id=judge_id))
+    session.flush()
 
 
 def _seed_teams(session: Session, email_to_id: dict[str, int], slug_to_id: dict[str, int]) -> dict[str, int]:

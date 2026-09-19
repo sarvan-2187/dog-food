@@ -19,7 +19,8 @@ from ..audit.log import record
 from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
 from ..timeutil import utcnow
-from .models import JudgeInvite
+from ..events.models import Event
+from .models import EventJudge, JudgeInvite
 
 router = APIRouter(prefix="/api/judge-invites", tags=["judge-invites"])
 
@@ -30,6 +31,11 @@ class InviteCreate(BaseModel):
     invited_email: Optional[EmailStr] = None
     note: str = ""
     expires_in_days: int = 14
+    # Which event this judge is being brought in for (Phase 10.1). Optional so the
+    # older platform-wide invitation still exists as a concept, but the UI always
+    # sends one - an invitation with no event enrols the person on no panel, and
+    # they will therefore never be assigned anything.
+    event_id: Optional[int] = None
 
     @field_validator("expires_in_days")
     @classmethod
@@ -56,6 +62,8 @@ class InvitePublic(BaseModel):
     redeemed_at: Optional[datetime]
     redeemed_by_name: Optional[str]
     status: str  # "open" | "redeemed" | "expired"
+    event_id: Optional[int]
+    event_name: Optional[str]
 
 
 class InvitePreview(BaseModel):
@@ -73,6 +81,17 @@ class InvitePreview(BaseModel):
 class RedeemResult(BaseModel):
     role: Role
     already_a_judge: bool
+    event_id: Optional[int] = None
+    event_name: Optional[str] = None
+
+
+def _on_panel(session: Session, event_id: int, judge_id: int) -> bool:
+    return (
+        session.exec(
+            select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.judge_id == judge_id)
+        ).first()
+        is not None
+    )
 
 
 def _status(invite: JudgeInvite) -> str:
@@ -85,6 +104,7 @@ def _status(invite: JudgeInvite) -> str:
 
 def _public(session: Session, invite: JudgeInvite) -> InvitePublic:
     redeemer = session.get(User, invite.redeemed_by_id) if invite.redeemed_by_id else None
+    event = session.get(Event, invite.event_id) if invite.event_id else None
     return InvitePublic(
         id=invite.id,
         token=invite.token,
@@ -94,6 +114,8 @@ def _public(session: Session, invite: JudgeInvite) -> InvitePublic:
         redeemed_at=invite.redeemed_at,
         redeemed_by_name=redeemer.name if redeemer else None,
         status=_status(invite),
+        event_id=invite.event_id,
+        event_name=event.name if event else None,
     )
 
 
@@ -103,9 +125,12 @@ def create_invite(
     user: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> InvitePublic:
+    if payload.event_id is not None and not session.get(Event, payload.event_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
     invite = JudgeInvite(
         invited_email=str(payload.invited_email) if payload.invited_email else "",
         note=payload.note,
+        event_id=payload.event_id,
         created_by_id=user.id,
         expires_at=utcnow() + timedelta(days=payload.expires_in_days),
     )
@@ -126,10 +151,17 @@ def create_invite(
 
 @router.get("", response_model=list[InvitePublic])
 def list_invites(
+    event_id: Optional[int] = None,
     _: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> list[InvitePublic]:
-    invites = session.exec(select(JudgeInvite).order_by(JudgeInvite.id.desc())).all()
+    """`event_id` narrows the list to one event's invitations. Without it this
+    returns every invitation ever issued, which is what made an event page show
+    a dozen invitations belonging to other events (Phase 10.1)."""
+    query = select(JudgeInvite)
+    if event_id is not None:
+        query = query.where(JudgeInvite.event_id == event_id)
+    invites = session.exec(query.order_by(JudgeInvite.id.desc())).all()
     return [_public(session, i) for i in invites]
 
 
@@ -185,10 +217,21 @@ def redeem_invite(
     if not invite:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That invitation link is not valid.")
 
-    # Already a judge: succeed without burning the invitation, so a double-click or a
-    # refresh is harmless and the organizer's invite is not silently consumed.
+    # Already a judge, and already on this invitation's panel: nothing left to do, so
+    # succeed without burning the invitation. This is the double-click/refresh case.
+    #
+    # Already a judge but NOT on the panel is a real redemption since Phase 10.1 - an
+    # established judge brought onto a second event has to end up enrolled on it, and
+    # returning early here would have silently done nothing at all.
     if user.role == Role.judge:
-        return RedeemResult(role=user.role, already_a_judge=True)
+        if invite.event_id is None or _on_panel(session, invite.event_id, user.id):
+            event = session.get(Event, invite.event_id) if invite.event_id else None
+            return RedeemResult(
+                role=user.role,
+                already_a_judge=True,
+                event_id=invite.event_id,
+                event_name=event.name if event else None,
+            )
 
     # Refuse rather than demote. An organizer redeeming a judge link would otherwise
     # lose the ability to run their own event, with no warning.
@@ -206,11 +249,17 @@ def redeem_invite(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That invitation has expired.")
 
     previous = user.role
+    was_already_a_judge = previous == Role.judge
     user.role = Role.judge
     invite.redeemed_at = utcnow()
     invite.redeemed_by_id = user.id
     session.add(user)
     session.add(invite)
+    # Enrol on the panel the invitation was issued for. Without this the promotion
+    # grants a role that assignment never draws on, since assignment reads the panel.
+    event = session.get(Event, invite.event_id) if invite.event_id else None
+    if event and not _on_panel(session, event.id, user.id):
+        session.add(EventJudge(event_id=event.id, judge_id=user.id, added_by_id=invite.created_by_id))
     record(
         session,
         "judge_invite.redeemed",
@@ -218,7 +267,13 @@ def redeem_invite(
         entity_type="judge_invite",
         entity_id=invite.id,
         previous_role=previous.value,
+        event_id=invite.event_id,
     )
     session.commit()
     session.refresh(user)
-    return RedeemResult(role=user.role, already_a_judge=False)
+    return RedeemResult(
+        role=user.role,
+        already_a_judge=was_already_a_judge,
+        event_id=invite.event_id,
+        event_name=event.name if event else None,
+    )
