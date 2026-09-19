@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { CertificateButton } from '../components/CertificateButton';
 import { ResultsHiddenNotice } from '../components/ResultsHiddenNotice';
 import { VoteButton } from '../components/VoteButton';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
@@ -166,6 +167,15 @@ export function SubmissionDetailPage() {
           )}
           {item.votes === null && event?.voting_enabled && (
             <Badge status="info">Counts hidden until voting closes</Badge>
+          )}
+          {/* Organizers hand certificates out; a team member gets theirs from
+              their own submission page, where membership is already known. */}
+          {(user?.role === 'organizer' || user?.role === 'admin') && (
+            <CertificateButton
+              submissionId={item.id}
+              size="sm"
+              onToast={(message, ok) => setToast({ message, ok })}
+            />
           )}
         </div>
       </Card>

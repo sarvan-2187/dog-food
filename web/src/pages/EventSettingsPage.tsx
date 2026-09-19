@@ -111,6 +111,10 @@ function EventSettingsForm() {
       </Card>
 
       <div className="mt-6">
+        <BackupPanel eventId={event.id} slug={event.slug} onToast={setToast} />
+      </div>
+
+      <div className="mt-6">
         <WebhookPanel eventId={event.id} onToast={setToast} />
       </div>
 
@@ -118,6 +122,52 @@ function EventSettingsForm() {
         {toast && <Toast status={toast.ok ? 'success' : 'danger'} message={toast.message} onDismiss={() => setToast(null)} />}
       </ToastRegion>
     </div>
+  );
+}
+
+/**
+ * Bulk event backup (PLAN.md Phase 4 T4). Deliberately download-only here -
+ * restoring a backup creates a *new* event, so it lives on the events list
+ * next to "Create event", not inside one event's settings.
+ */
+function BackupPanel({
+  eventId,
+  slug,
+  onToast,
+}: {
+  eventId: number;
+  slug: string;
+  onToast: (t: { message: string; ok: boolean }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function download() {
+    setBusy(true);
+    try {
+      await api.download(`/api/events/${eventId}/export.json`, `${slug}-backup.json`);
+      onToast({ message: 'Event backup downloaded.', ok: true });
+    } catch (err) {
+      onToast({ message: err instanceof ApiError ? err.message : 'Could not export this event.', ok: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card title="Backup" meta="JSON">
+      <div className="flex flex-col gap-4">
+        <p className="text-body text-ink-600">
+          Downloads this event's configuration, rubrics, teams and submissions as one file. Judge assignments and
+          scores are deliberately left out - they belong to specific judge accounts, and re-creating them against
+          different judges would misrepresent who judged what.
+        </p>
+        <div>
+          <Button variant="secondary" loading={busy} loadingLabel="Preparing..." onClick={download}>
+            Download event backup
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

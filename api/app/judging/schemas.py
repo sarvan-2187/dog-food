@@ -89,6 +89,11 @@ class AssignmentPublic(BaseModel):
     judge_id: int
     submission_title: str
     scored: bool
+    # Carried so a judge's own dashboard can group their work by event and
+    # request the signed participation record for it (PLAN.md Phase 4 T4),
+    # which is keyed on event_id -- the dashboard has no other route to it.
+    event_id: int
+    event_name: str
 
 
 class RubricGroup(BaseModel):
