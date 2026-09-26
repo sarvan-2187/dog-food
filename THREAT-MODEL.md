@@ -32,6 +32,17 @@ cross-checked against the code that enforces it. Entries 1â€“11 cover Phases 0â€
 | 23 | A draft event's existence leaks, or people join it early. | Drafts are left out of lists and the gallery, return 404 (not 403) to anyone but organizers, and refuse team creation. | `api/app/events/router.py`, `api/app/teams/router.py` |
 | 24 | An admin account is used to lock out the other admins or create more admins. | The admin role can't be granted from the UI or API. Admin accounts can't be changed or deactivated from there, nor can an admin change themselves. New admins come only from the seed data or the server-side CLI. | `api/app/auth/admin_users.py` |
 
+### The four attacks the DOGFOOD brief names
+
+Each is stopped, partly stopped or not stopped.
+
+| # | Attack | Status | What happens | Where |
+|---|--------|--------|--------------|-------|
+| 25 | **Sybil voting**: one person registers several accounts and votes from each. | **Partly stopped.** | Voting needs a signed-in account, votes are rate-limited per account, and every vote and withdrawal is in the audit log. **Not stopped:** registration is open, so a person with several email addresses gets several votes. No email verification, CAPTCHA or device fingerprinting is built. The advice this platform follows is the standard one: keep the community prize small and hide counts until the reveal (entry 5). | `api/app/voting/router.py`, `api/app/audit/` |
+| 26 | **Ballot stuffing**: one account votes many times, or a script floods the endpoint. | **Stopped.** | A unique constraint on (submission, voter) makes a second vote impossible at the database level, however many requests race. The rate limiter throttles the rest (entry 6). | `api/app/voting/` |
+| 27 | **Judge collusion**: judges agree to push one project up or down. | **Not stopped.** | Normalization (`JUDGING.md`) removes each judge's *general* harshness or leniency, but a judge who is fair everywhere except one project keeps that bias. Conflict rules stop a judge scoring their own team's project, and declared conflicts are honoured (entries 3 and 17). Collusion between outsiders is not detected. What exists is evidence: raw per-judge scores are in the organizer's CSV export, and every score write is audited, so an organizer can review a suspicious outlier after the fact. | `api/app/scoring/normalization.py`, `api/app/judging/assignment.py` |
+| 28 | **Deadline gaming**: submitting or editing after the close, or changing a project while it is being judged. | **Stopped.** | Every submission write checks the server clock against the event's `end_at` in the API, not in the browser, so a changed client clock or a crafted request is refused (400). Judging can't start until submissions close, so a scored version can't change afterwards (entry 19). | `api/app/submissions/router.py` (`_load_open_event`) |
+
 ## What this list does not cover
 
 Denial-of-service, infrastructure-level attacks (the box itself, the network),
