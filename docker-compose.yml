@@ -27,6 +27,9 @@ services:
       STATIC_DIR: /app/static
       KEYS_DIR: /app/keys
       UPLOAD_DIR: /app/uploads
+      # Fixed sessions for the DOGFOOD acceptance checker (.dogfood.toml), which
+      # never logs in. Demo only: delete this line on a real deployment.
+      DEMO_SESSION_TOKENS: "demo-org-7f2a=alice@example.com,demo-jdg-a-91bc=tomas.varga@example.org,demo-jdg-b-44de=wei.lindqvist@example.org,demo-prt-2e88=priya1@example.org"
       # Optional password-reset email (PLAN.md Phase 9.3). All empty by
       # default: email stays off and the app makes zero outbound calls. Set
       # them in a .env file next to this one (see .env.example) - never here.

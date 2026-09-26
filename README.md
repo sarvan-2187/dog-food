@@ -62,6 +62,36 @@ Two seeded events are worth knowing for a demo:
 
 Judging opens only once an event's submissions close, which is why the second one exists.
 
+The official DOGFOOD `fixtures.json` (repo root) is loaded as a third event,
+`sample-hack-2026`: 8 tracks, 30 judges, 40 teams, 40 submissions and 123 scores, closed
+at the fixture's `submissions_close` (2026-03-01), so it refuses new submissions. Every
+account it creates (e.g. judge `tomas.varga@example.org`, participant `priya1@example.org`)
+has the password `dogfood2026`. How the loader handles the fixture's awkward cases:
+
+- **Duplicate submission.** `prj_41` is team `tm_07` submitting the same repo a second
+  time. A team has one submission here, so it merges into `prj_07`. Where a judge scored
+  both copies, only their first score is kept.
+- **A judge who gave the same score to everything.** Kept as is. Normalisation gives that
+  judge zero influence (`JUDGING.md`).
+- **Unfinished batches, uneven review counts.** The fixture has scores but no
+  assignments, so each score becomes one assignment. Projects end up with 2 to 5 reviews
+  and nothing assumes a fixed number.
+
+### Acceptance checker
+
+`.dogfood.toml` points the DOGFOOD checker at this stack, and `acceptance-report.txt` is
+what it printed:
+
+```bash
+docker compose down -v && docker compose up --build   # fresh volume: ids below are fixed
+python run.py .dogfood.toml > acceptance-report.txt
+```
+
+The checker never logs in. It sends fixed cookies, which the API accepts because
+`docker-compose.yml` sets `DEMO_SESSION_TOKENS`. The API prints the matching
+`.dogfood.toml` values at boot. **On a real deployment, delete that line and change
+`SESSION_SECRET`.** Anyone who has one of those tokens is signed in as that account.
+
 Upgrading an existing install needs no reset: new columns are added at boot
 (`db.add_missing_columns()`). To go back to a clean, fixture-only state anyway (e.g.
 before a demo):
@@ -181,11 +211,11 @@ that lives only in the frontend.
 
 ## Status
 
-467 tests passing across three suites, run live against this exact stack:
+473 tests passing across three suites, run live against this exact stack:
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 349 passed |
+| Backend | `docker compose exec api pytest tests/ -v` | 355 passed |
 | Frontend unit | `cd web && npm test` | 9 passed |
 | Browser E2E | `cd web && npx playwright test` | 109 passed, 1 skipped |
 
@@ -198,10 +228,11 @@ full with Playwright's default parallel workers. After many runs on one volume, 
 specs can time out; each passes on its own, and `--workers=1` or a fresh volume avoids it
 (see PLAN.md's Open Questions).
 
-No official acceptance suite has been published for this build. `acceptance-report.txt`
-is therefore self-issued from the suites above (see PLAN.md Phase 5.5) — replace it the
-moment a real suite exists. Every number in this README and in that report comes from a
-real run against the live stack; neither is hand-edited.
+`acceptance-report.txt` is the unedited output of the official DOGFOOD checker
+(`run.py`): 7 of 7 checks pass, and T1 and T2 are claimed and verified. The checker has no
+checks for T3 or T4, so those are not claimed in `.dogfood.toml`. What is built for them
+is listed above and tested by the suites here. The earlier self-issued report, written
+before the checker was published, is kept at `docs/self-test-report.txt`.
 
 ## Documentation
 
