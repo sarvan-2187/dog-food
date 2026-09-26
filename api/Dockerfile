@@ -20,6 +20,8 @@ COPY api/app ./app
 COPY api/tests ./tests
 COPY api/pytest.ini ./pytest.ini
 COPY fixtures ./fixtures
+# The official DOGFOOD fixtures stay at the repo root, where run.py looks.
+COPY fixtures.json ./fixtures/dogfood.json
 COPY --from=web /web/dist ./static
 
 EXPOSE 8000

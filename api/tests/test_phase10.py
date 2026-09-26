@@ -334,6 +334,35 @@ def test_found_links_are_saved_shown_to_judges_and_scripts_refused(client, sessi
     assert sheet["repo_url"] == "https://github.com/x/y"
 
 
+def test_links_and_rules_survive_a_backup_round_trip_and_bad_links_are_refused(client, session):
+    event = _event(session, "links-backup", closed=False, rules="No prebuilt code.")
+    member = _user(session, "links-backup-p@example.com")
+    sub = _entry(session, event, "Backup Team", [member])
+    sub.repo_url = "https://github.com/x/backup"
+    session.add(sub)
+    session.commit()
+    _login(client, _user(session, "links-backup-org@example.com", Role.organizer))
+
+    csv_text = client.get(f"/api/events/{event.id}/export/submissions.csv").text
+    assert "repo_url" in csv_text.splitlines()[0] and "https://github.com/x/backup" in csv_text
+
+    backup = client.get(f"/api/events/{event.id}/export.json").json()
+    assert backup["event"]["rules"] == "No prebuilt code."
+    assert backup["submissions"][0]["repo_url"] == "https://github.com/x/backup"
+    payload = {**backup["event"], "slug": "links-backup-copy", "rubrics": backup["rubrics"],
+               "teams": backup["teams"], "submissions": backup["submissions"]}
+    created = client.post("/api/events/import", json=payload)
+    assert created.status_code == 201, created.text
+    assert created.json()["rules"] == "No prebuilt code."
+    copy = session.exec(select(Submission).where(Submission.event_id == created.json()["id"])).one()
+    assert copy.repo_url == "https://github.com/x/backup"
+
+    # A backup file is untrusted input: a scripted link is refused, not stored.
+    payload["slug"] = "links-backup-evil"
+    payload["submissions"] = [{**backup["submissions"][0], "repo_url": "javascript:alert(1)"}]
+    assert client.post("/api/events/import", json=payload).status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # 10.6 - winners and awards
 # ---------------------------------------------------------------------------

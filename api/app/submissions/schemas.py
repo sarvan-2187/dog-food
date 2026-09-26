@@ -6,6 +6,22 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, field_validator
 
 
+def safe_link(v: Optional[str]) -> Optional[str]:
+    """http(s) only (PLAN.md 10.5): a `javascript:` or `data:` URL rendered as a
+    link is a script waiting for a click. An empty string clears the link."""
+    if v is None:
+        return v
+    v = v.strip()
+    if not v:
+        return ""
+    if len(v) > 500:
+        raise ValueError("Links must be 500 characters or fewer.")
+    parsed = urlparse(v)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("Enter a full web address starting with https:// (or http://).")
+    return v
+
+
 class SubmissionUpdate(BaseModel):
     """Autosave PATCH body. Every field is optional so the form can save one
     field at a time; an explicitly-null field is a no-op, not a 500."""
@@ -20,19 +36,7 @@ class SubmissionUpdate(BaseModel):
     @field_validator("repo_url", "demo_url", "video_url")
     @classmethod
     def link(cls, v: Optional[str]) -> Optional[str]:
-        """http(s) only (PLAN.md 10.5): a `javascript:` or `data:` URL rendered as
-        a link is a script waiting for a click. An empty string clears the link."""
-        if v is None:
-            return v
-        v = v.strip()
-        if not v:
-            return ""
-        if len(v) > 500:
-            raise ValueError("Links must be 500 characters or fewer.")
-        parsed = urlparse(v)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise ValueError("Enter a full web address starting with https:// (or http://).")
-        return v
+        return safe_link(v)
 
     @field_validator("title")
     @classmethod
