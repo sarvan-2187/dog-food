@@ -21,7 +21,8 @@
 
 - Everything starts with `docker compose up`. No manual steps, no `.env` the user must hand-fill, no separately-run seed script — seeding happens automatically on first boot.
 - Zero network calls at runtime once images are built. No cloud database, no auth-as-a-service, no external API, no CDN-fetched assets in the *served* app.
-- Four roles: `participant`, `judge`, `organizer`, `admin`. Every mutating and every sensitive-read endpoint must be gated by role at the endpoint level — never rely on frontend hiding alone.
+- Four roles: `participant`, `judge`, `organizer`, `admin` — a flat enumeration of **four distinct roles**, not one role wearing several hats. `judge` in particular is a dedicated role held by someone brought onto the platform *to evaluate*, never a participant doing double duty. There is no peer-review model anywhere in this build: participants are never required, or able, to score another participant's submission. See Section 8.0 for the full role model and why it matters.
+- Every mutating and every sensitive-read endpoint must be gated by role at the endpoint level — never rely on frontend hiding alone.
 - Each phase's functional and UX checklists must both be satisfied before the next phase starts. Do not let tiers — or unpolished screens — bleed forward.
 - Tier claims in `README.md` must exactly match what `acceptance-report.txt` shows. Never claim a tier that isn't acceptance-suite green.
 
@@ -210,7 +211,14 @@ open is the published acceptance suite, which does not exist to run.
 
 ## Phase 2 — Judging (T2)
 
+**Model (see Section 8.0 before touching this phase):** `judge` is a distinct, dedicated
+role — someone *invited onto* the event to evaluate, never a participant rotated into
+scoring peers. Everything in this phase is gated to that role and to the specific
+assignment that belongs to it. Community voting is a **separate** mechanism built in
+Phase 3 and must never feed the judging pipeline; peer review is not in scope at all.
+
 ### Functional checklist
+- [ ] **Judge invitation** — organizer-issued invitation that brings a judge account onto the platform (`judge` is the one role with no self-service path, by design, and currently no path at all except fixture seeding). **This was missing from this checklist and is a genuine scope gap — see Open Questions.** T2's first clause is "judge *invitation* and assignment"; only assignment was ever built
 - [x] `Rubric` model + CRUD (organizer only) — validate criteria weights sum to 1.0 on save, reject otherwise (`RubricWrite.weights_sum_to_one`; the error names the actual total). One rubric per event — see Open Questions
 - [x] `JudgeAssignment` model + the assignment algorithm (Section 8) — `api/app/judging/assignment.py`, pure and DB-free, called by the handler. Shortfall is reported via `coverage_report()` rather than relaxing a conflict
 - [x] `Score` model + score submission endpoint, restricted to the assigned judge for that specific assignment only (`require_role(judge)` **plus** an ownership check — role alone is not enough)
@@ -232,7 +240,14 @@ open is the published acceptance suite, which does not exist to run.
 
 **Definition of Done — Phase 2 gate:** acceptance suite reports all T2 checks green, `test_role_isolation.py` has at least one negative-role test per mutating endpoint, and the Phase 2 UX checklist is fully checked. Do not start Phase 3 otherwise.
 
-**Gate status:** green apart from the unpublished acceptance suite. Verification standing:
+**Gate status:** everything built is green and verified, but the gate is **not** fully met:
+T2's "judge invitation" clause was never built, and re-reading the brief against this plan
+is what surfaced it (see Open Questions). Judge accounts currently exist only via
+`fixtures/users.json`, so a real organizer running a real event has no way to add a judge.
+Nothing already built is wrong — this is a missing capability, not a defect — but the
+checklist above should not be read as a clean T2 sweep.
+
+Verification standing for what *is* built:
 
 | Suite | Command | Result |
 |---|---|---|
@@ -350,7 +365,7 @@ For every screen introduced in any phase:
 
 ### 5.5 — Acceptance suite: run it, or formally document why not
 
-- [x] No acceptance suite has been published. `acceptance-report.txt` generated fresh from a real, live run of all three suites on a clean volume: **158 backend + 9 Vitest + 64 Playwright = 231/231 passing** (updated after the landing page and its breakpoint test were added later in this same phase). Header states plainly that it is self-issued. `README.md`'s tier/status claims are written against these exact numbers.
+- [x] No acceptance suite has been published. `acceptance-report.txt` generated fresh from a real, live run of all three suites on a clean volume: **160 backend + 9 Vitest + 64 Playwright = 233/233 passing** (re-run after the judging role-model reconciliation added two separation tests; previously 231). Header states plainly that it is self-issued. `README.md`'s tier/status claims are written against these exact numbers.
 
 ### 5.6 — Demo video
 
@@ -364,7 +379,7 @@ For every screen introduced in any phase:
 - [x] `JUDGING.md` — assignment algorithm, normalization math, role isolation (including the ownership checks beyond role alone), rubric-locking, results-visibility, and duplicate-vote/rate-limit design, collected from Section 8 and the Open Questions decisions already made.
 - [x] `LICENSE` — MIT, in place.
 - [ ] Repo made public — **not done; needs the repo owner's decision**, not an agent's. `git status` shows an existing `origin/main` remote; making it public is a one-line GitHub setting but is exactly the kind of outward-facing, hard-to-reverse-in-spirit action this build asks to be confirmed explicitly rather than assumed.
-- [x] Final full suite run after the documentation pass: 158/158 backend still green, confirming the docs pass didn't disturb anything.
+- [x] Final full suite run after the documentation pass: 160/160 backend green on a clean volume, confirming neither the docs pass nor the judging role-model reconciliation disturbed anything.
 
 **Definition of Done — Phase 5 / submission gate:** acceptance report committed and real (done); all four docs complete and cross-checked against it (done); demo video recorded (not done — needs a human); repo public (not done — needs the owner's decision); license in place (done); every Open Question either resolved or explicitly and knowingly carried into submission (done — see the running log below). Phase 5 is substantially complete; the two remaining items are both things this session cannot do on its own.
 
@@ -372,9 +387,43 @@ For every screen introduced in any phase:
 
 ## 8. Judging integrity — implement exactly this
 
+### 8.0 Role model — who evaluates what, and by which mechanism
+
+Settle this before reading the algorithm, because the algorithm only makes sense
+against it. The brief enumerates four roles flatly — "participant/judge/organizer/admin"
+— and describes judges via **"judge invitation and assignment"**. Judges are therefore
+people brought *onto* the event to evaluate, not participants rotated into evaluating
+each other.
+
+This build ships **two** evaluation mechanisms, and they are deliberately separate
+systems with separate abuse models. Do not merge them, and do not let one's vocabulary
+leak into the other:
+
+| | **Formal judging (T2)** | **Community voting (T3)** |
+|---|---|---|
+| Who acts | `judge` role only, and only on an assignment that is theirs | Any signed-in user, any role |
+| Instrument | Weighted rubric, criteria scored 0–`max_score` | One vote per user per submission |
+| Integrity model | Role isolation + per-assignment ownership + conflict exclusion + cross-judge normalisation | Unique constraint + rate limiting + fingerprint flagging + hidden results |
+| Feeds the ranking? | Yes — `z_bar_i` is the ranking value | No — a separate public tally, never an input to judging |
+| Endpoint gate | `require_role(Role.judge)` **plus** an ownership check | `get_current_user` |
+
+**Participant-to-participant peer review is not in scope.** The brief never mentions
+it, never uses the phrase, and never describes participants scoring each other. Do not
+infer it from the conflict rule below, and do not add it as a "natural extension" — it
+would put a competitor's hand on a rival's score, which is precisely what the role
+isolation in this section exists to prevent.
+
+**Community vote counts must never reach the judging pipeline.** `normalize_scores()`
+takes rubric scores only. A popular project and a well-executed one are different
+claims, and conflating them would make the normalisation indefensible.
+
 **Assignment algorithm** (implement as `assign_judges(submissions, judges, team_memberships, k) -> list[JudgeAssignment]`):
 
 1. Build a conflict set: exclude `(judge, submission)` pairs where the judge is on the submitting team.
+   *This is a safeguard, not a hint that judges are drawn from participants.* A judge may
+   legitimately also be on a team — a mentor who entered a side project, an organizer's
+   colleague who joined a team late — and the platform must make that harmless rather than
+   forbidding it. The rule existing does **not** license a peer-review workflow (8.0).
 2. Iterate submissions round-robin; for each, assign the `k` judges (organizer-configurable, default 3) with no conflict and the fewest assignments so far; break ties by judge ID ascending for determinism.
 3. This is deliberately a greedy degree-constrained assignment, not a max-flow solver — do not "improve" it into something non-deterministic or harder to test.
 
@@ -497,7 +546,45 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   accepts a role from the client. Judge/organizer/admin accounts exist only via `fixtures/users.json`
   seeding. This wasn't explicit in PLAN.md; treated as the safer default for a hackathon platform
   (self-service organizer/admin signup would be a privilege-escalation hole) rather than build a
-  separate invite-a-judge flow that Phase 1 didn't ask for.
+  separate invite-a-judge flow that Phase 1 didn't ask for. **Still the right call for registration,
+  but the deferral outlived its justification — see the judge-invitation gap below.**
+
+- **Judge invitation was never built, and the checklist never asked for it (found by re-reading the
+  brief against this plan).** T2's first clause is "**Judge invitation** and assignment". This plan's
+  Phase 2 checklist covered assignment in detail and omitted invitation entirely, so the omission was
+  invisible: every Phase 2 box could be ticked with the capability wholly absent. The Phase 1 note
+  above deferred it on the grounds that "Phase 1 didn't ask for it" — true, but Phase 2 does, and
+  nothing carried the deferral forward into Phase 2's list.
+
+  **Consequence.** `judge` is the one role with no path onto the platform at all. It is not merely
+  lacking self-service: there is no organizer-facing path either, so the only way a judge exists is
+  `fixtures/users.json` at boot. An organizer running a real event cannot add a judge without editing
+  a fixture file and recreating the database. That is a missing capability for the tier, not a bug in
+  anything built — every judging path that *does* exist is correctly gated and tested.
+
+  **Why this matters more than a missing form.** The whole four-role model rests on judges being
+  distinct people brought in to evaluate (Section 8.0). Without an invitation path, that model is
+  only expressible in seed data, which makes the strongest claim in the build — role isolation
+  between competitor and evaluator — un-demonstrable on a live instance.
+
+  **Not built in this pass**, because the request was to reconcile the plan with the brief's role
+  model, not to add scope. Scoped for whoever picks it up: an organizer-only endpoint issuing a
+  single-use, expiring invite token (the `Team.invite_code` pattern already in the codebase is the
+  obvious model), redemption creating or promoting an account to `judge`, the action recorded in the
+  audit log, and a negative-role row added to `test_role_isolation.py` so a participant cannot mint
+  a judge. Explicitly *not* self-service: a self-serve judge signup would be the privilege-escalation
+  hole the Phase 1 note rightly avoided.
+
+- **Peer review is not in scope, and the conflict rule is not evidence that it is (role model).**
+  The brief never mentions peer review, never uses the phrase, and never describes participants
+  scoring each other; community voting (T3) is specified as a separate mechanism from formal judging
+  (T2), with its own name, instrument and abuse model. Section 8.0 now states this explicitly because
+  Section 8's conflict rule — "exclude `(judge, submission)` pairs where the judge is on the
+  submitting team" — reads, out of context, as though judges were expected to be participants. They
+  are not: the rule is a safeguard for the legitimate overlap case (a mentor who also entered
+  something), and the `fixtures/teams.json` comment naming Dana as both judge and Pipeline Pals
+  member exists to exercise that safeguard, not to model the intended workflow. Recorded so nobody
+  later reads the fixture as a licence to build peer scoring.
 - **One submission per team, not a `Submission` id in most URLs (Phase 1).** PLAN.md says
   "Submission model + draft/edit endpoints" without specifying cardinality. Modeled as exactly one
   submission per team (`unique=True` on `Submission.team_id`) with endpoints keyed by team
@@ -677,7 +764,8 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   is attacker-controlled; (2) Python's `mimetypes` module doesn't know `.woff2` by
   default, so it was served as `text/plain` until registered explicitly. All 231 tests
   (158 backend + 9 Vitest + 64 Playwright, unchanged counts — this was a re-skin, not a
-  feature change) pass against the rebuilt system.
+  feature change) passed against the rebuilt system at that point; the current figure is
+  233, after the judging role-model reconciliation added two separation tests.
 - **The reference has no saturated brand hue — `brand` is the ink scale itself.**
   raptors.dev's real buttons and badges are outline (transparent bg, ink border/text);
   there is no colorful accent anywhere in its computed styles. Rather than inventing one,

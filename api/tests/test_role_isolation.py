@@ -297,3 +297,75 @@ def test_hidden_results_are_withheld_from_every_non_organizer_role(client, sessi
 
     _become(client, session, Role.organizer)
     assert client.get(f"/api/events/{event.id}/public-results").status_code == 200
+
+
+# --- the two evaluation mechanisms stay separate (JUDGING.md role model) ---
+
+def test_community_votes_do_not_affect_normalised_judging_results(client, session, world):
+    """JUDGING.md states that vote counts never enter the judging pipeline.
+
+    Structurally that holds because `scoring/` never imports `Vote`, but the claim is
+    load-bearing for the normalisation's defensibility, so it is pinned here: pile votes
+    onto one submission and the normalised standings must not move.
+    """
+    from app.events.models import Event
+    from app.voting.models import Vote
+
+    event = session.get(Event, world["event"].id)
+    event.voting_enabled = True
+    event.results_hidden_until = None
+    session.add(event)
+    session.commit()
+
+    _become(client, session, Role.organizer)
+    before = client.get(f"/api/events/{event.id}/results").json()
+
+    # Twenty votes for the one submission, cast directly so no rate limit interferes.
+    for i in range(20):
+        voter = User(
+            email=f"ballot-stuffer-{i}@example.com",
+            name=f"Voter {i}",
+            role=Role.participant,
+            password_hash="x",
+        )
+        session.add(voter)
+        session.commit()
+        session.refresh(voter)
+        session.add(
+            Vote(event_id=event.id, submission_id=world["submission"].id, user_id=voter.id)
+        )
+    session.commit()
+
+    after = client.get(f"/api/events/{event.id}/results").json()
+    assert after == before, "community votes must not move the judged ranking"
+
+
+def test_a_participant_cannot_score_even_their_own_teams_submission(client, session, world):
+    """There is no peer-review path: being on the team is not a route to scoring it,
+    and neither is being a participant at all."""
+    from app.auth.security import hash_password
+
+    member_email = "iso-member@example.com"
+    client.post("/api/auth/logout")
+    # The seeded member owns the submission under test; give them a usable password.
+    user = session.exec(select(User).where(User.email == member_email)).first()
+    user.password_hash = hash_password("supersecret1")
+    session.add(user)
+    session.commit()
+    assert (
+        client.post("/api/auth/login", json={"email": member_email, "password": "supersecret1"}).status_code
+        == 200
+    )
+    # Confirm the 403s below are refusals of an authenticated team member, not 401s in
+    # disguise from a login that quietly failed.
+    me = client.get("/api/auth/me")
+    assert me.status_code == 200 and me.json()["email"] == member_email
+    assert me.json()["role"] == "participant"
+
+    assignment_id = world["assignment"].id
+    assert client.put(
+        f"/api/assignments/{assignment_id}/score",
+        json={"values": {"impact": 10, "execution": 10}},
+    ).status_code == 403
+    assert client.get(f"/api/assignments/{assignment_id}/sheet").status_code == 403
+    assert client.get(f"/api/events/{world['event'].id}/results").status_code == 403

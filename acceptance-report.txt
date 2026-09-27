@@ -9,10 +9,10 @@ below comes from a real run against the live `docker compose` stack on a fresh
 volume — nothing here is hand-edited. Replace this file by running the real
 acceptance suite the moment it is published.
 
-Generated: 2026-09-17T17:18:15Z (updated after the design-system rebuild, header
-  rebuild, and FAQ accordion — see below)
-Commit under test: PLAN.md Phase 5 in progress (Phase 5.1-5.3 complete; see
-  `git log --oneline -1` at the time this file was produced for the exact SHA)
+Generated: 2026-09-17T17:35:24Z (re-run after two tests were added pinning the
+  judging/voting separation documented in JUDGING.md — see the note at the end)
+Commit under test: 6b5d072 plus the uncommitted judging role-model reconciliation
+  (PLAN.md 8.0 / Phase 2, JUDGING.md, and the two separation tests below)
 Environment: `docker compose up -d --build` on a freshly created `dog-food_db_data`
   volume (`docker compose down -v` immediately before this run), Docker Desktop /
   Windows host, Postgres 16-alpine + the built api image.
@@ -23,11 +23,12 @@ SUITE 1 — Backend (pytest, inside the api container against a dedicated
 -----------------------------------------------------------------------------
 Command: docker compose exec -e TEST_DATABASE_URL=postgresql+psycopg2://dogfood:dogfood@db:5432/dogfood_test api pytest tests/ -q -p no:warnings
 
-Result: 158 passed in 60.80s
+Result: 160 passed in 75.70s
 
 Coverage by file: test_auth.py, test_events.py, test_teams.py,
 test_submissions.py, test_judging.py, test_scoring.py, test_voting.py,
-test_role_isolation.py (66 parametrized role/endpoint combinations),
+test_role_isolation.py (75 cases: the parametrized role/endpoint matrix plus the
+ownership and mechanism-separation tests),
 test_regressions.py (9 pinned defects from the Phase 0/1 audit).
 
 -----------------------------------------------------------------------------
@@ -57,7 +58,7 @@ keyboard-only voting/commenting), lifecycle.spec.ts (full participant
 lifecycle: sign up -> team -> invite -> autosave -> submit -> gallery).
 
 -----------------------------------------------------------------------------
-TOTAL: 231 / 231 passed across all three suites.
+TOTAL: 233 / 233 passed across all three suites.
 -----------------------------------------------------------------------------
 
 -----------------------------------------------------------------------------
@@ -171,4 +172,39 @@ not a user-visible defect. The test's tolerance for `/` specifically was
 widened from 1px to 6px, with a comment explaining why, rather than either
 silently passing a false claim or leaving the whole suite red over it.
 
-All 231 tests (158 backend + 9 Vitest + 64 Playwright) pass after this round.
+All 231 tests (158 backend + 9 Vitest + 64 Playwright) passed after that round.
+
+
+-----------------------------------------------------------------------------
+ADDENDUM — judging role-model reconciliation (re-run)
+-----------------------------------------------------------------------------
+Re-reading the brief's judging language against PLAN.md established that `judge`
+is a distinct, dedicated role and that participant-to-participant peer review is
+neither required nor mentioned — community voting (T3) is a separate mechanism
+from formal judging (T2). The implementation already matched this: `Role` has four
+distinct members, scoring is gated `require_role(Role.judge)` plus a per-assignment
+ownership check, `scoring/` never imports `Vote`, and no peer-review path exists
+anywhere.
+
+Two things changed as a result, and this file was re-run rather than edited:
+
+1. Documentation now states the model explicitly — PLAN.md gains section 8.0
+   (role model, mechanism comparison, peer review excluded on purpose) and
+   JUDGING.md leads with the same. Neither changed behaviour.
+
+2. Two tests were added to pin claims that JUDGING.md now makes in writing:
+   - community votes do not move the normalised judged ranking (20 votes piled on
+     one submission; standings byte-identical before and after)
+   - a participant cannot score even their own team's submission, asserted after
+     confirming the session really is an authenticated participant, so the 403s
+     cannot be 401s in disguise
+
+   Backend count therefore moves 158 -> 160, and the total 231 -> 233.
+
+Also recorded by this reconciliation: T2's first clause is "judge INVITATION and
+assignment", and no invitation flow was ever built — judge accounts exist only via
+fixtures/users.json at boot. PLAN.md's Phase 2 checklist had silently omitted the
+clause, so every box could be ticked with the capability absent. It is now listed
+unchecked there, the Phase 2 gate status no longer reads as a clean T2 sweep, and
+Open Questions carries the consequence and a scope sketch. Nothing already built is
+wrong; this is a missing capability, and it is not claimed as present anywhere.
