@@ -6,5 +6,29 @@
     "description": "A searchable timeline of every automated decision, built for the judging pipeline.",
     "track": "Developer Tools",
     "status": "submitted"
+  },
+  {
+    "team_name": "Nightjar",
+    "event_slug": "dogfood-2026",
+    "title": "Standup Digest",
+    "description": "Collects yesterday's commits and open reviews into a two-minute morning summary.",
+    "track": "Productivity",
+    "status": "submitted"
+  },
+  {
+    "team_name": "Pipeline Pals",
+    "event_slug": "dogfood-2026",
+    "title": "Flake Finder",
+    "description": "Watches CI history and flags the tests that fail intermittently before they waste a morning.",
+    "track": "Developer Tools",
+    "status": "submitted"
+  },
+  {
+    "team_name": "Quiet Ledger",
+    "event_slug": "dogfood-2026",
+    "title": "Draft in progress",
+    "description": "Still being written - stays out of the gallery and out of judging until submitted.",
+    "track": "Open Category",
+    "status": "draft"
   }
 ]

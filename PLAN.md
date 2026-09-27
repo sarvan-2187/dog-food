@@ -211,26 +211,41 @@ open is the published acceptance suite, which does not exist to run.
 ## Phase 2 — Judging (T2)
 
 ### Functional checklist
-- [ ] `Rubric` model + CRUD (organizer only) — validate criteria weights sum to 1.0 on save, reject otherwise
-- [ ] `JudgeAssignment` model + the assignment algorithm (Section 8) — implement as a pure, testable function separate from the endpoint handler
-- [ ] `Score` model + score submission endpoint, restricted to the assigned judge for that specific assignment only
-- [ ] Role isolation: judges cannot see other judges' scores; participants cannot see any score detail; organizers cannot submit a score by calling a judge endpoint directly
-- [ ] Judge progress dashboard endpoint + frontend
-- [ ] Normalization pipeline (Section 8) — pure function, unit-testable independent of the DB
-- [ ] CSV export endpoints: users, submissions, assignments, raw scores, normalized results
-- [ ] `api/tests/test_judging.py`, `test_scoring.py` passing
-- [ ] `api/tests/test_role_isolation.py`: assert 403 for every role that shouldn't be allowed, for every mutating/sensitive endpoint so far
-- [ ] Run the acceptance suite against T2
+- [x] `Rubric` model + CRUD (organizer only) — validate criteria weights sum to 1.0 on save, reject otherwise (`RubricWrite.weights_sum_to_one`; the error names the actual total). One rubric per event — see Open Questions
+- [x] `JudgeAssignment` model + the assignment algorithm (Section 8) — `api/app/judging/assignment.py`, pure and DB-free, called by the handler. Shortfall is reported via `coverage_report()` rather than relaxing a conflict
+- [x] `Score` model + score submission endpoint, restricted to the assigned judge for that specific assignment only (`require_role(judge)` **plus** an ownership check — role alone is not enough)
+- [x] Role isolation: judges cannot see other judges' scores; participants cannot see any score detail; organizers cannot submit a score by calling a judge endpoint directly — all three asserted in `test_role_isolation.py` and verified live
+- [x] Judge progress dashboard endpoint + frontend (`GET /api/judge/assignments`, `web/src/pages/JudgeDashboardPage.tsx`)
+- [x] Normalization pipeline (Section 8) — `api/app/scoring/normalization.py`, pure, unit-tested without a DB
+- [x] CSV export endpoints: users, submissions, assignments, raw scores, normalized results (Python `csv` stdlib only)
+- [x] `api/tests/test_judging.py`, `test_scoring.py` passing
+- [x] `api/tests/test_role_isolation.py`: table-driven 403/401 matrix — every mutating/sensitive endpoint × every role that must be refused
+- [ ] Run the acceptance suite against T2 — *still blocked: no acceptance suite has been published*
 
 ### UX checklist
-- [ ] Judge progress dashboard leads with "X of Y assignments completed" prominently, not buried in a table; shows which specific submissions are still pending
-- [ ] Score submission form: rubric criteria are clearly labeled with their weights, running total updates live as the judge fills it in, inline validation prevents an incomplete or out-of-range submission before the judge hits submit
-- [ ] Clear, reassuring confirmation after score submission (not just a redirect) — the judge should know unambiguously that it saved
-- [ ] Organizer rubric builder: validation error if weights don't sum to 1.0, shown inline at the field level, not as a generic form-level rejection
-- [ ] CSV export buttons show a loading state for larger exports and a clear success (download starts) signal
-- [ ] All Phase 2 screens verified at mobile/tablet/desktop breakpoints and via keyboard-only navigation
+- [x] Judge progress dashboard leads with "X of Y assignments completed" prominently, not buried in a table; shows which specific submissions are still pending (asserted by position, not just presence)
+- [x] Score submission form: criteria labelled with their weights, weighted total updates live, inline validation blocks an incomplete or out-of-range submission before submit is enabled
+- [x] Clear, reassuring confirmation after score submission (not just a redirect) — a toast plus a persistent "This score is recorded" marker, and the judge stays on the form
+- [x] Organizer rubric builder: weight total validated live at the field level with a running sum and a "that is X too much / X short" hint — never a generic form-level rejection
+- [x] CSV export buttons show a loading state and a clear success signal; a role rejection surfaces as a readable message instead of navigating to a raw 403
+- [x] All Phase 2 screens verified at mobile/tablet/desktop breakpoints and via keyboard-only navigation (`web/tests/judging.spec.ts`; the standings table becomes stacked key/value cards below `md`, per `DESIGN_SYSTEM.md` §4)
 
 **Definition of Done — Phase 2 gate:** acceptance suite reports all T2 checks green, `test_role_isolation.py` has at least one negative-role test per mutating endpoint, and the Phase 2 UX checklist is fully checked. Do not start Phase 3 otherwise.
+
+**Gate status:** green apart from the unpublished acceptance suite. Verification standing:
+
+| Suite | Command | Result |
+|---|---|---|
+| Backend | `docker compose exec api pytest tests/ -v` | 124 passed |
+| Frontend unit | `cd web && npm test` | 9 passed |
+| Browser E2E | `cd web && npx playwright test` | 45 passed |
+
+Verified live against the seeded stack on a clean `docker compose up -d --build`: assignment produced 9 pairs
+across 3 submissions with **zero** conflicts (Dana, who is both a judge and a Pipeline Pals member, was never
+assigned Flake Finder); four judges of differing harshness scored; the normalised standings re-ranked against the
+raw mean as intended. One defect was found and fixed in this phase: the standings table's `<th>` elements had no
+`scope`, so the browser exposed them as generic cells and a screen reader reading a value never said which column
+it came from.
 
 ---
 
@@ -461,6 +476,46 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   creation and every submission write correctly start returning `400` and a fresh `docker compose up`
   demos a dead event. Left as-is rather than silently rewriting fixture semantics, but before the
   demo either push the date well out or compute fixture dates relative to first boot.
+
+- **One rubric per event (Phase 2).** PLAN.md says "`Rubric` model + CRUD (organizer only)" without
+  specifying cardinality. Modelled as exactly one rubric per event (`unique=True` on
+  `Rubric.event_id`), exposed as `PUT /api/events/{id}/rubric` create-or-replace rather than
+  POST + PATCH. Reason: Section 8's normalisation takes per-judge z-scores of *raw totals*, which
+  corrects for judge harshness but assumes every submission in an event was scored on the same
+  scale. Two rubrics in one event would silently break that assumption. Flag if multi-track events
+  need a rubric per track.
+
+- **The rubric locks once scoring starts (Phase 2, judgment call).** Changing criteria or weights
+  after judges have scored would silently reinvalidate every score already given against the old
+  weights, with no visible symptom. `PUT` and `DELETE` therefore return `409` with the reason once
+  any score exists for the event. PLAN.md didn't specify this; the alternative (silent
+  recalculation) seemed clearly worse for judging integrity. Revisit if organizers need a
+  deliberate "re-open scoring" action.
+
+- **`fixtures/rubrics.json` added (Phase 2).** Section 2's repo layout lists four fixture files and
+  predates Phase 2's rubric model. A fifth was added because constraint #1 is that everything works
+  from `docker compose up` with no manual steps — without a seeded rubric, a fresh boot cannot
+  demonstrate assignment or scoring at all without an organizer hand-building a rubric first.
+
+- **Fixture set expanded for Phase 2 (Phase 2).** The Phase 1 fixtures had one judge and one
+  submission, which cannot exercise a k=3 assignment, a conflict, or normalisation across judges.
+  Now four judges, four teams, three submitted entries plus one draft. Deliberately, Dana is both a
+  judge *and* a member of Pipeline Pals, so a fresh boot exercises the Section 8 conflict rule for
+  real: she is never assigned Flake Finder. Judge accounts are global rather than per-event, since
+  PLAN.md never scopes a judge to an event.
+
+- **Raw total is `sum(weight x value)` (Phase 2).** Section 8 specifies the normalisation over "raw
+  totals" but not how a raw total is formed from rubric criteria. Using the weighted sum keeps the
+  total on the same 0-`max_score` scale as the individual criteria, so "7.8 out of 10" means
+  something to a human reading the CSV. Recorded here because the choice affects every exported
+  number.
+
+- **Seeding is disabled under test (Phase 2, found while building).** `run_seed()` commits on its
+  own connection during app startup, outside each test's rolled-back transaction, so seeded rows
+  persisted for the whole session and leaked into any query over a global table. It made a
+  coverage-shortfall test pass for the wrong reason. `conftest.py` now points `FIXTURES_DIR` at an
+  empty path and truncates every table once per run, so the suite cannot inherit state. Worth
+  knowing before writing Phase 3's voting tests, which will also query global tables.
 
 - **Test data accumulates in the dev database (Phase 1, audit).** The Playwright suite runs against
   the live `docker compose` stack and creates real users/teams/submissions in `dogfood`. Seeding

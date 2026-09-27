@@ -64,6 +64,19 @@ export function EventDetailPage() {
           <Button variant="primary">Go to your submission</Button>
         </Link>
       )}
+
+      {(user?.role === 'organizer' || user?.role === 'admin') && (
+        <Card title="Organizing this event">
+          <div className="flex flex-wrap gap-2">
+            <Link to={`/events/${event.slug}/rubric`}>
+              <Button variant="secondary">Judging rubric</Button>
+            </Link>
+            <Link to={`/events/${event.slug}/results`}>
+              <Button variant="primary">Assignments &amp; results</Button>
+            </Link>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

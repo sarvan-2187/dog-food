@@ -10,6 +10,13 @@ import os
 
 os.environ.setdefault("SESSION_SECRET", "test-secret-not-for-prod")
 
+# Seeding is a startup side effect that commits on its OWN connection, outside
+# each test's rolled-back transaction -- so seeded rows would persist for the
+# whole session and leak into any query over a global table (e.g. "every user
+# with role=judge"). Pointing FIXTURES_DIR at a path with no fixtures makes
+# run_seed() a no-op under test; tests build exactly the data they assert on.
+os.environ["FIXTURES_DIR"] = "/nonexistent-fixtures-under-test"
+
 _DEV_FALLBACK = "postgresql+psycopg2://dogfood:dogfood@localhost:5432/dogfood"
 
 
@@ -49,8 +56,29 @@ from app.auth import models as _auth_models  # noqa: E402,F401
 from app.events import models as _event_models  # noqa: E402,F401
 from app.teams import models as _team_models  # noqa: E402,F401
 from app.submissions import models as _submission_models  # noqa: E402,F401
+from app.judging import models as _judging_models  # noqa: E402,F401
+from app.scoring import models as _scoring_models  # noqa: E402,F401
 
 SQLModel.metadata.create_all(engine)
+
+
+def _truncate_all() -> None:
+    """Start every run from an empty schema.
+
+    Each test rolls its own transaction back, but anything committed outside
+    that transaction by an earlier run (or an earlier version of this file)
+    would survive and quietly change what a query over a global table returns.
+    A stale row here once made a coverage-shortfall test pass for the wrong
+    reason, so the suite now refuses to inherit any state.
+    """
+    tables = ", ".join(f'"{t.name}"' for t in reversed(SQLModel.metadata.sorted_tables))
+    if not tables:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
+_truncate_all()
 
 
 @pytest.fixture()

@@ -34,3 +34,19 @@
     transition-duration: 80ms !important;
   }
 }
+
+/* Tailwind ships .sr-only in core utilities; declared here as well so a caption
+   stays reachable to screen readers even if utilities are ever purged. */
+@layer utilities {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
