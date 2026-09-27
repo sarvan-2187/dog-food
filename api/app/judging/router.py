@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
+from ..audit.log import record
 from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
 from ..events.models import Event
@@ -39,7 +40,7 @@ def _event_or_404(session: Session, event_id: int) -> Event:
 def upsert_rubric(
     event_id: int,
     payload: RubricWrite,
-    _: User = Depends(require_role(Role.organizer, Role.admin)),
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> Rubric:
     """One rubric per event, so this is a create-or-replace rather than POST+PATCH."""
@@ -60,6 +61,8 @@ def upsert_rubric(
     else:
         rubric = Rubric(event_id=event_id, name=payload.name, criteria=criteria)
     session.add(rubric)
+    session.flush()
+    record(session, "rubric.saved", actor=user, entity_type="event", entity_id=event_id, criteria=len(criteria))
     session.commit()
     session.refresh(rubric)
     return rubric
@@ -83,7 +86,7 @@ def get_rubric(
 @router.delete("/api/events/{event_id}/rubric", status_code=status.HTTP_204_NO_CONTENT)
 def delete_rubric(
     event_id: int,
-    _: User = Depends(require_role(Role.organizer, Role.admin)),
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> None:
     rubric = session.exec(select(Rubric).where(Rubric.event_id == event_id)).first()
@@ -94,6 +97,7 @@ def delete_rubric(
             status.HTTP_409_CONFLICT,
             "Judges have already been assigned for this event, so its rubric cannot be deleted.",
         )
+    record(session, "rubric.deleted", actor=user, entity_type="event", entity_id=event_id)
     session.delete(rubric)
     session.commit()
 
@@ -106,7 +110,7 @@ def delete_rubric(
 def run_assignment(
     event_id: int,
     payload: AssignmentRun,
-    _: User = Depends(require_role(Role.organizer, Role.admin)),
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> AssignmentSummary:
     """Idempotent: re-running adds only the pairs that do not exist yet, so an
@@ -148,6 +152,15 @@ def run_assignment(
             continue
         session.add(assignment)
         created += 1
+    record(
+        session,
+        "assignments.run",
+        actor=user,
+        entity_type="event",
+        entity_id=event_id,
+        created=created,
+        judges_per_submission=payload.judges_per_submission,
+    )
     session.commit()
 
     titles = {s.id: s.title for s in submissions}

@@ -4,6 +4,7 @@ import { RequireRole } from '../components/auth/guards';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { Input } from '../components/ui';
 import type { AssignmentSummary, EventRecord, ResultRow } from '../types';
 
 const EXPORTS = [
@@ -13,6 +14,13 @@ const EXPORTS = [
   { file: 'scores', label: 'Raw scores' },
   { file: 'results', label: 'Normalised results' },
 ] as const;
+
+/** An ISO instant as the value a datetime-local input expects, in local time. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export function EventResultsPage() {
   return (
@@ -30,6 +38,7 @@ function EventResults() {
   const [assigning, setAssigning] = useState(false);
   const [summary, setSummary] = useState<AssignmentSummary | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [savingVoting, setSavingVoting] = useState(false);
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -68,6 +77,28 @@ function EventResults() {
       setToast({ message: err instanceof ApiError ? err.message : 'Could not run the assignment.', ok: false });
     } finally {
       setAssigning(false);
+    }
+  }
+
+  async function updateVoting(patch: { voting_enabled?: boolean; results_hidden_until?: string | null }) {
+    if (!event) return;
+    setSavingVoting(true);
+    try {
+      const updated = await api.patch<EventRecord>(`/api/events/${event.id}`, patch);
+      setEvent(updated);
+      setToast({
+        message:
+          patch.voting_enabled === undefined
+            ? 'Results reveal time updated.'
+            : patch.voting_enabled
+              ? 'Community voting is now open.'
+              : 'Community voting is now closed.',
+        ok: true,
+      });
+    } catch (err) {
+      setToast({ message: err instanceof ApiError ? err.message : 'Could not update voting.', ok: false });
+    } finally {
+      setSavingVoting(false);
     }
   }
 
@@ -133,6 +164,38 @@ function EventResults() {
               </p>
             </div>
           )}
+        </div>
+      </Card>
+
+      <Card title="Community voting" meta={event?.voting_enabled ? 'Open' : 'Closed'}>
+        <div className="flex flex-col gap-4">
+          <p className="text-body text-ink-600">
+            {event?.voting_enabled
+              ? 'Anyone signed in can vote and comment on submissions in the gallery.'
+              : 'Voting is closed. Turn it on to let the community vote on submissions in the gallery.'}
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <Button
+              variant={event?.voting_enabled ? 'secondary' : 'primary'}
+              loading={savingVoting}
+              loadingLabel="Saving..."
+              onClick={() => updateVoting({ voting_enabled: !event?.voting_enabled })}
+            >
+              {event?.voting_enabled ? 'Close voting' : 'Open voting'}
+            </Button>
+            <Input
+              label="Hide vote counts until"
+              type="datetime-local"
+              className="md:w-64"
+              value={event?.results_hidden_until ? toLocalInput(event.results_hidden_until) : ''}
+              onChange={(e) =>
+                updateVoting({
+                  results_hidden_until: e.target.value ? new Date(e.target.value).toISOString() : null,
+                })
+              }
+              hint="Leave empty to show counts immediately."
+            />
+          </div>
         </div>
       </Card>
 

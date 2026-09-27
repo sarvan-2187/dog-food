@@ -58,6 +58,8 @@ from app.teams import models as _team_models  # noqa: E402,F401
 from app.submissions import models as _submission_models  # noqa: E402,F401
 from app.judging import models as _judging_models  # noqa: E402,F401
 from app.scoring import models as _scoring_models  # noqa: E402,F401
+from app.voting import models as _voting_models  # noqa: E402,F401
+from app.audit import models as _audit_models  # noqa: E402,F401
 
 SQLModel.metadata.create_all(engine)
 
@@ -94,6 +96,17 @@ def session():
         db_session.close()
         outer_transaction.rollback()
         connection.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """The limiter is process-global by design, so one test's spending would
+    otherwise starve the next."""
+    from app.voting.ratelimit import reset_all
+
+    reset_all()
+    yield
+    reset_all()
 
 
 @pytest.fixture()

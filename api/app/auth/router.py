@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlmodel import Session, select
 
+from ..audit.log import record
 from ..db import get_session
 from .deps import get_current_user
 from .models import Role, User, UserPublic
@@ -62,6 +63,8 @@ def register(payload: RegisterRequest, response: Response, session: Session = De
         role=Role.participant,
     )
     session.add(user)
+    session.flush()
+    record(session, "user.registered", actor=user, entity_type="user", entity_id=user.id)
     session.commit()
     session.refresh(user)
     _set_session_cookie(response, user.id)
@@ -73,6 +76,8 @@ def login(payload: LoginRequest, response: Response, session: Session = Depends(
     user = session.exec(select(User).where(User.email == payload.email)).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password.")
+    record(session, "user.logged_in", actor=user, entity_type="user", entity_id=user.id)
+    session.commit()
     _set_session_cookie(response, user.id)
     return user
 

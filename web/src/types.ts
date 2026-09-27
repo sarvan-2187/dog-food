@@ -17,6 +17,9 @@ export interface EventRecord {
   tracks: string[];
   created_by_id: number;
   created_at: string;
+  voting_enabled: boolean;
+  /** null means results were never hidden. */
+  results_hidden_until: string | null;
 }
 
 export interface TeamMember {
@@ -125,4 +128,47 @@ export interface ResultRow {
   raw_mean: number;
   z_bar: number;
   display: number;
+}
+
+
+// --- Phase 3: community voting and comments --------------------------------
+
+/**
+ * `votes` is null while the event's results are hidden - the server withholds
+ * the count from the payload rather than relying on the UI to hide it, so the
+ * UI must handle its absence rather than treat it as zero.
+ */
+export interface GalleryItem {
+  id: number;
+  event_id: number;
+  team_id: number;
+  title: string;
+  description: string;
+  track: string;
+  updated_at: string;
+  comment_count: number;
+  votes: number | null;
+  voted_by_me: boolean;
+}
+
+export interface VoteResult {
+  submission_id: number;
+  voted: boolean;
+  votes: number | null;
+}
+
+export interface CommentRecord {
+  id: number;
+  submission_id: number;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
+export interface PublicResultRow {
+  rank: number;
+  submission_id: number;
+  submission_title: string;
+  team_name: string;
+  votes: number;
 }

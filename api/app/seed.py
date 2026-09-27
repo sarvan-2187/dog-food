@@ -76,6 +76,10 @@ def _seed_events(session: Session, email_to_id: dict[str, int]) -> dict[str, int
             start_at=_fixture_dt(row["start_at"]),
             end_at=_fixture_dt(row["end_at"]),
             tracks=row.get("tracks", []),
+            voting_enabled=row.get("voting_enabled", False),
+            results_hidden_until=(
+                _fixture_dt(row["results_hidden_until"]) if row.get("results_hidden_until") else None
+            ),
             created_by_id=email_to_id[row["created_by"]],
         )
         session.add(event)

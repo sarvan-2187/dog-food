@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
+from ..audit.log import record
 from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
 from ..events.models import Event
@@ -45,6 +46,7 @@ def create_team(
     session.commit()
     session.refresh(team)
     session.add(TeamMembership(team_id=team.id, user_id=user.id))
+    record(session, "team.created", actor=user, entity_type="team", entity_id=team.id, name=team.name)
     session.commit()
     return _team_public(session, team)
 
@@ -66,6 +68,7 @@ def join_team(
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "You are already a member of this team.")
     session.add(TeamMembership(team_id=team.id, user_id=user.id))
+    record(session, "team.invite_redeemed", actor=user, entity_type="team", entity_id=team.id)
     session.commit()
     return _team_public(session, team)
 
