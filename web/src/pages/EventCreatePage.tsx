@@ -9,6 +9,16 @@ import type { EventRecord, PrizeEntry } from '../types';
 
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+/** "HackFlow Hackathon 2026!" -> "hackflow-hackathon-2026". Accents are folded, not dropped. */
+export function slugify(name: string): string {
+  return name
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 export function EventCreatePage() {
   return (
     <RequireRole roles={['organizer', 'admin']}>
@@ -20,7 +30,10 @@ export function EventCreatePage() {
 function EventCreateForm() {
   const navigate = useNavigate();
   const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
+  // The slug follows the name until the organizer types their own; clearing it
+  // hands it back to the name.
+  const [customSlug, setCustomSlug] = useState('');
+  const slug = customSlug || slugify(name);
   const [description, setDescription] = useState('');
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
@@ -73,10 +86,16 @@ function EventCreateForm() {
             label="Slug"
             required
             value={slug}
-            onChange={(e) => setSlug(e.target.value)}
+            onChange={(e) => setCustomSlug(e.target.value)}
             onBlur={mark('slug')}
             error={slugError}
-            hint={slugError ? undefined : 'Used in the URL, e.g. hackflow-2026.'}
+            hint={
+              slugError
+                ? undefined
+                : customSlug
+                  ? 'Used in the URL. Clear it to generate one from the name again.'
+                  : 'Made from the name and used in the URL. Edit it if you like.'
+            }
           />
           <Input label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
           <Input label="Start" type="datetime-local" required value={startAt} onChange={(e) => setStartAt(e.target.value)} />
