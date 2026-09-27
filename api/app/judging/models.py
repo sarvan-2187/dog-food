@@ -72,6 +72,10 @@ class EventJudge(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", index=True)
     added_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     added_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+    # One of the event's tracks, or None for a judge who takes any track (DOGFOOD
+    # T2). A track judge is only ever assigned, shown or allowed to score entries
+    # in that track: see judging.assignment.outside_track.
+    track: Optional[str] = Field(default=None)
 
 
 class JudgeConflict(SQLModel, table=True):

@@ -65,6 +65,8 @@ _ADDED_COLUMNS = (
     ("events", "voting_requires_verified", "boolean NOT NULL DEFAULT false"),
     ("events", "voting_account_cutoff", "timestamptz"),
     ("users", "email_verified_at", "timestamptz"),
+    # Track judges (DOGFOOD T2): NULL means the judge takes any track.
+    ("event_judges", "track", "varchar DEFAULT NULL"),
 )
 
 

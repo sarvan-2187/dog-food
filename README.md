@@ -64,6 +64,22 @@ python run.py .dogfood.toml      # the official checker: 7/7
 docker compose exec api pytest tests/ -q
 ```
 
+**Fig. 02. Role isolation matrix.** What each caller gets back from the server, enforced by
+`require_role()` plus ownership and track checks, never by the UI hiding a control.
+"Other track" is a judge whose panel track differs from the entry's track (JUDGING.md,
+assignment rule 8); "Other judge" is a judge the entry is not assigned to.
+
+| Action | Anonymous | Participant | Assigned judge | Other track | Other judge | Organizer, admin |
+|---|---|---|---|---|---|---|
+| Browse the gallery | 200 | 200 | 200 | 200 | 200 | 200 |
+| Open an entry's score sheet | 401 | 403 | 200 | 403 | 403 | 403 |
+| Submit or read a score for it | 401 | 403 | 200 | 403 | 403 | 403 |
+| See it on the judge dashboard | 401 | 403 | listed | not listed | not listed | 403 |
+| Read your own scores | 401 | 403 | 200 | its score left out | 200 | 200 |
+| Read another judge's scores | 401 | 403 | 403, audited | 403, audited | 403, audited | 200 |
+| Normalised results, CSV exports | 401 | 403 | 403 | 403 | 403 | 200 |
+| Set a judge's track, run assignment | 401 | 403 | 403 | 403 | 403 | 200 |
+
 ## From registration to archive: the ten stages
 
 Every stage below is a screen in the running app, captured from `docker compose up` on the

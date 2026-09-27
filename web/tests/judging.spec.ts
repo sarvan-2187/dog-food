@@ -205,6 +205,27 @@ test.describe('organizer results', () => {
     await expect(page.getByText(/export downloaded/)).toBeVisible();
   });
 
+  test('each judge on the panel has a track selector, seeded track judges included', async ({ page }) => {
+    await asOrganizer(page);
+    await page.goto(`/events/${EVENT}/results`);
+    // Omar is seeded as a Developer Tools judge, Sam takes any track (fixtures/events.json).
+    await expect(page.getByLabel('Track for Omar Judge')).toContainText('Developer Tools');
+    await expect(page.getByLabel('Track for Sam Judge')).toContainText('Any track');
+  });
+
+  test('a track judge is only ever assigned entries in their track', async ({ playwright, baseURL }) => {
+    const ctx = await playwright.request.newContext({ baseURL });
+    await ctx.post('/api/auth/login', { data: { email: 'omar@example.com', password: 'judge-pass789' } });
+    const progress = await (await ctx.get('/api/judge/assignments')).json();
+    const all = [...progress.pending, ...progress.done];
+    expect(all.length).toBeGreaterThan(0);
+    for (const a of all) {
+      const sheet = await (await ctx.get(`/api/assignments/${a.id}/sheet`)).json();
+      expect(sheet.submission_track).toBe('Developer Tools');
+    }
+    await ctx.dispose();
+  });
+
   test('re-running assignment reports that nothing was left to do', async ({ page }) => {
     await asOrganizer(page);
     await page.goto(`/events/${EVENT}/results`);
