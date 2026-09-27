@@ -64,13 +64,13 @@ that lives only in the frontend.
 
 ## Status
 
-228 tests passing across three suites, run live against this exact stack:
+231 tests passing across three suites, run live against this exact stack:
 
 | Suite | Command | Result |
 |---|---|---|
 | Backend | `docker compose exec api pytest tests/ -v` | 158 passed |
 | Frontend unit | `cd web && npm test` | 9 passed |
-| Browser E2E | `cd web && npx playwright test` | 61 passed |
+| Browser E2E | `cd web && npx playwright test` | 64 passed |
 
 No official acceptance suite has been published for this build. `acceptance-report.txt`
 is therefore self-issued from the suites above (see PLAN.md Phase 5.5) — replace it the
