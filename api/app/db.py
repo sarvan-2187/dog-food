@@ -53,6 +53,7 @@ _ADDED_COLUMNS = (
     ("events", "status", "varchar NOT NULL DEFAULT 'published'"),
     ("events", "rules", "varchar NOT NULL DEFAULT ''"),
     ("events", "stages", "json NOT NULL DEFAULT '[]'"),
+    ("events", "certificate_template", "varchar NOT NULL DEFAULT 'classic'"),
     ("users", "is_active", "boolean NOT NULL DEFAULT true"),
     # Voting access modes (DOGFOOD T3)
     ("events", "voting_access", "varchar NOT NULL DEFAULT 'authenticated'"),

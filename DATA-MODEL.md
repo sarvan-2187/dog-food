@@ -82,6 +82,7 @@ A request authenticates with `Authorization: Bearer hf_...` instead of the sessi
 | `status` | str | `draft` \| `published`. New and imported events start as drafts, which are hidden (404) from everyone but organizers; existing events were backfilled as published (Phase 10.12) |
 | `rules` | str | Plain text shown on the event page, never rendered as HTML (Phase 10.8) |
 | `stages` | JSON list | Named rounds shown as a timeline on the event page: `[{"name", "description", "starts_at", "ends_at"}]`, ISO-8601 UTC, at most 10, sorted by start. Informational: the server's gates are still `start_at` / `end_at` / `results_hidden_until`. Included in event export/import |
+| `certificate_template` | str, default `classic` | Which certificate design the event's certificates use: a key of `TEMPLATES` in `api/app/scoring/certificate.py`. Included in event export/import |
 
 ### `announcements` (`api/app/events/models.py`)
 
