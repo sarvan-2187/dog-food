@@ -29,6 +29,7 @@ dog-food/
 ├── .dogfood.toml            ← where things are, and what we claim (T1-T4)
 ├── acceptance-report.txt    ← what run.py printed: 7/7, T1 and T2 verified
 ├── docker-compose.yml       ← one command to a seeded, working portal
+├── .env.example             ← optional: real email and your public URL; not needed to run
 ├── README.md                ← this file: what it does, how to run it, honest limits
 ├── ARCHITECTURE.md          ← how it is put together, and why
 ├── DATA-MODEL.md            ← the schema, and the ways data gets in and out
@@ -214,6 +215,12 @@ docker compose up
 That's it: no `.env` to fill in, no separate seed script, no manual migration step. The
 API creates its schema and seeds fixture data automatically on first boot. Open
 `http://localhost:8000`.
+
+**Is `.env` needed? No.** Every setting has a working default, and with no `.env` HackFlow
+sends no email and makes no outbound network calls. `.env.example` lists the optional extras,
+all for going live: `SMTP_*` for self-service password-reset and verification emails, and
+`APP_BASE_URL` for the address used in email links and on certificates. Copy it to `.env`
+only when you want those (see [Email](#email-optional-self-service-password-resets)).
 
 Seeded accounts (see `fixtures/users.json`); the password is the value shown:
 
