@@ -24,8 +24,13 @@ describe('api error surfacing', () => {
   });
 
   it('falls back to a plain-language message, never a bare status code alone', async () => {
+    // Found live in Phase 5.3 (forced 500 by stopping the db container): this test's
+    // name promised the fallback never leaks a bare status code, but the assertion
+    // below only checked the rejection's type, not its message - so it never actually
+    // caught the "Request failed (500)." bug it was named after. Asserting the message
+    // content now closes that gap.
     vi.stubGlobal('fetch', vi.fn(async () => mockResponse(500, undefined, 'text/html')));
-    await expect(api.get('/api/events')).rejects.toBeInstanceOf(ApiError);
+    await expect(api.get('/api/events')).rejects.toThrow('Something went wrong on our end. Please try again.');
   });
 
   it('carries the status so callers can treat 404 and 409 as expected states', async () => {

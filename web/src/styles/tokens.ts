@@ -40,10 +40,12 @@ export const colors = {
   info: { bg: '#ECF2FF', fg: '#2450CF' },
 } as const;
 
+// System stacks are canonical (DESIGN_SYSTEM.md 3.1, decided Phase 5.1) — no webfont
+// binaries are committed, so no named font ever appears here as a "preferred" entry.
 export const fontFamily = {
-  sans: ['Inter', 'Inter var', '-apple-system', 'Segoe UI', 'system-ui', 'sans-serif'],
-  serifAccent: ['Instrument Serif', 'Georgia', 'Times New Roman', 'serif'],
-  mono: ['JetBrains Mono', 'Consolas', 'ui-monospace', 'monospace'],
+  sans: ['-apple-system', 'Segoe UI', 'system-ui', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+  serifAccent: ['Georgia', 'Times New Roman', 'serif'],
+  mono: ['Consolas', 'SF Mono', 'ui-monospace', 'monospace'],
 } as const;
 
 /** [size, { lineHeight, letterSpacing, fontWeight }] - Tailwind fontSize tuples. */

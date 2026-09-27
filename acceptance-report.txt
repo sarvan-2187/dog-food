@@ -1,0 +1,102 @@
+DOGFOOD 2026 — SELF-ISSUED ACCEPTANCE REPORT
+=============================================
+
+STATUS: SELF-ISSUED, PENDING THE REAL SUITE
+No official acceptance suite has been published at any point during this build
+(see PLAN.md, Open Questions). This report is generated from the project's own
+test suites instead, per Phase 5.5's documented fallback decision. Every number
+below comes from a real run against the live `docker compose` stack on a fresh
+volume — nothing here is hand-edited. Replace this file by running the real
+acceptance suite the moment it is published.
+
+Generated: 2026-09-17T15:00:37Z
+Commit under test: PLAN.md Phase 5 in progress (Phase 5.1-5.3 complete; see
+  `git log --oneline -1` at the time this file was produced for the exact SHA)
+Environment: `docker compose up -d --build` on a freshly created `dog-food_db_data`
+  volume (`docker compose down -v` immediately before this run), Docker Desktop /
+  Windows host, Postgres 16-alpine + the built api image.
+
+-----------------------------------------------------------------------------
+SUITE 1 — Backend (pytest, inside the api container against a dedicated
+          dogfood_test database, real Postgres, no mocks)
+-----------------------------------------------------------------------------
+Command: docker compose exec -e TEST_DATABASE_URL=postgresql+psycopg2://dogfood:dogfood@db:5432/dogfood_test api pytest tests/ -q -p no:warnings
+
+Result: 158 passed in 60.80s
+
+Coverage by file: test_auth.py, test_events.py, test_teams.py,
+test_submissions.py, test_judging.py, test_scoring.py, test_voting.py,
+test_role_isolation.py (66 parametrized role/endpoint combinations),
+test_regressions.py (9 pinned defects from the Phase 0/1 audit).
+
+-----------------------------------------------------------------------------
+SUITE 2 — Frontend unit (Vitest)
+-----------------------------------------------------------------------------
+Command: cd web && npx vitest run
+
+Result: 2 test files, 9 tests, all passed (~1.7s)
+  - src/lib/api.test.ts (5 tests)
+  - src/components/DeadlineCountdown.test.tsx (4 tests)
+
+-----------------------------------------------------------------------------
+SUITE 3 — Browser end-to-end (Playwright, real Chromium, against the live
+          docker compose stack exactly as a judge would use it)
+-----------------------------------------------------------------------------
+Command: cd web && npx playwright test
+
+Result: 61 passed (8.5s)
+
+Coverage by file: breakpoints.spec.ts (mobile/tablet/desktop overflow,
+role-aware nav, keyboard-only login), judging.spec.ts (Phase 2 role gating,
+rubric builder, score form, CSV export, Phase 2 screens at all three
+breakpoints, keyboard-only scoring), voting.spec.ts (Phase 3 results hiding,
+voting, comments, rate limiting, Phase 3 screens at all three breakpoints,
+keyboard-only voting/commenting), lifecycle.spec.ts (full participant
+lifecycle: sign up -> team -> invite -> autosave -> submit -> gallery).
+
+-----------------------------------------------------------------------------
+TOTAL: 228 / 228 passed across all three suites.
+-----------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------
+LIVE VERIFICATION BEYOND THE AUTOMATED SUITES (Phase 5.2 / 5.3)
+-----------------------------------------------------------------------------
+Performed with a live Chromium session against the running stack, not just
+code review, per Phase 5.3's "prove the states, don't trust the code":
+
+- Event creation form (organizer) and team creation form (participant): both
+  confirmed keyboard-reachable with a real, visible focus ring
+  (rgba(47,107,255,0.2) 3px, the brand-500 ring from DESIGN_SYSTEM.md 7.2/9) -
+  neither had a named test asserting this before.
+- Forced a real 500 by stopping the `db` container mid-session: the gallery's
+  ErrorState rendered (role="alert", "Something went wrong", a working "Try
+  again" button) - not a blank screen or a raw stack trace.
+- DEFECT FOUND AND FIXED: the error fallback's message leaked the bare status
+  code ("Request failed (500)."), which brushes against PLAN.md 4.6's "no
+  jargon like '500 Internal Server Error' surfaced to a participant." Fixed in
+  web/src/lib/api.ts (and its api.download() counterpart) to show a plain
+  message and log the real status to the console instead.
+- TEST-RIGOR DEFECT FOUND AND FIXED: the existing Vitest test named "falls
+  back to a plain-language message, never a bare status code alone" only
+  asserted the rejection's type, never its message - so it could not have
+  caught the bug above. Tightened to assert the actual message text.
+- Confirmed the seeded event's deadline countdown now reads correctly relative
+  to today (2026-09-17) after the Phase 5.1 fixture-date fix: "30D 3H
+  REMAINING", no longer a near-lapsed event.
+- Confirmed the Phase 3 hidden-results banner still renders correctly
+  ("Results become visible on ...") against the updated fixture dates.
+
+-----------------------------------------------------------------------------
+KNOWN GAPS AT THIS REPORT'S TIMESTAMP
+-----------------------------------------------------------------------------
+- No real acceptance suite exists to compare against; this report is the
+  fallback described in PLAN.md Phase 5.5, not a replacement for it.
+- The Phase 5.2 whole-app click-through audit (every screen x every role x
+  every breakpoint) rests primarily on the 61 Playwright checks above, which
+  are real and current; the event-creation and team-formation keyboard checks
+  above closed the two gaps found by inspection. A handful of lower-traffic
+  screens (e.g. the audit log viewer, CSV export buttons under every role)
+  have automated role-gating coverage via test_role_isolation.py but no
+  dedicated live keyboard/breakpoint spot-check yet.
+- Demo video (Phase 5.6) and final documentation (Phase 5.7) had not yet been
+  produced as of this report's timestamp.
