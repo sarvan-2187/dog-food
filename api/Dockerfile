@@ -15,6 +15,8 @@ COPY api/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api/app ./app
+COPY api/tests ./tests
+COPY api/pytest.ini ./pytest.ini
 COPY fixtures ./fixtures
 COPY --from=web /web/dist ./static
 
