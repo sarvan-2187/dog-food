@@ -62,14 +62,14 @@ test.describe('role-aware navigation for judging', () => {
   test('a judge sees Judging and never organizer links', async ({ page }) => {
     await asJudge(page);
     await openMenu(page);
-    await expect(page.getByRole('link', { name: 'Judging' }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Judging', exact: true }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: 'Create event' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'My teams' })).toHaveCount(0);
   });
 
   test('a participant never sees Judging', async ({ page }) => {
     await login(page, 'jordan@example.com', 'participant-pass1');
-    await expect(page.getByRole('link', { name: 'Judging' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Judging', exact: true })).toHaveCount(0);
   });
 
   test('a participant reaching the judge dashboard is refused in plain language', async ({ page }) => {
