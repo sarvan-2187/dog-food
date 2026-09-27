@@ -235,6 +235,11 @@ Important things about this screen:
 When you are ready, choose **Submit for judging**. Your project then appears in the public
 gallery. You can still edit it until the deadline passes.
 
+If the organizers rule your entry ineligible, a red box at the top of this page says so
+and gives their reason. The project leaves the gallery, voting and judging. Contact the
+organizers if you think it's a mistake; they can reinstate it with one click, and nothing
+you or the judges did is lost.
+
 ### Step 4: Browse and vote
 
 **Gallery** shows everything that has been submitted. Pick the hackathon, then browse,
@@ -254,6 +259,9 @@ A few things are deliberately true here:
   let anyone with the link vote, and some ask guests for an email address first. You will
   see a **Vote without an account** box, and the link emailed to you lets you vote from that
   browser.
+- **Some events ask more of voters**, to stop one person voting from several accounts. You
+  may need a verified email (see *Your account* below), or an account made before a date
+  the organizer chose. If you can't vote, the message says which.
 - **Vote counts stay hidden** until the organizer's chosen reveal time, so an early lead
   cannot snowball. They are genuinely hidden, not just left off the screen.
 - **The order can be shuffled** so the projects at the top do not get an unfair advantage.
@@ -270,6 +278,9 @@ replay button.
 
 - **Name → Edit** changes how you appear.
 - **Change password** signs you out on every other device.
+- **Send verification link**, under your email, emails you a link that proves the address
+  is yours. It works for 24 hours. Once you follow it, your profile shows **Verified**.
+  Some events only count votes from verified accounts.
 
 ---
 
@@ -292,6 +303,9 @@ and accept. Your account becomes a judge account, you join that event's judging 
   score the version that was actually submitted.
 - The big number is how many of your assigned projects you have finished.
 - **Still to score** lists what is left. You are shown **only** the projects assigned to you.
+- If the organizer set a judging deadline, each project shows **Due** with the days left,
+  and **Overdue** once it has passed. You can still score after it; the organizer just
+  sees that it came in late.
 
 Choose **Score now** on any of them.
 
@@ -362,6 +376,9 @@ From the event page, choose **Event settings**.
 - **Rules**: plain text shown on the event page.
 - Further down: the maximum team size, tracks, the prize list, and a downloadable backup of
   the whole event.
+- **Embed on your site**: a snippet of code you paste into your own website to show this
+  event's projects there. It updates itself as teams submit, and shows winners only after
+  your results reveal. **Preview the widget** opens it on its own.
 
 Raising or lowering the team-size limit only affects **new** joins. A team that is already
 larger than a reduced limit is left alone rather than having someone thrown out.
@@ -412,6 +429,15 @@ project from their own team or one they declared a conflict with. Running it aga
 fills gaps. It will not duplicate work anyone already has. Assignment opens once
 submissions close.
 
+**Judges should finish by** sets a judging deadline. Judges see it on their list with a
+countdown, reminder emails mention it, and the progress card below marks anyone still
+behind as **Overdue**. It never locks scoring: a late score still counts.
+
+**Eligibility** lists every submitted project. **Disqualify** takes one out of the
+competition: you give a reason, which the team sees, and the project leaves the gallery,
+voting, judging, the standings and the winners list. Scores already given are kept, so
+**Reinstate** puts it back exactly as it was. Every ruling is recorded with your name.
+
 **Judging progress** shows who has scored what:
 
 ![The judging progress card](docs/screenshots/manual/22-judging-progress.png)
@@ -437,6 +463,14 @@ The same screen controls the public side:
   - *Anyone with the link*: no sign-up at all. The easiest for a big public audience, and
     the easiest to game: someone determined can vote more than once from different
     networks. Keep the community prize small if you use it.
+- **Stop one person voting from several accounts** (both optional, both off at first):
+  - *Require a verified email to vote*: each voter must prove their address from their
+    profile, so every extra account needs an inbox of its own. Needs email set up.
+  - *Only accounts created before*: accounts made after this moment can't vote, so nobody
+    can create a pile of accounts once they see who is winning. Works without email.
+- **Suspicious votes** appears when several different voters voted from the same device
+  and network. That can be a shared lab computer, so look before you act. **Void**
+  removes one vote from the count and records it in the audit log.
 - **Hide vote counts until** sets the moment results become public. Until then, nobody
   outside the organizing team can see counts or standings.
 - **Exports** gives you a spreadsheet of participants, projects, assignments, raw scores, or
