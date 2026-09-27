@@ -1,8 +1,9 @@
-# HackFlow — User Manual (v1)
+# HackFlow User Manual (v2)
 
 This manual walks through HackFlow one screen at a time, in the order you will actually
 meet them. Every screenshot in it was taken from a real running copy of the software on
-its built-in sample data — nothing here is a mock-up or a drawing.
+its built-in sample data. Nothing here is a mock-up or a drawing. (They are regenerated
+with `cd web && node scripts/manual-screenshots.mjs` against a running `docker compose up`.)
 
 You do not need to be technical to use this manual. If you can use a website, you can use
 HackFlow.
@@ -13,10 +14,11 @@ HackFlow.
 2. [Getting in](#2-getting-in)
 3. [The four kinds of account](#3-the-four-kinds-of-account)
 4. [The guided tour](#4-the-guided-tour)
-5. [For participants — entering a hackathon](#5-for-participants--entering-a-hackathon)
-6. [For judges — scoring projects](#6-for-judges--scoring-projects)
-7. [For organizers — running the event](#7-for-organizers--running-the-event)
-8. [Troubleshooting](#8-troubleshooting)
+5. [For participants: entering a hackathon](#5-for-participants-entering-a-hackathon)
+6. [For judges: scoring projects](#6-for-judges-scoring-projects)
+7. [For organizers: running the event](#7-for-organizers-running-the-event)
+8. [For admins: running the site](#8-for-admins-running-the-site)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -33,8 +35,8 @@ service to sign up for, and it keeps working with the internet disconnected.
 
 ## 2. Getting in
 
-If someone has already set HackFlow up for you, they will have given you a web address —
-open it and skip to the login screen below.
+If someone has already set HackFlow up for you, they will have given you a web address.
+Open it and skip to the login screen below.
 
 If you are setting it up yourself, you need [Docker](https://www.docker.com/) installed.
 Open a terminal in the project folder and run one command:
@@ -44,7 +46,7 @@ docker compose up
 ```
 
 Wait until it stops printing new lines, then open **http://localhost:8000** in your browser.
-The site sets itself up and fills itself with sample data on first start — there is nothing
+The site sets itself up and fills itself with sample data on first start, and there is nothing
 else to configure.
 
 ### Putting it online (optional)
@@ -97,10 +99,25 @@ kind of account, so you can see how the site changes depending on who you are:
 Choose **Sign up** if you do not have an account. You need a name, an email address, and a
 password of at least eight characters.
 
-Anyone who signs up publicly becomes a **participant** — somebody who enters projects.
+Anyone who signs up publicly becomes a **participant**, somebody who enters projects.
 Judge, organizer, and admin accounts cannot be self-created, on purpose: those roles can see
-scores, so somebody already trusted has to grant them. (A judge is brought in by invitation
-link; see section 7.)
+scores, so somebody already trusted has to grant them. (Judges and organizers are brought in
+by invitation link; see sections 7 and 8.)
+
+### Forgot your password?
+
+![The forgot-password screen](docs/screenshots/manual/19-forgot-password.png)
+
+Choose **Forgot password?** under the password box on the login page.
+
+- **If your event has email set up**, enter your address and you will get a link. It works
+  once and expires after 30 minutes. Nothing arriving? Check spam, then ask again.
+- **If it does not**, the page tells you so. Ask an organizer at the help desk or in your
+  event's channel for a reset link (section 7, *Helping someone sign in*). It works once and
+  expires after an hour.
+
+Either way, choosing the new password signs you straight in and signs you out everywhere
+else.
 
 ---
 
@@ -111,17 +128,18 @@ You are never shown a button that would refuse you.
 
 | Account | What it is for | What it can do |
 |---|---|---|
-| **Participant** | Entering the hackathon | Join or create a team, write and submit a project, browse and vote in the gallery |
-| **Judge** | Scoring entries | See only the projects assigned to them, and score those |
-| **Organizer** | Running an event | Create and configure events, write scorecards, invite judges, assign judging, publish results, export data |
-| **Admin** | Running the whole site | Everything an organizer can do, across all events |
+| **Participant** | Entering the hackathon | Join or create a team, write and submit a project, browse, vote and comment in the gallery |
+| **Judge** | Scoring entries | See only the projects assigned to them, score those, and step back from a project they have a conflict with |
+| **Organizer** | Running an event | Create and publish events, write scorecards, invite judges, assign judging, post announcements, pick winners, publish results, export data, help people sign in |
+| **Admin** | Running the whole site | Everything an organizer can do, plus managing accounts and inviting organizers |
 
 ---
 
 ## 4. The guided tour
 
 The first time you log in, HackFlow offers a short tour of the screens you will use. It is
-tailored to your kind of account — a judge and an organizer are shown different things.
+tailored to your kind of account: a participant, a judge and an organizer are each shown
+different things.
 
 ![The guided tour welcoming a new participant](docs/screenshots/manual/03-tour-participant-welcome.png)
 
@@ -131,48 +149,73 @@ tailored to your kind of account — a judge and an organizer are shown differen
 
 ![The tour highlighting the My teams tab](docs/screenshots/manual/04-tour-participant-teams.png)
 
+Organizers get a longer tour (ten steps, covering judging progress, winners and
+announcements), and judges get one about scoring alone and fairly:
+
+| Organizer tour | Judge tour |
+|---|---|
+| ![The organizer tour](docs/screenshots/manual/10-tour-organizer.png) | ![The judge tour](docs/screenshots/manual/15-tour-judge.png) |
+
 You only get it automatically once. To see it again at any time, open **Profile** and choose
 **Replay the guided tour**.
 
 ---
 
-## 5. For participants — entering a hackathon
+## 5. For participants: entering a hackathon
 
-### Step 1 — Open the hackathon
+### Step 1: Open the hackathon
 
 Choose **Events** in the menu, then click the hackathon you are entering.
 
-![An event page showing dates, themes and prizes](docs/screenshots/manual/05-event-detail.png)
+![An event page showing dates, tracks, prizes and announcements](docs/screenshots/manual/05-event-detail.png)
 
 This page is the hackathon's front page. It shows:
 
-- **The countdown** — how long you have left. This is the real deadline, not a suggestion:
+- **The countdown**: how long you have left. This is the real deadline, not a suggestion:
   when it runs out the site stops accepting changes to your project.
-- **Tracks** — the themes you can enter under, if the organizer set any up.
-- **Prizes** — what is on offer.
-- **Your team**, once you have one, with the invite link to share.
+- **Tracks**: the themes you can enter under, if the organizer set any up.
+- **Prizes**: what is on offer.
+- **Announcements**: messages from the organizers ("demos start at 5"). The newest ones
+  also appear on your **Dashboard**, so you do not have to keep checking.
+- **Rules** and **How projects are judged**: the scorecard judges will use, so you know
+  what counts before you start.
+- **Your team**, once you have one.
 
-### Step 2 — Get on a team
+### Step 2: Get on a team
 
 You enter as a team, even if you are alone in it. There are two ways onto one.
 
-**If you are starting the team:** choose **Create a team** on the event page, give it a name,
-and you will be shown an **invite link**. Send that link to the people joining you.
+**If you are starting the team:** choose **Create a team** on the event page and give it a
+name. You become its **captain** and get an **invite link** to send to the people joining
+you.
 
 **If somebody invited you:** open the link they sent. You will be added and shown a
-confirmation. Opening the same link again is harmless — it just tells you that you are
+confirmation. Opening the same link again is harmless. It just tells you that you are
 already on the team.
 
-**Teams have a size limit** — usually four people, set by the organizer. Once a team is full,
-its invite link stops working and the page says so plainly, rather than failing silently.
+You can be on **one team per hackathon**, and **teams have a size limit**, usually four
+people, set by the organizer. Once a team is full, its invite link stops working and the page
+says so plainly, rather than failing silently.
 
-You can see your teams at any time under **My teams**:
+The **Your team** card on the event page is where the team is managed:
+
+![The Your team card with captain controls](docs/screenshots/manual/20-your-team.png)
+
+- **Copy** the invite link to share it. **New link** replaces it, so the old one stops
+  working immediately. Useful if it was posted somewhere public.
+- The **captain** can **Rename** the team, **Remove** someone, or **Make captain** to hand
+  the role on.
+- **Leave team** takes you off it (to join a different one, for example). If you were the
+  captain, the longest-standing member takes over. The last member of a team cannot leave
+  once it has submitted.
+
+You can see all your teams at any time under **My teams**:
 
 ![The My teams screen](docs/screenshots/manual/06-my-teams.png)
 
 The `2 / 4 members` on each card is the team's current size against the limit.
 
-### Step 3 — Write up your project
+### Step 3: Write up your project
 
 From your team, choose **Go to your submission**. Each team gets exactly one project page.
 
@@ -184,18 +227,22 @@ Important things about this screen:
   tells you whether your work is *Saving…*, *Saved*, or has *Unsaved changes*.
 - **The deadline is always on screen**, at the top, so it can never take you by surprise.
 - **Track** is a drop-down when the organizer has set up themes, so you cannot mistype it.
+- **Links for the judges**: fill in **Code repository**, **Live demo** and **Demo video**.
+  Judges see them on their scoring screen.
+- **A screenshot** of your project can be uploaded; it becomes the picture in the gallery.
 - You can keep editing right up to the deadline, even after you have submitted.
 
 When you are ready, choose **Submit for judging**. Your project then appears in the public
 gallery. You can still edit it until the deadline passes.
 
-### Step 4 — Browse and vote
+### Step 4: Browse and vote
 
-**Gallery** shows everything that has been submitted. Pick the hackathon, then browse.
+**Gallery** shows everything that has been submitted. Pick the hackathon, then browse,
+search, or change the order.
 
 ![The public gallery](docs/screenshots/manual/08-gallery.png)
 
-Click any project to read it in full, and — if the organizer has turned voting on — to vote
+Click any project to read it in full and, if the organizer has turned voting on, to vote
 for it and leave a comment:
 
 ![A project page with voting and comments](docs/screenshots/manual/18-submission-detail-voting.png)
@@ -203,51 +250,71 @@ for it and leave a comment:
 A few things are deliberately true here:
 
 - **One vote per person per project**, and you can take your vote back.
+- **Who can vote is the organizer's choice.** Usually you need to be logged in. Some events
+  let anyone with the link vote, and some ask guests for an email address first. You will
+  see a **Vote without an account** box, and the link emailed to you lets you vote from that
+  browser.
 - **Vote counts stay hidden** until the organizer's chosen reveal time, so an early lead
   cannot snowball. They are genuinely hidden, not just left off the screen.
-- **The order is shuffled** so the projects at the top do not get an unfair advantage.
+- **The order can be shuffled** so the projects at the top do not get an unfair advantage.
+
+Once results are revealed, your team can download a **participation certificate** from your
+project page.
 
 ### Your account
 
-**Profile** holds your name, email, photo, the log-out button, and the tour replay button.
+**Profile** holds your name, email, photo, password change, the log-out button, and the tour
+replay button.
 
 ![The profile screen](docs/screenshots/manual/09-profile.png)
 
+- **Name → Edit** changes how you appear.
+- **Change password** signs you out on every other device.
+
 ---
 
-## 6. For judges — scoring projects
+## 6. For judges: scoring projects
 
-### Step 1 — Accept your invitation
+### Step 1: Accept your invitation
 
 Judges join by invitation only. Your organizer will send you a link; open it while logged in
-and accept. Your account becomes a judge account, and a **Judging** tab appears in the menu.
+and accept. Your account becomes a judge account, you join that event's judging panel, and a
+**Judging** tab appears in the menu.
 
-### Step 2 — Your list
+### Step 2: Your list
 
 **Judging** is your home base.
 
 ![The judge dashboard](docs/screenshots/manual/14-judge-dashboard.png)
 
-It shows how many of your assigned projects you have finished, and lists what is left. You
-are shown **only** the projects assigned to you.
+- **Coming up** lists events you judge whose submissions have not closed yet, and when
+  judging opens for each. Judging never starts while teams can still edit, so you always
+  score the version that was actually submitted.
+- The big number is how many of your assigned projects you have finished.
+- **Still to score** lists what is left. You are shown **only** the projects assigned to you.
 
 Choose **Score now** on any of them.
 
-### Step 3 — Score a project
+### Step 3: Score a project
 
 ![The scoring form](docs/screenshots/manual/16-score-form.png)
 
-The form is built from the scorecard the organizer wrote. Each item shows:
+The top of the form shows the project and the team's links (code, demo, video). Below it,
+the form is built from the scorecard the organizer wrote. Each item shows:
 
-- **its weight** — how much it counts toward the total, and
-- **what it is out of** — usually 10.
+- **its weight**: how much it counts toward the total, and
+- **what it is out of**: usually 10.
 
 An event can use more than one scorecard (here, a *Technical Rubric* and a *Presentation
-Rubric*), and they are combined into this single form. You do not need to do any arithmetic;
-the site handles the weighting.
+Rubric*), and they are combined into this single form. The **Weighted total** updates as you
+type, so you do not need to do any arithmetic.
 
 You can leave a comment with your score, and you can come back and change a score you have
 already given.
+
+**If you know the team**, choose **I have a conflict of interest with this project** at the
+bottom. The project goes to another judge, will not be assigned to you again, and the
+organizer sees your note.
 
 ### Three things worth knowing
 
@@ -260,15 +327,15 @@ automatically.
 **Being a tough marker will not hurt anyone.** After scoring finishes, HackFlow compares each
 judge against their own average and adjusts for it. A consistently strict judge does not drag
 their projects down the rankings, and a generous one does not lift theirs up. So score the
-way that feels honest to you — you do not need to guess what the other judges are doing.
+way that feels honest to you. You do not need to guess what the other judges are doing.
 
 *(If you want the mathematics behind that, it is written up in `JUDGING.md`.)*
 
 ---
 
-## 7. For organizers — running the event
+## 7. For organizers: running the event
 
-### Step 1 — Create the event
+### Step 1: Create the event
 
 Choose **Create event**.
 
@@ -276,110 +343,195 @@ Choose **Create event**.
 
 You give it a name, a web address slug, a description, start and end dates, the themes teams
 may enter under, the prizes, and the largest team you will allow. Only the name, slug, and
-dates are required — everything else can be added later.
+dates are required. Everything else can be added later.
 
-### Step 2 — Adjust settings at any time
+**New events start as drafts**, visible only to organizers, so you can set everything up
+before anyone sees it. (To restore an event from a backup file instead, use **Import an
+event** on the **Events** page.)
+
+### Step 2: Settings, and going live
 
 From the event page, choose **Event settings**.
 
 ![The event settings screen](docs/screenshots/manual/11-event-settings.png)
 
-Here you can change the maximum team size, add or remove tracks, and edit the prize list.
+- **Visibility**: **Publish event** makes it visible so participants can find and join it.
+  **Move back to draft** hides it again.
+- **Dates**: move the start or the submission deadline. **Close submissions now** ends the
+  submission window immediately, which is also what opens judging.
+- **Rules**: plain text shown on the event page.
+- Further down: the maximum team size, tracks, the prize list, and a downloadable backup of
+  the whole event.
 
-Raising or lowering the team-size limit only affects **new** joins — a team that is already
+Raising or lowering the team-size limit only affects **new** joins. A team that is already
 larger than a reduced limit is left alone rather than having someone thrown out.
 
-### Step 3 — Write the scorecard
+### Step 3: Write the scorecard
 
 From the event page, choose **Judging rubric**.
 
 ![The rubric builder](docs/screenshots/manual/12-rubric-builder.png)
 
-A scorecard is a list of things judges mark on, each with a weight and a maximum. The
-weights must add up to 100%, and the page tells you live whether they do, so you cannot save
-something that does not add up.
+A scorecard is a list of things judges mark on, each with a weight, a maximum and an
+optional description. The weights must add up to 100%, and the page tells you live whether
+they do, so you cannot save something that does not add up.
 
-You can create more than one scorecard for an event — for example *Technical* and
-*Presentation* — and judges get them combined into one form.
+You can create more than one scorecard for an event (for example *Technical* and
+*Presentation*), and judges get them combined into one form.
 
 **Scorecards lock once scoring starts.** As soon as the first judge submits a score, the
-scorecard can no longer be edited. This is deliberate: it guarantees every project in the
-event was measured against the same thing.
+scorecard can no longer be edited. This guarantees every project in the event was measured
+against the same thing.
 
-### Step 4 — Invite judges and hand out the work
+### Step 4: Tell everyone something
+
+The **Announcements** card on the event page is how you reach participants once the event is
+running: a moved deadline, a demo schedule, a room change.
+
+![Posting an announcement](docs/screenshots/manual/21-announcements.png)
+
+Write a title and a message and choose **Post announcement**. It appears on the event page
+and on the dashboard of everyone on a team in the event, and **Delete** takes it down again.
+It is plain text. If email is set up you can also email it to participants, and if the event
+has a notification address (see *Optional* below) it is posted there too, which is handy for a
+Discord or Slack channel.
+
+### Step 5: Judges and the work
 
 From the event page, choose **Assignments & results**.
 
 ![The assignments and results screen](docs/screenshots/manual/13-assignments-results.png)
 
-**To invite a judge**, fill in the small form in the *Judges* section and choose **Create
-invitation**. You get a link to send them. You can set how long the link stays valid, and
-optionally note who it was for.
+**To bring in judges**, use the *Judges* card further down: fill in the small form and
+choose **Create invitation**. You get a link to send them. You can set how long it stays
+valid and note who it was for.
 
 **To hand out the judging**, choose **Assign judges**. HackFlow gives each submitted project
-three judges, spreads the work evenly, and never gives anyone a project from their own team.
-Running it a second time only fills gaps — it will not duplicate work anyone already has.
+three judges from this event's panel, spreads the work evenly, and never gives anyone a
+project from their own team or one they declared a conflict with. Running it again only
+fills gaps. It will not duplicate work anyone already has. Assignment opens once
+submissions close.
 
-### Step 5 — Voting and results
+**Judging progress** shows who has scored what:
+
+![The judging progress card](docs/screenshots/manual/22-judging-progress.png)
+
+- Each judge's **scored / assigned** count, and when they last scored.
+- **Remove** takes someone who dropped out off the panel; their unscored projects go back
+  into the pool for the next **Assign judges** run.
+- **Add an existing judge** puts someone who already judges on HackFlow onto this event's
+  panel. New judges need an invitation.
+- If email is set up, **Remind** nudges a judge who is behind.
+
+### Step 6: Voting and results
 
 The same screen controls the public side:
 
-- **Community voting** can be opened or closed whenever you like.
+![The community voting card](docs/screenshots/manual/24-community-voting.png)
+
+- **Open voting** or **Close voting** at any time.
+- **Who can vote**:
+  - *Signed-in accounts* (the default): anyone with a HackFlow account.
+  - *Anyone who confirms an email*: guests enter an address and get a link; one vote per
+    project per address, whether they vote as a guest or signed in. Needs email set up.
+  - *Anyone with the link*: no sign-up at all. The easiest for a big public audience, and
+    the easiest to game: someone determined can vote more than once from different
+    networks. Keep the community prize small if you use it.
 - **Hide vote counts until** sets the moment results become public. Until then, nobody
   outside the organizing team can see counts or standings.
 - **Exports** gives you a spreadsheet of participants, projects, assignments, raw scores, or
   final normalized standings, at any point during the event.
 
-### Optional — notifications to other systems
+### Step 7: Pick the winners
+
+![The winners card](docs/screenshots/manual/23-winners.png)
+
+Each prize comes with a **suggestion** from the standings: overall prizes in rank order, a
+track prize from that track's best entry. Choose **Use suggestion** or pick another project.
+Nobody sees the winners until your results reveal time.
+
+### Helping someone sign in
+
+When a participant or judge is locked out and the email reset isn't working for them, use
+**Dashboard → Help someone sign in**:
+
+![The help someone sign in card](docs/screenshots/manual/25-help-someone-sign-in.png)
+
+Type their email, choose **Create reset link**, then **Copy link**, and send it to them
+directly. The link is shown only once, works once, and expires after an hour. Organizers can
+reset participants and judges; resetting another organizer takes an admin. Every link is
+recorded with your name on it.
+
+### Optional: notifications to other systems
 
 Further down the **Event settings** screen you can give HackFlow a web address to notify when
-something happens: a project is submitted, judging is assigned, a score arrives, or results
-go live. It is useful for feeding a Discord or Slack channel.
+something happens: a project is submitted, judging is assigned, a score arrives, an
+announcement is posted, or results go live. It is useful for feeding a Discord or Slack
+channel.
 
 Each notification is cryptographically signed, so the system receiving it can confirm it
-genuinely came from your HackFlow and was not altered on the way. This is entirely optional —
-leave it empty and HackFlow never contacts anything outside itself.
+genuinely came from your HackFlow and was not altered on the way. This is entirely optional.
+Leave it empty and HackFlow never contacts anything outside itself.
 
 ---
 
-## 8. Troubleshooting
+## 8. For admins: running the site
+
+Admins get everything organizers have, plus a **Users** tab.
+
+![The users screen](docs/screenshots/manual/26-admin-users.png)
+
+- **Search** by name or email, or filter by role.
+- **Change a role** from the drop-down on any account, for example to make an existing
+  participant an organizer.
+- **Deactivate** an account to sign it out everywhere and stop it logging in, without
+  deleting anything it wrote. **Reactivate** undoes it.
+- **Invite an organizer** creates a single-use link for someone who does not have an account
+  yet.
+
+The admin **Dashboard** also has an **Email delivery** card. Email is optional and off by
+default (see the README's "Email (optional)" section). Once it is set up, press **Send test
+email** to check it works before anyone needs a reset link.
+
+---
+
+## 9. Troubleshooting
 
 **The page says my deadline has passed but I am not finished.**
 Deadlines are enforced by the server and cannot be worked around from the browser. Ask your
-organizer — they can move the event's end date from **Event settings**.
+organizer. They can move the event's end date from **Event settings**.
 
 **My invite link does not work.**
-Three possible reasons, and the page will tell you which: the team is already full, the link
-has expired (organizers choose how long they last), or you are already on that team.
+The page will tell you why: the team is already full, the link has been replaced with a new
+one, or you are already on that team (or on another team in the same hackathon; leave that
+one first).
 
 **I cannot see vote counts or rankings.**
 That is intended until the organizer's reveal time. The numbers are genuinely withheld, not
 just hidden from view, so refreshing or trying another browser will not reveal them early.
 
+**I cannot vote.**
+Check the event's voting is open. If the page says *Log in to vote*, this event only lets
+accounts vote. If it says *Confirm your email to vote*, use the **Vote without an account**
+box and open the emailed link in the same browser.
+
 **I am a judge but I cannot see a project I want to score.**
 You can only score what you were assigned. If you believe something is missing, ask the
 organizer to re-run assignment.
+
+**I'm a judge and my list is empty.**
+Judging opens once an event's submissions close. The **Coming up** card on your Judging page
+says when that is for each of your events.
 
 **The scorecard will not save.**
 The weights must total exactly 100%. The page shows the running total as you type. If it is
 locked instead, scoring has already begun and it can no longer be changed.
 
-**I forgot my password.**
-Choose **Forgot password?** under the password box on the login page.
+**My new event doesn't show up for participants.**
+New events start as drafts. Open **Event settings → Publish event**.
 
-- If your event has email set up, enter your address and you'll get a link. It works once
-  and expires after 30 minutes. Nothing arriving? Check spam, then ask again.
-- If it doesn't, the page tells you so. Ask an organizer at the help desk or in your
-  event's channel for a reset link. It works once and expires after an hour.
-
-Either way, choosing the new password signs you straight in and signs you out everywhere
-else.
-
-**Someone asked me (an organizer) to reset their password.**
-**Dashboard → Help someone sign in**: type their email, press **Create reset link**, press
-**Copy link**, and send it to them directly. The link is shown only once. Organizers can
-reset participants and judges; resetting another organizer takes an admin. Every link is
-recorded with your name on it.
+**Email-confirmed voting can't be selected.**
+It needs email set up first; otherwise guests could never receive their link.
 
 **I'm the admin, and I'm locked out.**
 Anyone with access to the server can run:
@@ -392,52 +544,6 @@ It prints a one-time reset link for that account. On Render, run
 `python -m app.auth.reset_link you@example.com` from the service's **Shell** tab instead
 (the Shell tab needs a paid plan).
 
-**I want to change my password.**
-**Profile → Change password.** This signs you out on every other device.
-
-**Setting up email (admins).**
-See the README's "Email (optional)" section. Once it's set, press **Send test email** on the
-dashboard's **Email delivery** card to check it works before anyone needs it.
-
-**I'm already on a team, but I want to join a different one.**
-You can be on one team per hackathon. Open the event, choose **Leave team** in the "Your team"
-card, then join the other one. If you were the captain, the longest-standing member takes
-over. The last member of a team can't leave once it has submitted.
-
-**Someone on my team shouldn't be on it (captains).**
-In the "Your team" card, **Remove** takes them off. **Make captain** hands the role on, and
-**New link** replaces the invite link, so the old one stops working immediately.
-
-**Where do judges see my code and demo?**
-On your submission page, fill in **Code repository**, **Live demo** and **Demo video**. They
-save as you type (click away from the field), and judges see them on their scoring screen.
-
-**I'm a judge and I know one of the teams.**
-Open that project and choose **I have a conflict of interest with this project**. It goes to
-another judge and won't be assigned to you again. The organizer sees your note.
-
-**I'm a judge and my list is empty.**
-Judging opens once an event's submissions close. The **Coming up** card on your Judging page
-says when that is for each of your events.
-
-**How do I pick the winners? (organizers)**
-**Assignments & results → Winners.** Each prize comes with a suggestion from the standings
-(overall prizes in rank order; a track prize from that track's best). Confirm or change it.
-Nobody sees the winners until your results reveal time.
-
-**How do I add a new organizer? (admins)**
-**Users → Invite an organizer** makes a single-use link. Or find an existing account in
-**Users** and change its role.
-
-**My new event doesn't show up for participants.**
-New events start as drafts. Open **Event settings → Publish event**.
-
-**I want to change my name.**
-**Profile → Name → Edit.**
-
-**I want the tour again.**
-**Profile** → **Replay the guided tour**.
-
 **I want to start over with clean sample data.**
 Stop the site and run:
 
@@ -447,7 +553,7 @@ docker compose up
 ```
 
 This erases everything and re-creates the original sample data. Do not run it on a real
-event — it deletes real entries too.
+event, because it deletes real entries too.
 
 ---
 
@@ -455,8 +561,8 @@ event — it deletes real entries too.
 
 This manual covers using HackFlow. If you want to understand or modify how it works:
 
-- **`README.md`** — what it is and how to run it
-- **`ARCHITECTURE.md`** — how the system is put together
-- **`DATA-MODEL.md`** — what is stored, and how to get data in and out
-- **`JUDGING.md`** — the assignment algorithm and the normalization mathematics
-- **`THREAT-MODEL.md`** — the abuse scenarios it defends against, and how
+- **`README.md`**: what it is and how to run it
+- **`ARCHITECTURE.md`**: how the system is put together
+- **`DATA-MODEL.md`**: what is stored, and how to get data in and out
+- **`JUDGING.md`**: the assignment algorithm and the normalization mathematics
+- **`THREAT-MODEL.md`**: the abuse scenarios it defends against, and how
