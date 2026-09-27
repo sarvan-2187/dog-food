@@ -206,6 +206,14 @@ export function SubmissionPage() {
         </div>
       )}
 
+      {submission?.disqualified_at && (
+        <div role="alert" className="mb-4 rounded-md border border-border bg-danger-bg px-4 py-3 text-body text-danger-fg">
+          <p className="font-medium">The organizers have ruled this entry ineligible.</p>
+          <p>Reason: {submission.disqualified_reason}</p>
+          <p className="mt-1 text-meta">It is not in the gallery, voting or judging. Contact the organizers to appeal.</p>
+        </div>
+      )}
+
       {deadlinePassed && (
         <div role="alert" className="mb-4 rounded-md border border-border bg-warning-bg px-4 py-3 text-body text-warning-fg">
           The deadline has passed, so this submission can no longer be edited. What you see below is what the judges
