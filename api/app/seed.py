@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from sqlmodel import Session, select
 
 from .db import engine
-from .timeutil import ensure_utc
+from .timeutil import ensure_utc, utcnow
 
 log = logging.getLogger("seed")
 
@@ -53,6 +53,8 @@ def _seed_users(session: Session) -> dict[str, int]:
             name=row["name"],
             role=Role(row["role"]),
             password_hash=hash_password(row["password"]),
+            # Fixture accounts are vouched for by whoever loaded them.
+            email_verified_at=utcnow(),
         )
         session.add(user)
         session.flush()
@@ -248,7 +250,7 @@ def _seed_dogfood(session: Session, path: Path) -> None:
     def user_id(email: str, name: str, role: Role) -> int:
         user = session.exec(select(User).where(User.email == email)).first()
         if user is None:
-            user = User(email=email, name=name, role=role, password_hash=password_hash)
+            user = User(email=email, name=name, role=role, password_hash=password_hash, email_verified_at=utcnow())
             session.add(user)
             session.flush()
         return user.id

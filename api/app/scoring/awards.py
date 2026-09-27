@@ -19,7 +19,7 @@ from ..auth import Role, User, get_current_user_optional, require_role
 from ..db import get_session
 from ..events.models import Event
 from ..events.visibility import may_see_results
-from ..submissions.models import Submission, SubmissionStatus
+from ..submissions.models import Submission, in_competition
 from ..teams.models import Team
 from ..timeutil import utcnow
 from .models import Award
@@ -94,7 +94,7 @@ def _awards_view(session: Session, event: Event) -> AwardsView:
     submissions = {
         s.id: s
         for s in session.exec(
-            select(Submission).where(Submission.event_id == event.id, Submission.status == SubmissionStatus.submitted)
+            select(Submission).where(Submission.event_id == event.id, in_competition())
         )
     }
     teams = {t.id: t.name for t in session.exec(select(Team).where(Team.event_id == event.id))}
@@ -184,7 +184,7 @@ def set_award(
             session.delete(award)
     else:
         submission = session.get(Submission, payload.submission_id)
-        if submission is None or submission.event_id != event_id or submission.status != SubmissionStatus.submitted:
+        if submission is None or submission.event_id != event_id or not submission.competing:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Pick a submitted project from this event.")
         if award is None:
             award = Award(

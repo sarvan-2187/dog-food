@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime
+from sqlalchemy import Column, DateTime, and_
 from sqlmodel import Field, SQLModel
 
 from ..timeutil import utcnow
@@ -37,3 +37,20 @@ class Submission(SQLModel, table=True):
     status: SubmissionStatus = Field(default=SubmissionStatus.draft)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+    # Set by an organizer's eligibility decision. A separate column rather than a
+    # status value: disqualification is orthogonal to draft/submitted, and
+    # reinstating must not lose which of the two it was.
+    disqualified_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    disqualified_reason: str = ""
+
+    @property
+    def competing(self) -> bool:
+        return self.status == SubmissionStatus.submitted and self.disqualified_at is None
+
+
+def in_competition():
+    """SQL twin of `Submission.competing`: submitted and not disqualified. Every
+    gallery, voting, assignment and awards query filters on this."""
+    return and_(Submission.status == SubmissionStatus.submitted, Submission.disqualified_at.is_(None))
