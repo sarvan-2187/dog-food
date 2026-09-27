@@ -624,16 +624,20 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   unaudited T1–T4 one. Every Phase 4 checklist item is left unstruck (not deleted) in case
   confirmed slack appears after Phase 5 closes.
 
-- **`hackraptors.pdf` scope: positioning and copy only, not a design-system input (Phase
-  5).** `hackraptors.pdf` is raptors.dev's real landing page — bold illustrated
-  hackathon-poster art, a stats bar, "Guild of Expert Engineers" community framing —
-  which is a different visual language from the institutional look already locked into
-  `DESIGN_SYSTEM.md` and built across four phases. Decision: it grounds "Hackathon
-  Raptors" in README framing, landing-page microcopy, and demo-video narration only. It
-  does not change any token, component, or layout, and does not conflict with the
-  `reference_design.pdf` → `DESIGN_SYSTEM.md` token pipeline, because it was never in
-  that pipeline to begin with. Revisit only if a future request explicitly asks for the
-  app's visual identity to change.
+- **~~`hackraptors.pdf` scope: positioning and copy only, not a design-system input.~~
+  Superseded by an explicit later request — `hackraptors.pdf`/raptors.dev is now the
+  design-system source.** Originally decided: `hackraptors.pdf` is raptors.dev's real
+  landing page, a different visual language from the institutional look built across
+  four phases, so it would ground "Hackathon Raptors" in copy only, never touching a
+  token. A later request explicitly reversed this: "use it for design reference...
+  change the design system to match that palette," naming Satoshi and Playfair Display
+  by name and pointing at the live raptors.dev URL for a self-check. `DESIGN_SYSTEM.md`
+  was rebuilt from a live inspection of the real site's DOM (computed styles and
+  `:root` custom properties, not the poster artwork) — see its own header for the full
+  method and every real-vs-adapted value. The one thing this reversal did **not** change:
+  hackraptors.pdf's stats/community framing still isn't copied verbatim into README or
+  the landing page — that boundary (real product data, not raptors.dev's own numbers)
+  was never part of either decision and wasn't asked to change.
 
 - **The landing page never existed — corrected in Phase 5.4, not just re-checked.**
   `DESIGN_SYSTEM.md` §10 has carried a full 9-section landing-page composition since
@@ -658,3 +662,26 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   reset are both ready and accurate as written in 5.6; the actual screen recording needs
   a human. Making the repository public is the repo owner's explicit decision, not
   something to assume on their behalf.
+- **Design system rebuilt from raptors.dev, two real defects found while doing it.**
+  `DESIGN_SYSTEM.md`, `web/src/styles/tokens.ts`, and every component/page that consumes
+  those tokens were re-derived from a live self-check of raptors.dev (real `:root`
+  custom properties and computed styles, not the poster imagery) per the explicit
+  request logged above. Fonts (Satoshi 400/500/700, Playfair Display 700/600-italic)
+  were sourced from Fontshare and Google Fonts and committed as `.woff2` files under
+  `web/public/fonts/` — self-hosted, per `PLAN.md` §1's no-CDN rule. Two real defects
+  surfaced and were fixed while wiring this up, neither related to color/fonts directly:
+  (1) `main.py`'s SPA catch-all only mounted `/assets/*`, so every other file Vite
+  copies verbatim from `public/` (the new font files) silently fell through to the SPA
+  shell instead of being served — fixed by serving any real file that exists at the
+  requested path first, with an explicit path-containment check since the path segment
+  is attacker-controlled; (2) Python's `mimetypes` module doesn't know `.woff2` by
+  default, so it was served as `text/plain` until registered explicitly. All 231 tests
+  (158 backend + 9 Vitest + 64 Playwright, unchanged counts — this was a re-skin, not a
+  feature change) pass against the rebuilt system.
+- **The reference has no saturated brand hue — `brand` is the ink scale itself.**
+  raptors.dev's real buttons and badges are outline (transparent bg, ink border/text);
+  there is no colorful accent anywhere in its computed styles. Rather than inventing one,
+  `brand-500` (#1F2426) is the same ink used for headings and body text — a primary
+  filled button is the one addition a functional app needs beyond what the reference
+  itself does, since the reference never needs a single clear call-to-action competing
+  against outline buttons the way a workflow app's "Submit"/"Create event" does.

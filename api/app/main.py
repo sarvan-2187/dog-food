@@ -1,5 +1,6 @@
 """FastAPI entry point: mounts routers and serves the built SPA."""
 import logging
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -7,6 +8,11 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+# Python's mimetypes module doesn't know .woff2 on every platform/Python build,
+# so self-hosted fonts (public/fonts/*.woff2) were served as text/plain until
+# this was added — found live while verifying the font fix below.
+mimetypes.add_type("font/woff2", ".woff2")
 
 from .db import create_db_and_tables
 from .seed import run_seed
@@ -69,9 +75,23 @@ if (STATIC_DIR / "index.html").exists():
     # and a 200, so a client mistake looks like a successful empty response.
     API_PREFIXES = ("api/", "healthz", "docs", "redoc", "openapi.json")
 
+    STATIC_DIR_RESOLVED = STATIC_DIR.resolve()
+
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
-        """Serve the SPA shell for any non-API path so client routing works."""
+        """Serve a real static file if one exists at this path (e.g. anything
+        Vite copied verbatim from web/public/, like /fonts/*.woff2 — found live
+        while wiring self-hosted fonts: only /assets/* was mounted, so every
+        other public/ file silently fell through to the SPA shell instead of
+        being served). Otherwise serve the SPA shell so client routing works.
+
+        full_path is attacker-controlled, so the resolved candidate must stay
+        inside STATIC_DIR before it's served — otherwise a "../../etc/passwd"
+        style path could read anything else in the container.
+        """
         if full_path.startswith(API_PREFIXES):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "No such endpoint.")
+        candidate = (STATIC_DIR / full_path).resolve()
+        if candidate.is_relative_to(STATIC_DIR_RESOLVED) and candidate.is_file():
+            return FileResponse(candidate)
         return FileResponse(STATIC_DIR / "index.html")

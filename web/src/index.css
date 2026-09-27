@@ -4,11 +4,46 @@
 
 /*
  * Tokens live in src/styles/tokens.ts (mirrored into tailwind.config.ts).
- * Fonts: DESIGN_SYSTEM.md 3.1 forbids CDN font links. Until a self-hosted
- * Inter .woff2 is committed under public/fonts/, the system stack in
- * tokens.ts fontFamily.sans is what renders. Do not add a <link> to
- * fonts.googleapis.com.
+ * Fonts: self-hosted under public/fonts/ per PLAN.md section 1 (no CDN
+ * requests in the served app) — sourced from raptors.dev's real stylesheet
+ * (Satoshi Variable, Playfair Display) per DESIGN_SYSTEM.md section 3.1.
+ * Never add a <link> to fonts.googleapis.com or fonts.fontshare.com.
  */
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/satoshi-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/satoshi-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/satoshi-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-italic-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
 
 @layer base {
   html {
