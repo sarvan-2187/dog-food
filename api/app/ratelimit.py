@@ -112,6 +112,7 @@ reset_issue_limiter = TokenBucketLimiter(capacity=30, per_seconds=3600.0)
 login_account_limiter = TokenBucketLimiter(capacity=10, per_seconds=900.0)
 login_ip_limiter = TokenBucketLimiter(capacity=30, per_seconds=900.0)
 judge_reminder_limiter = TokenBucketLimiter(capacity=1, per_seconds=3600.0)
+verify_email_limiter = TokenBucketLimiter(capacity=3, per_seconds=3600.0)
 announcement_email_limiter = TokenBucketLimiter(capacity=1, per_seconds=600.0)
 
 
@@ -126,6 +127,7 @@ def reset_all() -> None:
         login_account_limiter,
         login_ip_limiter,
         judge_reminder_limiter,
+        verify_email_limiter,
         announcement_email_limiter,
     ):
         limiter.reset()
