@@ -42,14 +42,17 @@ async function open(page, path) {
   await page.waitForTimeout(700); // entrance transitions
 }
 
+// Tall captures are stitched while scrolling; unstick the top bar so it isn't painted mid-image.
+const STATIC_BAR = 'header, aside { position: static !important; }';
+
 async function shot(page, name, target) {
   const path = `${OUT}${name}.png`;
   if (target === 'full') {
-    await page.screenshot({ path, fullPage: true });
+    await page.screenshot({ path, fullPage: true, style: STATIC_BAR });
   } else if (target) {
     await target.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
-    await target.screenshot({ path });
+    await target.screenshot({ path, style: STATIC_BAR });
   } else {
     await page.screenshot({ path });
   }
