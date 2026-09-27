@@ -39,6 +39,8 @@ export interface EventRecord {
   voting_access: 'authenticated' | 'email' | 'open';
   /** null means results were never hidden. */
   results_hidden_until: string | null;
+  /** Soft judging deadline; null means none set. */
+  judging_deadline?: string | null;
   /** Organizer-supplied cover art; null falls back to a bundled photo (lib/event-cover.ts). */
   cover_image_url: string | null;
   /** PLAN.md 10.12 - drafts are only ever returned to organizers/admins. */
@@ -122,6 +124,8 @@ export interface Assignment {
   scored: boolean;
   event_id: number;
   event_name: string;
+  /** The event's soft judging deadline, if set. */
+  due_at?: string | null;
 }
 
 export interface JudgeProgress {
@@ -356,6 +360,7 @@ export interface EventJudges {
   assigned: number;
   judges: EventJudgeRow[];
   email_enabled: boolean;
+  judging_deadline?: string | null;
 }
 
 export interface JudgeEvent {
@@ -364,6 +369,7 @@ export interface JudgeEvent {
   slug: string;
   end_at: string;
   judging_open: boolean;
+  judging_deadline?: string | null;
 }
 
 export interface PrizeSlot {

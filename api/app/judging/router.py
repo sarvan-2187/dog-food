@@ -303,6 +303,7 @@ def _to_public(session: Session, assignments: list[JudgeAssignment]) -> list[Ass
                 scored=assignment.id in scored,
                 event_id=assignment.event_id,
                 event_name=event.name if event else "",
+                due_at=event.judging_deadline if event else None,
             )
         )
     rows.sort(key=lambda r: (r.scored, r.submission_id))
