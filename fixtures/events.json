@@ -36,6 +36,32 @@
       "mina@example.com",
       "omar@example.com",
       "dana@example.com"
+    ],
+    "stages": [
+      {
+        "name": "Registration & team formation",
+        "description": "Sign up, find teammates on Discord, and create or join a team.",
+        "starts_at": "2026-10-01T09:00:00Z",
+        "ends_at": "2026-10-15T09:00:00Z"
+      },
+      {
+        "name": "Build sprint",
+        "description": "48 hours to build. Drafts autosave; submit any time before the deadline.",
+        "starts_at": "2026-10-15T09:00:00Z",
+        "ends_at": "2026-10-17T18:00:00Z"
+      },
+      {
+        "name": "Judging",
+        "description": "Three judges score each project against the published rubric.",
+        "starts_at": "2026-10-17T18:00:00Z",
+        "ends_at": "2026-10-17T20:00:00Z"
+      },
+      {
+        "name": "Results & certificates",
+        "description": "Standings, winners and certificates go live.",
+        "starts_at": "2026-10-17T20:00:00Z",
+        "ends_at": "2026-10-24T20:00:00Z"
+      }
     ]
   },
   {
@@ -288,6 +314,26 @@
       "mina@example.com",
       "omar@example.com",
       "dana@example.com"
+    ],
+    "stages": [
+      {
+        "name": "Build sprint",
+        "description": "Teams built and submitted.",
+        "starts_at": "2026-08-28T09:00:00Z",
+        "ends_at": "2026-08-30T18:00:00Z"
+      },
+      {
+        "name": "Judging",
+        "description": "Judges score assigned projects; organizers watch progress.",
+        "starts_at": "2026-08-30T18:00:00Z",
+        "ends_at": "2026-12-31T18:00:00Z"
+      },
+      {
+        "name": "Results",
+        "description": "Standings and winners are revealed.",
+        "starts_at": "2026-12-31T18:00:00Z",
+        "ends_at": "2027-01-07T18:00:00Z"
+      }
     ]
   }
 ]

@@ -2,23 +2,25 @@
 import csv
 import io
 from datetime import datetime
-from typing import Iterable
+from typing import Iterable, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..audit.log import record
-from ..auth import Role, User, get_current_user, require_role
+from ..auth import Role, User, get_current_user, mailer, require_role
 from ..db import get_session
 from ..events.models import Event
-from ..events.visibility import may_see_results
+from ..events.schemas import stages_to_json
+from ..events.visibility import may_see_results, results_are_public
 from ..judging.models import JudgeAssignment, Rubric
 from ..submissions.models import Submission, SubmissionStatus, in_competition
 from ..teams.models import Team, TeamMembership
 from ..timeutil import ensure_utc, utcnow
 from ..webhooks.service import notify
 from .awards import awards_by_submission
-from .certificate import render_certificate
+from .certificate import certificate_serial, render_certificate, submission_for_serial
 from .models import Score
 from .normalization import normalized_table
 from .schemas import EventImportPayload, ResultRow, ScorePublic, ScoreWrite
@@ -385,14 +387,18 @@ def certificate(
             f"Certificates are available once results are revealed on "
             f"{event.results_hidden_until.strftime('%d %b %Y at %H:%M UTC') if event.results_hidden_until else 'a date the organizer sets'}.",
         )
-    team = session.get(Team, submission.team_id)
-    rank = next((r.rank for r in _result_rows(session, event.id) if r.submission_id == submission_id), None)
+    record_ = _certificate_record(session, submission, event)
     pdf_bytes = render_certificate(
         event_name=event.name,
-        team_name=team.name if team else "",
-        submission_title=submission.title or "Untitled submission",
-        rank=rank,
-        prizes=awards_by_submission(session, [submission_id]).get(submission_id, []),
+        team_name=record_.team_name,
+        submission_title=record_.submission_title,
+        rank=record_.rank,
+        prizes=record_.prizes,
+        members=record_.members,
+        event_dates=record_.event_dates,
+        issued_on=(event.results_hidden_until or utcnow()).date(),
+        serial=record_.serial,
+        verify_url=f"{mailer.APP_BASE_URL}/verify/{record_.serial}",
     )
     return Response(
         content=pdf_bytes,
@@ -437,6 +443,7 @@ def export_event(
             "voting_access": event.voting_access,
             "results_hidden_until": event.results_hidden_until.isoformat() if event.results_hidden_until else None,
             "rules": event.rules,
+            "stages": event.stages,
         },
         "rubrics": [{"name": r.name, "criteria": r.criteria} for r in rubrics],
         "teams": [{"name": t.name} for t in teams],
@@ -479,6 +486,7 @@ def import_event(
         else None,
         created_by_id=user.id,
         rules=payload.rules,
+        stages=stages_to_json(payload.stages),
         status="draft",  # PLAN.md 10.12: an import is reviewed before it goes public
     )
     session.add(event)
@@ -516,3 +524,60 @@ def import_event(
     session.commit()
     session.refresh(event)
     return event
+
+
+class CertificateRecord(BaseModel):
+    """What a certificate says. The public /verify page shows exactly this."""
+
+    serial: str
+    event_name: str
+    event_slug: str
+    event_dates: str
+    team_name: str
+    members: list[str]
+    submission_title: str
+    rank: Optional[int] = None
+    prizes: list[str] = []
+
+
+def _event_dates(event: Event) -> str:
+    start, end = ensure_utc(event.start_at), ensure_utc(event.end_at)
+    if start.date() == end.date():
+        return start.strftime("%d %B %Y")
+    return f"{start.strftime('%d %B')} - {end.strftime('%d %B %Y')}"
+
+
+def _certificate_record(session: Session, submission: Submission, event: Event) -> CertificateRecord:
+    team = session.get(Team, submission.team_id)
+    member_ids = [
+        m.user_id for m in session.exec(select(TeamMembership).where(TeamMembership.team_id == submission.team_id))
+    ]
+    members = sorted(u.name for u in session.exec(select(User).where(User.id.in_(member_ids or [0]))))
+    rank = next((r.rank for r in _result_rows(session, event.id) if r.submission_id == submission.id), None)
+    return CertificateRecord(
+        serial=certificate_serial(submission.id),
+        event_name=event.name,
+        event_slug=event.slug,
+        event_dates=_event_dates(event),
+        team_name=team.name if team else "",
+        members=members,
+        submission_title=submission.title or "Untitled submission",
+        rank=rank,
+        prizes=awards_by_submission(session, [submission.id]).get(submission.id, []),
+    )
+
+
+@router.get("/api/certificates/{serial}", response_model=CertificateRecord)
+def verify_certificate(serial: str, session: Session = Depends(get_session)) -> CertificateRecord:
+    """Public, no sign-in: confirm a certificate is genuine and see what it
+    certifies. A forged, mistyped or not-yet-public serial all read the same,
+    so this can't be used to probe which submissions exist."""
+    not_found = HTTPException(status.HTTP_404_NOT_FOUND, "No certificate matches that code.")
+    submission_id = submission_for_serial(serial)
+    submission = session.get(Submission, submission_id) if submission_id else None
+    if submission is None or not submission.competing:
+        raise not_found
+    event = session.get(Event, submission.event_id)
+    if event is None or event.status != "published" or not results_are_public(event):
+        raise not_found
+    return _certificate_record(session, submission, event)

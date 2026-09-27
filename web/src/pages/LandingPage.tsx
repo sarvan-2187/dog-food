@@ -459,6 +459,41 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* Hackathon Raptors' own events - posters from raptors.dev, credited in CREDITS.md */}
+      <section className="border-t border-border-subtle px-4 py-section md:px-6">
+        <div className="mx-auto max-w-[1200px]">
+          <Reveal>
+            <p className="text-eyebrow uppercase text-ink-400">Hackathon Raptors</p>
+            <h2 className="mt-2 text-h1 text-ink-900">
+              From the <span className="font-serif italic">Raptors</span> calendar.
+            </h2>
+            <p className="mt-3 max-w-2xl text-body-lg text-ink-600">
+              35+ hackathons, 3,500+ participants from 30+ countries. HackFlow is built to run the next ones.
+            </p>
+          </Reveal>
+          <ul className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+            {RAPTORS_EVENTS.map((e) => (
+              <li key={e.file}>
+                <a
+                  href={e.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group block overflow-hidden rounded-lg border border-border-subtle bg-surface-0"
+                >
+                  <img
+                    src={`/images/raptors/${e.file}`}
+                    alt={`${e.name} poster`}
+                    loading="lazy"
+                    className="aspect-[3/4] w-full object-cover transition-transform duration-slow group-hover:scale-[1.03]"
+                  />
+                  <span className="block px-3 py-2 text-meta text-ink-700">{e.name}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
       {/* FAQ - accordion, same left-label/right-content split as sections 4/6 */}
       <section className="border-t border-border-subtle px-4 py-section md:px-6">
         <div className="mx-auto grid max-w-[1200px] gap-8 md:grid-cols-12">
@@ -502,7 +537,7 @@ export function LandingPage() {
         <div className="mx-auto flex max-w-[1200px] flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <Logo />
-            <p className="text-meta text-ink-500">Hackathon judging, accountable by design.</p>
+            <p className="text-meta text-ink-500">by Hackathon Raptors · Hackathon judging, accountable by design.</p>
           </div>
           <nav className="flex gap-4 text-label text-ink-700">
             <Link to="/events">Events</Link>
@@ -511,12 +546,27 @@ export function LandingPage() {
           </nav>
         </div>
         <div className="mx-auto mt-6 max-w-[1200px] border-t border-border-subtle pt-4 text-meta text-ink-500">
-          Team CodeHawk · Built for events like Hackathon Raptors runs.
+          <address className="not-italic">
+            Hackathon Raptors · Community Interest Company 15557917 · Office 2131, 182-184 High Street North, East Ham,
+            London E6 2JA, United Kingdom ·{' '}
+            <a href="mailto:hello@raptors.dev" className="underline underline-offset-2">hello@raptors.dev</a> ·{' '}
+            <a href="https://www.raptors.dev" target="_blank" rel="noreferrer" className="underline underline-offset-2">raptors.dev</a>
+          </address>
+          <p className="mt-2">Built by Team CodeHawk for DOGFOOD 2026. Posters © Hackathon Raptors, see CREDITS.md.</p>
         </div>
       </footer>
     </div>
   );
 }
+
+const RAPTORS_EVENTS = [
+  { name: 'DOGFOOD 2026', file: 'dogfood-2026.jpg', href: 'https://www.raptors.dev/project/dogfood-2026-build-the-platform-that-will-judge-you' },
+  { name: 'Speed Demon 2026', file: 'speed-demon-2026.jpg', href: 'https://www.raptors.dev/project/speed-demon-2026-every-millisecond-is-a-soul' },
+  { name: 'Zero Dependency 2026', file: 'zero-dependency-2026.jpg', href: 'https://www.raptors.dev/project/zero-dependency-2026-stdlib-only' },
+  { name: 'Port Mortem 2026', file: 'port-mortem-2026.jpg', href: 'https://www.raptors.dev/project/code-resurrection-2026-port-mortem' },
+  { name: 'AI Slop Scan', file: 'ai-slop-scan.jpg', href: 'https://www.raptors.dev/project/ai-slop-scan-hackathon----catch-low-effort-ai-content' },
+  { name: 'Mindcode 2026', file: 'mindcode-2026.jpg', href: 'https://www.raptors.dev/project/mindcode-2026----software-for-human-health' },
+];
 
 function ClaimItem({ term, description }: { term: string; description: string }) {
   return (

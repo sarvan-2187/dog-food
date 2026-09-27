@@ -52,6 +52,36 @@ export interface EventRecord {
   status: 'draft' | 'published';
   /** PLAN.md 10.8 - plain text, rendered as text, never as HTML. */
   rules: string;
+  /** Named rounds (Stage 1, Stage 2, ...) in start order. Informational. */
+  stages: EventStage[];
+}
+
+export interface EventStage {
+  name: string;
+  description: string;
+  starts_at: string;
+  ends_at: string;
+}
+
+/** What a certificate certifies - GET /api/certificates/{serial}, public. */
+export interface CertificateRecord {
+  serial: string;
+  event_name: string;
+  event_slug: string;
+  event_dates: string;
+  team_name: string;
+  members: string[];
+  submission_title: string;
+  rank: number | null;
+  prizes: string[];
+}
+
+export interface ApiKeyRecord {
+  id: number;
+  name: string;
+  hint: string;
+  created_at: string;
+  last_used_at: string | null;
 }
 
 export interface TeamMember {
@@ -99,6 +129,8 @@ export interface EligibilityRow {
   team_name: string;
   disqualified_at: string | null;
   disqualified_reason: string;
+  /** Automatic, advisory checks: the organizer still makes every ruling. */
+  flags: string[];
 }
 
 // --- Phase 2: judging ------------------------------------------------------

@@ -60,6 +60,7 @@ from app.judging import models as _judging_models  # noqa: E402,F401
 from app.scoring import models as _scoring_models  # noqa: E402,F401
 from app.voting import models as _voting_models  # noqa: E402,F401
 from app.audit import models as _audit_models  # noqa: E402,F401
+from app.auth import api_keys as _api_key_models  # noqa: E402,F401
 
 SQLModel.metadata.create_all(engine)
 # The test database outlives runs, so it needs the same column upgrades as a
