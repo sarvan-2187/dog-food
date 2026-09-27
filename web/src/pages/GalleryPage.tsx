@@ -28,9 +28,9 @@ export function GalleryPage() {
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-section md:px-6">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <h1 className="text-h1 text-ink-900">Gallery</h1>
-        <Input label="Search" placeholder="Search submissions" value={q} onChange={(e) => setQ(e.target.value)} className="sm:w-72" />
+        <Input label="Search" placeholder="Search submissions" value={q} onChange={(e) => setQ(e.target.value)} className="md:w-72" />
       </div>
 
       {items === null && !error && <SkeletonRows rows={5} cols={3} />}

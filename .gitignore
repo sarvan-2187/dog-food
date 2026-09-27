@@ -10,3 +10,7 @@ web/dist/
 
 # local
 .env
+
+# playwright
+web/test-results/
+web/playwright-report/

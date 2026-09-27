@@ -2,7 +2,15 @@ import enum
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import Column, DateTime
 from sqlmodel import Field, SQLModel
+
+from ..timeutil import utcnow
+
+
+def _ts_column() -> Column:
+    """TIMESTAMP WITH TIME ZONE, so the offset survives the round trip."""
+    return Column(DateTime(timezone=True), nullable=False)
 
 
 class SubmissionStatus(str, enum.Enum):
@@ -22,5 +30,5 @@ class Submission(SQLModel, table=True):
     description: str = ""
     track: str = ""
     status: SubmissionStatus = Field(default=SubmissionStatus.draft)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())

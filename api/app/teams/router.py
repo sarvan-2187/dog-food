@@ -1,11 +1,10 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
 from ..events.models import Event
+from ..timeutil import utcnow
 from .deps import require_team_member
 from .models import Team, TeamMembership
 from .schemas import TeamCreate, TeamJoin, TeamMemberPublic, TeamPublic
@@ -39,7 +38,7 @@ def create_team(
     event = session.get(Event, event_id)
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
-    if event.end_at < datetime.utcnow():
+    if event.end_at < utcnow():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This event's deadline has passed.")
     team = Team(event_id=event_id, name=payload.name)
     session.add(team)
@@ -59,7 +58,7 @@ def join_team(
     team = session.exec(select(Team).where(Team.invite_code == payload.invite_code)).first()
     if not team:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That invite link is not valid.")
-    if team.invite_code_expires_at < datetime.utcnow():
+    if team.invite_code_expires_at < utcnow():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That invite link has expired.")
     existing = session.exec(
         select(TeamMembership).where(TeamMembership.team_id == team.id, TeamMembership.user_id == user.id)

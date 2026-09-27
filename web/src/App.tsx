@@ -8,6 +8,7 @@ import { EventsPage } from './pages/EventsPage';
 import { GalleryPage } from './pages/GalleryPage';
 import { JoinTeamPage } from './pages/JoinTeamPage';
 import { LoginPage } from './pages/LoginPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { SubmissionPage } from './pages/SubmissionPage';
 import { TeamsMinePage } from './pages/TeamsMinePage';
@@ -43,6 +44,7 @@ export default function App() {
                 </RequireAuth>
               }
             />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </div>
       </BrowserRouter>

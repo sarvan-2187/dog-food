@@ -1,12 +1,13 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlmodel import select
 
 from app.auth.models import Role, User
+from app.timeutil import utcnow
 
 
 def _future_event_payload(slug: str = "test-event") -> dict:
-    start = datetime.utcnow() + timedelta(days=1)
+    start = utcnow() + timedelta(days=1)
     end = start + timedelta(days=2)
     return {
         "name": "Test Event",

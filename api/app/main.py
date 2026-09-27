@@ -4,7 +4,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -52,7 +52,14 @@ app.include_router(submissions_router)
 if (STATIC_DIR / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
+    # Anything the SPA owns; anything the API owns must still 404 as JSON.
+    # Without this guard the catch-all answers GET /api/typo with the SPA shell
+    # and a 200, so a client mistake looks like a successful empty response.
+    API_PREFIXES = ("api/", "healthz", "docs", "redoc", "openapi.json")
+
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
         """Serve the SPA shell for any non-API path so client routing works."""
+        if full_path.startswith(API_PREFIXES):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "No such endpoint.")
         return FileResponse(STATIC_DIR / "index.html")

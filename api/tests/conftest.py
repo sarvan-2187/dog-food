@@ -1,16 +1,29 @@
 """Test fixtures: a dedicated Postgres database, one nested transaction per
 test (rolled back after), and a TestClient wired to that transaction.
 
-Default target is dogfood_test on the same server as dev (override with
-TEST_DATABASE_URL, e.g. from inside the api container: .../@db:5432/dogfood_test).
+The target database is derived from the app's own DATABASE_URL with `_test`
+appended, so `docker compose exec api pytest tests/ -v` works as documented in
+PLAN.md without extra environment setup -- inside the container the host is
+`db`, not `localhost`. Set TEST_DATABASE_URL to override entirely.
 """
 import os
 
 os.environ.setdefault("SESSION_SECRET", "test-secret-not-for-prod")
-os.environ["DATABASE_URL"] = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql+psycopg2://dogfood:dogfood@localhost:5432/dogfood_test",
-)
+
+_DEV_FALLBACK = "postgresql+psycopg2://dogfood:dogfood@localhost:5432/dogfood"
+
+
+def _test_database_url() -> str:
+    """Point at <app database>_test, on whichever host the app itself uses."""
+    explicit = os.getenv("TEST_DATABASE_URL")
+    if explicit:
+        return explicit
+    base, _, name = os.getenv("DATABASE_URL", _DEV_FALLBACK).rpartition("/")
+    name = name.split("?", 1)[0]
+    return f"{base}/{name}_test" if name else f"{_DEV_FALLBACK}_test"
+
+
+os.environ["DATABASE_URL"] = _test_database_url()
 
 import pytest
 from fastapi.testclient import TestClient
