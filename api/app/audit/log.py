@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 from sqlmodel import Session, select
 
+from ..webhooks.service import queue_audited
 from .models import AuditLog
 
 
@@ -22,7 +23,8 @@ def record(
     **detail: Any,
 ) -> AuditLog:
     """Stage an audit entry. The caller commits, so the entry and the action it
-    describes land together or not at all."""
+    describes land together or not at all. The same goes for the webhook
+    delivery it queues: sent after that commit, dropped on a rollback."""
     entry = AuditLog(
         actor_id=getattr(actor, "id", None),
         actor_role=getattr(getattr(actor, "role", None), "value", "") or "",
@@ -32,6 +34,9 @@ def record(
         detail=detail,
     )
     session.add(entry)
+    # Every audited action that belongs to an event also goes to that event's
+    # webhooks, once the caller commits (DOGFOOD T4).
+    queue_audited(session, action, entity_type, entity_id, detail)
     return entry
 
 

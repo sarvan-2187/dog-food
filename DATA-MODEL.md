@@ -314,8 +314,9 @@ platform does not need").
 | `last_status` | str | `"never fired"` \| `"delivered"` \| `"failed"`, updated after each delivery attempt |
 | `created_at` | timestamptz | |
 
-Payload topics: `submission.submitted`, `assignments.run`, `score.submitted`,
-`event.results_revealed`, `announcement.posted`. Every payload is signed with the same Ed25519 key used for judge
+Payload topics: every audited action that belongs to the event, named exactly as its audit
+action (`event.updated`, `vote.cast`, ...). The full list, and which payloads carry more
+than ids, is in ARCHITECTURE.md ("Outbound webhooks"). Every payload is signed with the same Ed25519 key used for judge
 participation records (`api/app/crypto.py`'s `sign_record()`), verifiable offline against
 `GET /api/public-key`.
 

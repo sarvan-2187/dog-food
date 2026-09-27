@@ -445,9 +445,10 @@ prints a one-time reset link for any account.
   track, oversized team, flagged on the Eligibility card for the organizer to rule on.
 - **Archive**: the Events page filters to Open now / Upcoming / Past events and searches by
   name, theme or track.
-- **Outbound webhooks**: organizers opt an event into signed HTTP callbacks
-  (`submission.submitted`, `assignments.run`, `score.submitted`,
-  `event.results_revealed`, `announcement.posted`), each payload signed with the same Ed25519 key used for judge
+- **Outbound webhooks**: organizers opt an event into signed HTTP callbacks for every
+  action taken in that event, 44 topics named after the audit action
+  (`event.updated`, `vote.cast`, `score.submitted`, ...; full list in ARCHITECTURE.md),
+  each payload signed with the same Ed25519 key used for judge
   participation records, so a receiver can verify it without trusting the network.
 
 Role-based access control is enforced at the endpoint level throughout: `require_role()`

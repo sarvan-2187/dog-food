@@ -124,3 +124,16 @@ def client(session):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def webhook_deliveries(monkeypatch):
+    """Audited actions queue webhook deliveries that go out after commit on a
+    thread pool (webhooks/service.py). Under test they are captured here
+    instead, so no test ever POSTs to a real URL, and a test can assert on what
+    would have been sent: a list of (url, subscription_id, signed_payload)."""
+    from app.webhooks import service
+
+    sent: list = []
+    monkeypatch.setattr(service, "_submit", lambda url, sub_id, signed: sent.append((url, sub_id, signed)))
+    return sent

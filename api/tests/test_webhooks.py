@@ -164,3 +164,107 @@ def test_deleting_a_webhook_stops_further_deliveries(client, session, monkeypatc
     _run(session, event.id, "test.topic")
 
     assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# Every audited action (DOGFOOD T4). record() queues a delivery that goes out
+# after commit; the autouse `webhook_deliveries` fixture (conftest.py) captures
+# it instead of POSTing.
+# ---------------------------------------------------------------------------
+
+def _topics(sent) -> list[str]:
+    return [signed["record"]["topic"] for _, _, signed in sent]
+
+
+def test_an_audited_action_reaches_a_subscribed_webhook(client, session, webhook_deliveries):
+    organizer = _login_as(client, session, "wh-audit-org@example.com", Role.organizer)
+    event = _event(session, "wh-audit", organizer)
+    hook = client.post(f"/api/events/{event.id}/webhooks", json={"url": "https://example.com/hook"}).json()
+    webhook_deliveries.clear()
+
+    r = client.patch(f"/api/events/{event.id}", json={"description": "Now with a description."})
+    assert r.status_code == 200, r.text
+
+    assert _topics(webhook_deliveries) == ["event.updated"]
+    url, sub_id, signed = webhook_deliveries[0]
+    assert (url, sub_id) == ("https://example.com/hook", hook["id"])
+    body = signed["record"]
+    assert body["event_id"] == event.id and body["entity_type"] == "event" and body["entity_id"] == event.id
+    assert verify_record(body, signed["signature"], signed["public_key"]), "still Ed25519-signed"
+    # Ids and the action only: none of the audit detail ("changed") rides along.
+    assert set(body) == {"topic", "event_id", "issued_at", "entity_type", "entity_id"}
+
+
+def test_an_action_on_a_submission_resolves_to_its_event(client, session, webhook_deliveries):
+    from app.submissions.models import Submission
+    from app.teams.models import Team
+
+    organizer = _user(session, "wh-sub-org@example.com", Role.organizer)
+    event = _event(session, "wh-sub", organizer)
+    team = Team(event_id=event.id, name="Hooked")
+    session.add(team)
+    session.commit()
+    submission = Submission(team_id=team.id, event_id=event.id, title="Hooked")
+    session.add(submission)
+    session.add(WebhookSubscription(event_id=event.id, url="https://example.com/hook", created_by_id=organizer.id))
+    session.commit()
+
+    from app.audit.log import record
+
+    record(session, "comment.added", actor=organizer, entity_type="submission", entity_id=submission.id)
+    session.commit()
+    assert _topics(webhook_deliveries) == ["comment.added"]
+    assert webhook_deliveries[0][2]["record"]["event_id"] == event.id
+
+
+def test_nothing_is_sent_before_commit_or_after_a_rollback(session, webhook_deliveries):
+    from app.audit.log import record
+
+    organizer = _user(session, "wh-rb-org@example.com", Role.organizer)
+    event = _event(session, "wh-rb", organizer)
+    session.add(WebhookSubscription(event_id=event.id, url="https://example.com/hook", created_by_id=organizer.id))
+    session.commit()
+
+    record(session, "rubric.created", actor=organizer, entity_type="event", entity_id=event.id, rubric_id=7)
+    assert webhook_deliveries == [], "queued, not sent, until the commit"
+    session.rollback()
+    session.commit()
+    assert webhook_deliveries == [], "a rolled-back action is never announced"
+
+    record(session, "rubric.created", actor=organizer, entity_type="event", entity_id=event.id, rubric_id=7)
+    session.commit()
+    assert _topics(webhook_deliveries) == ["rubric.created"]
+    assert webhook_deliveries[0][2]["record"]["rubric_id"] == 7
+
+
+def test_existing_topics_are_sent_once_and_platform_actions_not_at_all(client, session, webhook_deliveries):
+    from app.audit.log import record
+
+    organizer = _user(session, "wh-once-org@example.com", Role.organizer)
+    event = _event(session, "wh-once", organizer)
+    session.add(WebhookSubscription(event_id=event.id, url="https://example.com/hook", created_by_id=organizer.id))
+    session.commit()
+
+    # notify() already sends these with its own payload, so record() must not add a copy.
+    record(session, "assignments.run", actor=organizer, entity_type="event", entity_id=event.id, created=0)
+    # No event: accounts, API keys and admin actions have no webhook to go to.
+    record(session, "user.logged_in", actor=organizer, entity_type="user", entity_id=organizer.id)
+    session.commit()
+    assert webhook_deliveries == []
+
+
+def test_vote_details_never_leave_in_a_payload(session, webhook_deliveries):
+    from app.audit.log import record
+
+    organizer = _user(session, "wh-vote-org@example.com", Role.organizer)
+    event = _event(session, "wh-vote", organizer)
+    session.add(WebhookSubscription(event_id=event.id, url="https://example.com/hook", created_by_id=organizer.id))
+    session.commit()
+    record(
+        session, "vote.voided", actor=organizer, entity_type="event", entity_id=event.id,
+        vote_id=3, voter_user_id=4, voter_key="email:abc", fingerprint_hash="f",
+    )
+    session.commit()
+    body = webhook_deliveries[0][2]["record"]
+    assert body["topic"] == "vote.voided"
+    assert not {"vote_id", "voter_user_id", "voter_key", "fingerprint_hash"} & set(body)
