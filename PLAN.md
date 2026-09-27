@@ -158,11 +158,11 @@ Pin every dependency to an exact version in `api/pyproject.toml` (or `requiremen
 
 **Goal:** a booting, empty skeleton before any feature work.
 
-- [ ] `git init` (only after kickoff — no code before the official start)
-- [ ] Scaffold `docker-compose.yml` with `db` and `api` services
-- [ ] `api`'s Dockerfile is multi-stage: stage 1 builds the Vite frontend (`node:20-slim`), stage 2 is `python:3.12-slim` copying the built frontend's static output into the image alongside the FastAPI app
-- [ ] `api/app/db.py` (engine + session dependency) and `api/app/seed.py` (reads `fixtures/*.json`, idempotency-checked, called on app startup)
-- [ ] Shared UI scaffolding: `web/src/components/ui/` (Button, Input, Card, Badge) and `web/src/components/feedback/` (Toast, Skeleton, EmptyState, ErrorState) built as reusable primitives *before* any feature page — every later screen consumes these rather than reinventing loading/error/empty markup per page
+- [x] `git init` (only after kickoff — no code before the official start)
+- [x] Scaffold `docker-compose.yml` with `db` and `api` services
+- [ ] `api`'s Dockerfile is multi-stage: stage 1 builds the Vite frontend (`node:20-slim`), stage 2 is `python:3.12-slim` copying the built frontend's static output into the image alongside the FastAPI app — *written; stays unchecked until the first image build succeeds*
+- [x] `api/app/db.py` (engine + session dependency) and `api/app/seed.py` (reads `fixtures/*.json`, idempotency-checked, called on app startup)
+- [x] Shared UI scaffolding: `web/src/components/ui/` (Button, Input, Card, Badge) and `web/src/components/feedback/` (Toast, Skeleton, EmptyState, ErrorState) built as reusable primitives *before* any feature page — every later screen consumes these rather than reinventing loading/error/empty markup per page
 
 **Definition of Done — Phase 0 gate:** `docker compose up` boots both containers healthy with empty schema, on a clean checkout (clear local Docker build cache and retry if unsure). Do not proceed to Phase 1 until this works.
 
@@ -343,3 +343,20 @@ Update these as each phase completes, not in a single pass before submission:
 ## Open Questions
 
 *(Append here anything ambiguous you had to make a judgment call on, so it's visible before submission — e.g., a T3 fallback taken, a DESIGN_SYSTEM.md/reference_design.pdf conflict, a rubric edge case.)*
+
+- **Reference design filename (Phase 0).** §2/§3 expect `reference_design.pdf`; the file supplied is
+  `reference_landing.pdf`. Treated as the same artifact — it is a full landing-page reference, and
+  `DESIGN_SYSTEM.md` §10 was derived from it. Rename one or the other before submission so the
+  repo layout in §2 matches reality.
+- **Fonts vs. the offline constraint (Phase 0).** `DESIGN_SYSTEM.md` §3.1 specifies Inter with an
+  italic serif accent, but §1 forbids CDN-fetched assets in the served app. No font binaries are
+  committed, so the app currently renders the system fallback stack declared in
+  `web/src/styles/tokens.ts`. Decision needed: commit self-hosted `.woff2` files under
+  `web/public/fonts/`, or accept the system stack permanently and simplify §3.1.
+- **Phase 0 `web/src/App.tsx` (judgment call).** The Phase 0 checklist asks for shared primitives
+  but no pages. The SPA still needed a root component for `docker compose up` to be verifiable, so
+  `App.tsx` is a primitives smoke page that also reports `/healthz` status. It is scaffolding, not
+  product scope — Phase 1 replaces it with real pages.
+- **Tailwind major version (Phase 0).** Pinned to `tailwindcss==3.4.17` rather than v4, because
+  §3 and `DESIGN_SYSTEM.md` §11 both specify a `tailwind.config.ts` with `theme.extend`, which is
+  the v3 configuration model. v4's CSS-first config would invalidate that instruction.
