@@ -259,6 +259,7 @@ A few things are deliberately true here:
 - **Vote counts stay hidden** until the organizer's chosen reveal time, so an early lead
   cannot snowball. They are genuinely hidden, not just left off the screen.
 - **The order is shuffled by default while voting is open**, so the projects at the top do not get an unfair advantage. Each visitor keeps the same order for their whole session. Events without voting list the most recent first. You can switch the order yourself at any time.
+- **You can filter the gallery** by track and by tech tag, next to the search box. Search also matches taglines and tags.
 
 Once results are revealed, your team can download a **participation certificate** from your
 project page. It names every member, the event, your project and any prize or rank, and

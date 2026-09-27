@@ -12,6 +12,7 @@ from ..audit.log import record
 from ..auth import Role, User, get_current_user, mailer, require_role
 from ..db import get_session
 from ..events.models import Event
+from ..events.questions import new_question_id
 from ..events.schemas import stages_to_json
 from ..events.visibility import may_see_results, results_are_public
 from ..judging.event_judges import assert_in_track, assignment_outside_track
@@ -278,16 +279,22 @@ def export_submissions(
     session: Session = Depends(get_session),
 ) -> Response:
     subs = session.exec(select(Submission).where(Submission.event_id == event_id).order_by(Submission.id)).all()
+    event = session.get(Event, event_id)
+    # One column per custom question, hidden ones included: an answer given is
+    # part of the record even after the organizer retires the question.
+    questions = (event.questions or []) if event else []
     rows = []
     for s in subs:
         team = session.get(Team, s.team_id)
+        answers = s.answers or {}
         rows.append([
-            s.id, s.title, team.name if team else "", s.track, s.status.value,
-            s.repo_url, s.demo_url, s.video_url, s.updated_at.isoformat(),
-        ])
+            s.id, s.title, s.tagline, team.name if team else "", s.track, "; ".join(s.tech_tags or []),
+            s.status.value, s.repo_url, s.demo_url, s.video_url, s.updated_at.isoformat(),
+        ] + [answers.get(q["id"], "") for q in questions])
     return _csv_response(
         f"event-{event_id}-submissions.csv",
-        ["submission_id", "title", "team", "track", "status", "repo_url", "demo_url", "video_url", "updated_at"],
+        ["submission_id", "title", "tagline", "team", "track", "tech_tags", "status", "repo_url", "demo_url",
+         "video_url", "updated_at"] + [f"Q: {q['prompt']}" for q in questions],
         rows,
     )
 
@@ -456,6 +463,7 @@ def export_event(
             "rules": event.rules,
             "stages": event.stages,
             "certificate_template": event.certificate_template,
+            "questions": event.questions or [],
         },
         "rubrics": [{"name": r.name, "criteria": r.criteria} for r in rubrics],
         "teams": [{"name": t.name} for t in teams],
@@ -463,8 +471,11 @@ def export_event(
             {
                 "team_name": team_names.get(s.team_id, ""),
                 "title": s.title,
+                "tagline": s.tagline,
                 "description": s.description,
                 "track": s.track,
+                "tech_tags": s.tech_tags or [],
+                "answers": s.answers or {},
                 "status": s.status.value,
                 "repo_url": s.repo_url,
                 "demo_url": s.demo_url,
@@ -473,6 +484,16 @@ def export_event(
             for s in submissions
         ],
     }
+
+
+def _imported_questions(payload: EventImportPayload) -> list[dict]:
+    """A backup's questions keep their ids, so its answers still line up. A
+    question with no id, or a repeated one, gets a fresh id."""
+    out: list[dict] = []
+    for q in payload.questions:
+        qid = q.id if q.id and q.id not in {o["id"] for o in out} else new_question_id()
+        out.append({"id": qid, "prompt": q.prompt, "required": q.required, "hidden": q.hidden, "public": q.public})
+    return out
 
 
 @router.post("/api/events/import", response_model=Event, status_code=status.HTTP_201_CREATED)
@@ -501,6 +522,7 @@ def import_event(
         stages=stages_to_json(payload.stages),
         certificate_template=payload.certificate_template if payload.certificate_template in TEMPLATES else "classic",
         status="draft",  # PLAN.md 10.12: an import is reviewed before it goes public
+        questions=_imported_questions(payload),
     )
     session.add(event)
     session.flush()
@@ -508,6 +530,7 @@ def import_event(
     for r in payload.rubrics:
         session.add(Rubric(event_id=event.id, name=r.name, criteria=r.criteria))
 
+    question_ids = {q["id"] for q in event.questions}
     team_ids_by_name: dict[str, int] = {}
     for t in payload.teams:
         team = Team(event_id=event.id, name=t.name)
@@ -524,8 +547,12 @@ def import_event(
                 team_id=team_id,
                 event_id=event.id,
                 title=s.title,
+                tagline=s.tagline,
                 description=s.description,
                 track=s.track,
+                tech_tags=s.tech_tags,
+                # Only answers to a question this event actually has.
+                answers={k: v for k, v in s.answers.items() if k in question_ids},
                 repo_url=s.repo_url,
                 demo_url=s.demo_url,
                 video_url=s.video_url,

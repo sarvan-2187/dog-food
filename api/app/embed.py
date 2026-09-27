@@ -58,7 +58,7 @@ def embed_gallery(slug: str, request: Request, session: Session = Depends(get_se
     if event is None or event.status != "published":
         return _page("Not found", '<p class="empty">This gallery is not available.</p>', 404)
 
-    items = gallery(request, event_id=event.id, q=None, order="recent", seed=None, user=None, session=session)
+    items = gallery(request, event_id=event.id, q=None, track=None, tag=None, order="recent", seed=None, user=None, session=session)
     cards = []
     for item in items:
         image = f'<img src="{escape(item.image_url)}" alt="" loading="lazy">' if item.image_url else ""

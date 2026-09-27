@@ -54,6 +54,8 @@ export interface EventRecord {
   rules: string;
   /** Named rounds (Stage 1, Stage 2, ...) in start order. Informational. */
   stages: EventStage[];
+  /** Organizer-defined questions teams answer on the submission form (DOGFOOD T1). */
+  questions?: EventQuestion[];
   /** How its certificates look: a key of CERTIFICATE_DESIGNS. */
   certificate_template?: string;
 }
@@ -106,17 +108,46 @@ export interface Team {
 
 export type SubmissionStatus = 'draft' | 'submitted';
 
+/** One custom question. Short text answers, at most 1000 characters. */
+export interface EventQuestion {
+  id: string;
+  prompt: string;
+  required: boolean;
+  /** Retired: off the form, the score sheet and the project page, answers kept. */
+  hidden: boolean;
+  /** Shown on the public project page; judges always see answers. */
+  public: boolean;
+}
+
+export interface SubmissionImage {
+  id: number;
+  url: string;
+}
+
+export interface QuestionAnswer {
+  question_id: string;
+  prompt: string;
+  answer: string;
+}
+
 export interface Submission {
   id: number;
   team_id: number;
   event_id: number;
   title: string;
+  tagline: string;
   description: string;
   track: string;
+  tech_tags: string[];
   status: SubmissionStatus;
   created_at: string;
   updated_at: string;
+  /** The first gallery image, used as the thumbnail. */
   image_url: string | null;
+  /** Up to five, in order. */
+  images: SubmissionImage[];
+  /** This team's answers, keyed by question id. */
+  answers: Record<string, string>;
   repo_url: string;
   demo_url: string;
   video_url: string;
@@ -200,6 +231,11 @@ export interface ScoringSheet {
   submission_description: string;
   submission_track: string;
   submission_image_url: string | null;
+  submission_tagline: string;
+  submission_tech_tags: string[];
+  submission_images: SubmissionImage[];
+  /** Every visible question the team answered, read-only. */
+  answers: QuestionAnswer[];
   repo_url: string;
   demo_url: string;
   video_url: string;
@@ -242,13 +278,19 @@ export interface GalleryItem {
   event_id: number;
   team_id: number;
   title: string;
+  tagline: string;
   description: string;
   track: string;
+  tech_tags: string[];
   updated_at: string;
   comment_count: number;
   votes: number | null;
   voted_by_me: boolean;
   image_url: string | null;
+  /** The whole gallery; filled on the project page only. */
+  images: SubmissionImage[];
+  /** Answers to questions the organizer made public; project page only. */
+  answers: QuestionAnswer[];
   repo_url: string;
   demo_url: string;
   video_url: string;

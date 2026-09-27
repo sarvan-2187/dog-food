@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ProjectLinks } from '../components/EventSections';
+import { Answers, ProjectGallery, TechTags } from '../components/ProjectExtras';
 import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CertificateButton } from '../components/CertificateButton';
@@ -142,11 +143,8 @@ export function SubmissionDetailPage() {
       </p>
 
       <Card title={item.title} meta={item.track || undefined}>
-        {item.image_url && (
-          <div className="mb-4 max-h-96 overflow-hidden rounded-md bg-surface-100">
-            <img src={item.image_url} alt="" className="w-full object-cover" />
-          </div>
-        )}
+        <ProjectGallery images={item.images} title={item.title} />
+        {item.tagline && <p className="mb-3 text-body font-medium text-ink-800">{item.tagline}</p>}
         {item.awards.length > 0 && (
           <p className="mb-3 flex flex-wrap gap-1.5">
             {item.awards.map((a) => (
@@ -155,6 +153,12 @@ export function SubmissionDetailPage() {
           </p>
         )}
         <p className="whitespace-pre-wrap text-body text-ink-700">{item.description}</p>
+        {item.tech_tags.length > 0 && (
+          <div className="mt-4">
+            <TechTags tags={item.tech_tags} />
+          </div>
+        )}
+        <Answers answers={item.answers} heading="From the team" />
         <div className="mt-4">
           <ProjectLinks repo={item.repo_url} demo={item.demo_url} video={item.video_url} />
         </div>

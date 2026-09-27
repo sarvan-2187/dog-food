@@ -8,6 +8,7 @@ import { Badge, Button, Card, Input } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { CertificateDesignPicker } from '../components/CertificateDesign';
 import { StagesEditor } from '../components/EventStages';
+import { QuestionsEditor } from '../components/QuestionsEditor';
 import type { EventRecord, PrizeEntry, WebhookRecord } from '../types';
 
 /**
@@ -195,6 +196,10 @@ function EventSettingsForm() {
 
       <div className="mt-6">
         <StagesEditor key={event.id} event={event} onSaved={setEvent} onToast={setToast} />
+      </div>
+
+      <div className="mt-6">
+        <QuestionsEditor key={event.id} event={event} onSaved={setEvent} onToast={setToast} />
       </div>
 
       <div className="mt-6">

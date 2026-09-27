@@ -8,7 +8,8 @@ from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
 from ..events.models import Event
 from ..scoring.models import Score
-from ..storage.lookup import image_url_for
+from ..events.questions import answer_rows
+from ..storage.lookup import image_list_for, image_url_for
 from ..submissions.models import Submission, in_competition
 from ..teams.models import TeamMembership
 from ..timeutil import utcnow
@@ -392,6 +393,10 @@ def scoring_sheet(
         submission_description=submission.description,
         submission_track=submission.track,
         submission_image_url=image_url_for(session, "submission", submission.id),
+        submission_tagline=submission.tagline,
+        submission_tech_tags=submission.tech_tags or [],
+        submission_images=image_list_for(session, "submission", submission.id),
+        answers=answer_rows(event, submission) if (event := session.get(Event, assignment.event_id)) else [],
         repo_url=submission.repo_url,
         demo_url=submission.demo_url,
         video_url=submission.video_url,

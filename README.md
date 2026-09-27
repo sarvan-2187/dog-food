@@ -147,7 +147,10 @@ API. The captain renames the team, removes members, hands over captaincy and rep
 ![The Your team card](docs/screenshots/walkthrough/02-team-formation.png)
 
 ### 3. Project submissions
-One submission per team, autosaving as you type, with code, demo and video links. The
+One submission per team, autosaving as you type: name, a one-line tagline, the long
+description, up to five images (the first is the gallery thumbnail), a demo video link, the
+code repository, a live link, tech tags, a track, and the organizer's own custom questions
+(up to ten, set in Event settings; required ones must be answered before Submit). The
 deadline countdown is always on screen, and it is the same clock the server enforces: a save
 after the deadline is refused by the API, not just hidden.
 
@@ -417,10 +420,12 @@ prints a one-time reset link for any account.
   confirms an email, or anyone with the link), rate-limited, with results held back until a configured reveal time
   so early counts can't sway the vote. This is enforced in the API response itself, not just
   hidden in the UI.
-- **Uploaded images**: submission screenshots and profile avatars, stored on local disk
+- **Uploaded images**: submission image galleries (up to five, reorderable) and profile
+  avatars, type-, size- and magic-byte-checked, stored on local disk
   behind a swappable `StorageService` interface, with no cloud account or CDN, works fully
   offline. See `ARCHITECTURE.md`.
-- **CSV export**: users, submissions (with their project links), assignments, raw
+- **CSV export**: users, submissions (with their links, tagline, tags and answers to the
+  custom questions), assignments, raw
   scores, normalized results, for every event, organizer/admin only.
 - **Append-only audit log**: every consequential action, timestamped, organizer/admin
   readable, with no update or delete path from any endpoint.
@@ -446,7 +451,7 @@ prints a one-time reset link for any account.
 - **Archive**: the Events page filters to Open now / Upcoming / Past events and searches by
   name, theme or track.
 - **Outbound webhooks**: organizers opt an event into signed HTTP callbacks for every
-  action taken in that event, 44 topics named after the audit action
+  action taken in that event, 47 topics named after the audit action
   (`event.updated`, `vote.cast`, `score.submitted`, ...; full list in ARCHITECTURE.md),
   each payload signed with the same Ed25519 key used for judge
   participation records, so a receiver can verify it without trusting the network.
