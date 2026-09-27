@@ -196,6 +196,22 @@ def test_the_certificate_pdf_names_the_members(client, session):
     assert r.status_code == 200 and r.content.startswith(b"%PDF-")
 
 
+def test_an_event_picks_a_certificate_design_and_it_travels_with_the_backup(client, session):
+    org = _user(session, "design-org@example.com", Role.organizer)
+    event = _event(session, "cert-design", org)
+    sub = _entry(session, event, "Stylish", [_user(session, "sty@example.com")])
+    _login(client, org)
+    plain = client.get(f"/api/submissions/{sub.id}/certificate.pdf").content
+
+    r = client.patch(f"/api/events/{event.id}", json={"certificate_template": "midnight"})
+    assert r.status_code == 200 and r.json()["certificate_template"] == "midnight"
+    styled = client.get(f"/api/submissions/{sub.id}/certificate.pdf").content
+    assert styled.startswith(b"%PDF-") and len(styled) > len(plain) + 50_000, "the background is embedded"
+    assert client.get(f"/api/events/{event.id}/export.json").json()["event"]["certificate_template"] == "midnight"
+
+    assert client.patch(f"/api/events/{event.id}", json={"certificate_template": "comic-sans"}).status_code == 422
+
+
 # --- Eligibility flags -------------------------------------------------------
 
 def test_eligibility_flags_point_at_what_to_check(client, session):

@@ -89,6 +89,7 @@ class EventImportPayload(BaseModel):
     results_hidden_until: Optional[str] = None
     rules: str = ""
     stages: List[Stage] = []
+    certificate_template: str = "classic"
     rubrics: List[RubricImport] = []
     teams: List[TeamImport] = []
     submissions: List[SubmissionImport] = []

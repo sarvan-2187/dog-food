@@ -75,6 +75,8 @@ class Event(SQLModel, table=True):
     # server's own gates are still start_at / end_at / results_hidden_until.
     # [{"name", "description", "starts_at", "ends_at"}], ISO-8601 UTC, in order.
     stages: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
+    # Which look its certificates use: a key of scoring.certificate.TEMPLATES.
+    certificate_template: str = Field(default="classic")
 
 
 class Announcement(SQLModel, table=True):
