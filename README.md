@@ -15,14 +15,99 @@ normalization, results, verifiable certificates and a searchable archive. Built 
 [Hackathon Raptors](https://www.raptors.dev), who run a dozen events a year and asked, with
 DOGFOOD 2026, for the platform they will run them on.
 
-Built by Team CodeHawk against `PLAN.md`, the execution spec for this build. HackFlow is a
-DOGFOOD entry, not an official Hackathon Raptors product; see `CREDITS.md`.
+Built by Team CodeHawk against [`docs/PLAN.md`](docs/PLAN.md), the execution spec for this
+build. HackFlow is a DOGFOOD entry, not an official Hackathon Raptors product; see
+[`docs/CREDITS.md`](docs/CREDITS.md).
+
+## For evaluators
+
+**Claimed tiers: T1, T2, T3, T4.** The official checker verifies T1 and T2 (7 of 7 checks pass,
+[`acceptance-report.txt`](acceptance-report.txt)); T3 and T4 are judged by hand.
+
+```text
+dog-food/
+├── .dogfood.toml            ← where things are, and what we claim (T1-T4)
+├── acceptance-report.txt    ← what run.py printed: 7/7, T1 and T2 verified
+├── docker-compose.yml       ← one command to a seeded, working portal
+├── README.md                ← this file: what it does, how to run it, honest limits
+├── ARCHITECTURE.md          ← how it is put together, and why
+├── DATA-MODEL.md            ← the schema, and the ways data gets in and out
+├── JUDGING.md               ← assignment, weighted scoring, normalization, defended
+├── LICENSE                  ← MIT
+├── api/                     ← our backend: FastAPI + SQLModel, with api/tests/ (387 tests)
+├── web/                     ← our frontend: React + TypeScript, with web/tests/ (114 browser tests)
+├── docs/                    ← everything else: manual, threat model, credits, screenshots
+├── fixtures.json, run.py    ← the organizers' dataset and checker, unchanged
+└── fixtures/                ← our extra demo events, users and teams
+```
+
+Every document, and what it is for:
+
+| Document | What you'll find |
+|---|---|
+| [README.md](README.md) | The ten-stage walkthrough with screenshots, quickstart, deploy, features, known limits, test status |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System shape, the modular-monolith rationale, auth, storage, webhooks, testing |
+| [DATA-MODEL.md](DATA-MODEL.md) | Every table and column, relationships, CSV exports, JSON import and export |
+| [JUDGING.md](JUDGING.md) | Conflict-aware assignment, weighted rubrics, per-judge z-score normalization and why |
+| [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | 31 attacks (sybil votes, ballot stuffing, judge collusion, deadline gaming, leaked keys...), each with what stops it and the file that enforces it |
+| [docs/USER-MANUAL.md](docs/USER-MANUAL.md) | Illustrated, plain-language guide for participants, judges, organizers and admins |
+| [docs/CREDITS.md](docs/CREDITS.md) | Hackathon Raptors' details and posters, photo licences, third-party software, contributors |
+| [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Design tokens and component rules the UI is built from |
+| [docs/PLAN.md](docs/PLAN.md) | The execution spec, phase by phase, with every judgment call (`## Open Questions`) |
+
+**Verify it in three commands:**
+
+```bash
+docker compose up --build        # seeded portal at http://localhost:8000, no .env needed
+python run.py .dogfood.toml      # the official checker: 7/7
+docker compose exec api pytest tests/ -q
+```
 
 ## From registration to archive: the ten stages
 
 Every stage below is a screen in the running app, captured from `docker compose up` on the
 seeded data (regenerate with `cd web && node scripts/readme-walkthrough.mjs`). Each stage
 feeds the next, and each hands the next one data it can trust.
+
+```mermaid
+flowchart TD
+    subgraph P["Participants"]
+        S1["1. Registration<br/>account, bcrypt, rate limits"]
+        S2["2. Team formation<br/>invite link, size cap"]
+        S3["3. Project submissions<br/>autosave, server deadline"]
+    end
+    subgraph O["Organizers"]
+        S4["4. Eligibility verification<br/>auto checks, disqualify or reinstate"]
+        S5["5. Judge assignment<br/>3 per entry, conflict-aware"]
+    end
+    subgraph J["Judges"]
+        S6["6. Scoring<br/>weighted rubric sliders"]
+    end
+    subgraph H["HackFlow"]
+        S7["7. Score normalization<br/>per-judge z-scores"]
+        S8["8. Results<br/>hidden until reveal time"]
+        S9["9. Certificates<br/>PDF with verifiable serial"]
+        S10["10. Archive and retrieval<br/>past events, JSON backup, CSV"]
+    end
+    S1 --> S2 --> S3
+    S3 -- "submissions close" --> S4
+    S4 -- "competing entries only" --> S5
+    S5 -- "judging opens" --> S6
+    S6 -- "raw scores" --> S7
+    S7 -- "standings" --> S8
+    S8 -- "winners and ranks" --> S9
+    S9 --> S10
+    S8 --> S10
+    S4 -. "disqualified: kept, not ranked" .-> S10
+```
+
+How to read it: each box is one stage, grouped by who does the work. The labels on the arrows
+are the gates between stages, and the server enforces each one. A save after the deadline is
+refused, so eligibility only ever sees final entries. Only competing entries get judges.
+Judges only score what they were assigned. Normalization only sees raw rubric totals, and
+results stay hidden until the reveal time. Certificates and the archive are built from those
+revealed results. A disqualified entry drops out of judging and standings, but it is kept (the
+dotted line), so an organizer can reinstate it and the record stays complete.
 
 An event can also show its own **stages** (Stage 1: Registration, Stage 2: Build sprint, and so
 on), the way Unstop shows a competition's rounds. The current stage is highlighted.
@@ -81,7 +166,7 @@ Judges mark differently: one gives everything 90, another is strict. HackFlow co
 judge's totals to z-scores against **that judge's own** mean and spread, then averages them,
 so a harsh or a generous judge can't move the ranking. A judge who gave everyone the same
 score contributes no ranking information rather than dividing by zero. The maths, and why
-it beats a plain average, is in `JUDGING.md`.
+it beats a plain average, is in [JUDGING.md](JUDGING.md).
 
 ![Normalised standings: raw mean vs normalized score](docs/screenshots/walkthrough/07-normalization.png)
 
@@ -120,18 +205,6 @@ push events out.
 
 ![The Integrations page](docs/screenshots/walkthrough/11-integrations.png)
 
-## Screenshots
-
-All captured live against the running `docker compose` stack on fixture-only data.
-None of these are mockups.
-
-| | |
-|---|---|
-| **Landing**: RiskSentinel-style hero, raptors.dev's own gradient palette | **Public gallery**: voting, comments, results held back until reveal |
-| [![Landing page](docs/screenshots/landing-hero.png)](docs/screenshots/landing-hero.png) | [![Gallery](docs/screenshots/gallery.png)](docs/screenshots/gallery.png) |
-| **Judging rubric**: weighted criteria, live "weights add up to 1.00" check | **Event control**: assignment, rubric lock, voting/reveal controls |
-| [![Rubric builder](docs/screenshots/rubric-builder.png)](docs/screenshots/rubric-builder.png) | [![Results/event control](docs/screenshots/results.png)](docs/screenshots/results.png) |
-
 ## Quickstart
 
 ```bash
@@ -154,7 +227,7 @@ Seeded accounts (see `fixtures/users.json`); the password is the value shown:
 Anyone can also register a new account from the app. Public sign-up always creates a
 `participant`. Judges join by an event's invitation link, and organizers by an admin's
 invitation link or an admin changing their role on **Users**. Admins exist only in the seed
-data (see PLAN.md's Open Questions for why).
+data (see [docs/PLAN.md](docs/PLAN.md)'s Open Questions for why).
 
 Two seeded events are worth knowing for a demo:
 
@@ -336,7 +409,8 @@ prints a one-time reset link for any account.
   environments. An import arrives as a draft, and its links are validated like any other.
 - **Guided onboarding**: a role-aware tour (driver.js, bundled, no network calls) starts
   once on first login and is replayable from `/profile`, so a fresh cohort of participants
-  and judges can be pointed at the site rather than at a support doc. See `USER-MANUAL.md`.
+  and judges can be pointed at the site rather than at a support doc. See
+  [docs/USER-MANUAL.md](docs/USER-MANUAL.md).
 - **API keys**: organizers and admins create named keys on **Integrations**; a server sends
   `Authorization: Bearer hf_...` and acts with exactly its owner's role. Keys are shown once,
   stored as SHA-256 hashes, revocable, and die with a deactivated owner.
@@ -362,7 +436,7 @@ that lives only in the frontend.
 - **Voting still can't stop someone with several real inboxes.** An event can require a
   verified email and set a voter cutoff (accounts made later can't vote), and organizers can
   void votes cast from one device by several voters. A person who registered several
-  verified accounts before the cutoff still gets several votes. See `THREAT-MODEL.md`
+  verified accounts before the cutoff still gets several votes. See [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md)
   entry 25.
 - **The judging deadline is soft, on purpose.** Judges see the due date and organizers see
   who is overdue, but a late score still saves (flagged late in the audit log). Locking
@@ -389,7 +463,7 @@ above), and skips itself otherwise.
 The browser suite changes the same database it reads. Against a fresh stack it passes in
 full with Playwright's default parallel workers. After many runs on one volume, one or two
 specs can time out; each passes on its own, and `--workers=1` or a fresh volume avoids it
-(see PLAN.md's Open Questions).
+(see [docs/PLAN.md](docs/PLAN.md)'s Open Questions).
 
 `acceptance-report.txt` is the unedited output of the official DOGFOOD checker
 (`run.py`): 7 of 7 checks pass, and T1 and T2 are verified. T3 is claimed too. The
@@ -401,21 +475,7 @@ before the checker was published, is kept at `docs/self-test-report.txt`.
 
 ## Documentation
 
-- **`USER-MANUAL.md`**: illustrated, step-by-step guide for participants, judges, and
-  organizers, in plain language. Start here if you want to *use* HackFlow rather than
-  modify it.
-- **`PLAN.md`**: the execution spec this build follows, phase by phase, including every
-  judgment call made along the way (`## Open Questions`).
-- **`DESIGN_SYSTEM.md`**: the design tokens and component patterns the frontend is built
-  from, derived from `reference_design.pdf`.
-- **`ARCHITECTURE.md`**: system design and the modular-monolith rationale.
-- **`DATA-MODEL.md`**: full schema, entity relationships, import/export paths.
-- **`JUDGING.md`**: the assignment algorithm, the normalization math, and the role-
-  isolation and integrity decisions behind them.
-- **`THREAT-MODEL.md`**: thirty-one attacks, each paired with the mitigation already
-  built and the file that enforces it.
-- **`CREDITS.md`**: who made the bundled photographs and under which licence, plus the
-  third-party software the stack runs.
+The full list, with what each document is for, is under [For evaluators](#for-evaluators).
 
 ## Development
 
