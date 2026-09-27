@@ -7,8 +7,14 @@ import { RequireRole } from '../components/auth/guards';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
-import { Input } from '../components/ui';
+import { Input, SimpleSelect } from '../components/ui';
 import type { AssignmentSummary, EventRecord, ResultRow } from '../types';
+
+const VOTING_ACCESS: { value: EventRecord['voting_access']; label: string }[] = [
+  { value: 'authenticated', label: 'Signed-in accounts' },
+  { value: 'email', label: 'Anyone who confirms an email' },
+  { value: 'open', label: 'Anyone with the link' },
+];
 
 const EXPORTS = [
   { file: 'users', label: 'Users' },
@@ -83,7 +89,11 @@ function EventResults() {
     }
   }
 
-  async function updateVoting(patch: { voting_enabled?: boolean; results_hidden_until?: string | null }) {
+  async function updateVoting(patch: {
+    voting_enabled?: boolean;
+    voting_access?: EventRecord['voting_access'];
+    results_hidden_until?: string | null;
+  }) {
     if (!event) return;
     setSavingVoting(true);
     try {
@@ -91,7 +101,9 @@ function EventResults() {
       setEvent(updated);
       setToast({
         message:
-          patch.voting_enabled === undefined
+          patch.voting_access !== undefined
+            ? 'Who can vote was updated.'
+            : patch.voting_enabled === undefined
             ? 'Results reveal time updated.'
             : patch.voting_enabled
               ? 'Community voting is now open.'
@@ -174,7 +186,7 @@ function EventResults() {
         <div className="flex flex-col gap-4">
           <p className="text-body text-ink-600">
             {event?.voting_enabled
-              ? 'Anyone signed in can vote and comment on submissions in the gallery.'
+              ? `${VOTING_ACCESS.find((o) => o.value === event.voting_access)?.label ?? 'Signed-in accounts'} can vote; anyone signed in can comment.`
               : 'Voting is closed. Turn it on to let the community vote on submissions in the gallery.'}
           </p>
           <div className="flex flex-wrap items-end gap-3">
@@ -186,6 +198,14 @@ function EventResults() {
             >
               {event?.voting_enabled ? 'Close voting' : 'Open voting'}
             </Button>
+            <SimpleSelect
+              label="Who can vote"
+              value={event?.voting_access ?? 'authenticated'}
+              onChange={(value) => updateVoting({ voting_access: value as EventRecord['voting_access'] })}
+              options={VOTING_ACCESS}
+              triggerClassName="md:w-64"
+              disabled={savingVoting}
+            />
             <Input
               label="Hide vote counts until"
               type="datetime-local"

@@ -422,6 +422,7 @@ def export_event(
             "tracks": event.tracks,
             "prize_config": event.prize_config,
             "voting_enabled": event.voting_enabled,
+            "voting_access": event.voting_access,
             "results_hidden_until": event.results_hidden_until.isoformat() if event.results_hidden_until else None,
             "rules": event.rules,
         },
@@ -460,6 +461,7 @@ def import_event(
         tracks=payload.tracks,
         prize_config=payload.prize_config,
         voting_enabled=payload.voting_enabled,
+        voting_access=payload.voting_access,
         results_hidden_until=ensure_utc(datetime.fromisoformat(payload.results_hidden_until))
         if payload.results_hidden_until
         else None,

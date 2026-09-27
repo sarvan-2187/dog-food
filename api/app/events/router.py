@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..audit.log import record
-from ..auth import Role, User, get_current_user_optional, require_role
+from ..auth import Role, User, get_current_user_optional, mailer, require_role
 from ..db import get_session
 from ..submissions.models import Submission
 from ..teams.models import Team
@@ -165,6 +165,11 @@ def update_event(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "End date must be after the start date.",
+        )
+    if changes.get("voting_access") == "email" and not mailer.CONFIG.enabled:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Email-confirmed voting needs email set up first (SMTP_HOST), or guests could never get a link.",
         )
     for key, value in changes.items():
         setattr(event, key, value)

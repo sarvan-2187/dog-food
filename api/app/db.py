@@ -31,6 +31,7 @@ def create_db_and_tables() -> None:
     add_missing_columns()
     add_guarded_indexes()
     run_backfills()
+    add_vote_voter_index()
 
 
 # create_all() creates missing *tables* but never adds a column to one that
@@ -52,6 +53,9 @@ _ADDED_COLUMNS = (
     ("events", "status", "varchar NOT NULL DEFAULT 'published'"),
     ("events", "rules", "varchar NOT NULL DEFAULT ''"),
     ("users", "is_active", "boolean NOT NULL DEFAULT true"),
+    # Voting access modes (DOGFOOD T3)
+    ("events", "voting_access", "varchar NOT NULL DEFAULT 'authenticated'"),
+    ("votes", "voter_key", "varchar"),
 )
 
 
@@ -137,6 +141,32 @@ def add_guarded_indexes() -> None:
         return
     with engine.begin() as conn:
         conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {name} ON team_memberships (event_id, user_id)"))
+
+
+def add_vote_voter_index() -> None:
+    """Guest votes: votes.user_id becomes nullable, every old vote gets the
+    voter_key its account would get today (voting/voter.py email_key), then one
+    unique index per (voter, submission). Each step checks first, so a booted
+    volume takes no lock."""
+    with engine.begin() as conn:
+        nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = 'votes' AND column_name = 'user_id'"
+            )
+        ).scalar()
+        if nullable == "NO":
+            conn.execute(text("ALTER TABLE votes ALTER COLUMN user_id DROP NOT NULL"))
+        if conn.execute(text("SELECT 1 FROM pg_indexes WHERE indexname = 'uq_vote_voter'")).first():
+            return
+        conn.execute(
+            text(
+                "UPDATE votes v SET voter_key = 'email:' || "
+                "left(encode(sha256(convert_to(lower(u.email), 'UTF8')), 'hex'), 32) "
+                "FROM users u WHERE v.user_id = u.id AND v.voter_key IS NULL"
+            )
+        )
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_vote_voter ON votes (voter_key, submission_id)"))
 
 
 def get_session() -> Iterator[Session]:

@@ -51,7 +51,7 @@ def _ensure_test_database(url: str) -> None:
 
 _ensure_test_database(os.environ["DATABASE_URL"])
 
-from app.db import add_guarded_indexes, add_missing_columns, engine  # noqa: E402
+from app.db import add_guarded_indexes, add_missing_columns, add_vote_voter_index, engine  # noqa: E402
 from app.auth import models as _auth_models  # noqa: E402,F401
 from app.events import models as _event_models  # noqa: E402,F401
 from app.teams import models as _team_models  # noqa: E402,F401
@@ -66,6 +66,7 @@ SQLModel.metadata.create_all(engine)
 # long-lived volume does (app.db.add_missing_columns).
 add_missing_columns()
 add_guarded_indexes()
+add_vote_voter_index()
 
 
 def _truncate_all() -> None:

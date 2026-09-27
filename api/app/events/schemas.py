@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -74,6 +74,7 @@ class EventUpdate(BaseModel):
     max_team_size: Optional[int] = None
     cover_image_url: Optional[str] = None
     voting_enabled: Optional[bool] = None
+    voting_access: Optional[Literal["authenticated", "email", "open"]] = None
     results_hidden_until: Optional[datetime] = None
     rules: Optional[str] = None
 

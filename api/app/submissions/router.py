@@ -1,6 +1,6 @@
 import random
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
@@ -15,6 +15,7 @@ from ..teams.models import Team
 from ..timeutil import utcnow
 from ..voting.models import Comment, Vote
 from ..voting.schemas import GalleryItem
+from ..voting.voter import read_voter_key
 from ..webhooks.service import notify
 from .models import Submission, SubmissionStatus
 from ..scoring.awards import awards_by_submission
@@ -115,6 +116,7 @@ def submit_submission(
 
 @router.get("/api/gallery", response_model=list[GalleryItem])
 def gallery(
+    request: Request,
     event_id: "int | None" = None,
     q: "str | None" = Query(default=None),
     order: str = Query(default="recent", pattern="^(recent|random|votes)$"),
@@ -152,9 +154,10 @@ def gallery(
     vote_rows = session.exec(select(Vote).where(Vote.submission_id.in_([r.id for r in rows]))).all()
     votes: dict[int, int] = {}
     mine: set[int] = set()
+    guest_key = None if user else read_voter_key(request)
     for vote in vote_rows:
         votes[vote.submission_id] = votes.get(vote.submission_id, 0) + 1
-        if user is not None and vote.user_id == user.id:
+        if (user is not None and vote.user_id == user.id) or (guest_key and vote.voter_key == guest_key):
             mine.add(vote.submission_id)
 
     comment_rows = session.exec(select(Comment).where(Comment.submission_id.in_([r.id for r in rows]))).all()
@@ -201,6 +204,7 @@ def gallery(
 @router.get("/api/submissions/{submission_id}", response_model=GalleryItem)
 def get_public_submission(
     submission_id: int,
+    request: Request,
     user: "User | None" = Depends(get_current_user_optional),
     session: Session = Depends(get_session),
 ) -> GalleryItem:
@@ -214,6 +218,7 @@ def get_public_submission(
     visible = may_see_results(event, user) if event else False
 
     vote_rows = session.exec(select(Vote).where(Vote.submission_id == submission_id)).all()
+    guest_key = None if user else read_voter_key(request)
     comment_count = len(session.exec(select(Comment).where(Comment.submission_id == submission_id)).all())
     return GalleryItem(
         id=submission.id,
@@ -225,7 +230,10 @@ def get_public_submission(
         updated_at=submission.updated_at,
         comment_count=comment_count,
         votes=len(vote_rows) if visible else None,
-        voted_by_me=any(user is not None and v.user_id == user.id for v in vote_rows),
+        voted_by_me=any(
+            (user is not None and v.user_id == user.id) or (guest_key and v.voter_key == guest_key)
+            for v in vote_rows
+        ),
         image_url=image_url_for(session, "submission", submission.id),
         repo_url=submission.repo_url,
         demo_url=submission.demo_url,

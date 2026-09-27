@@ -29,7 +29,13 @@ class Vote(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     event_id: int = Field(foreign_key="events.id", index=True)
     submission_id: int = Field(foreign_key="submissions.id", index=True)
-    user_id: int = Field(foreign_key="users.id", index=True)
+    # None for a guest vote (Event.voting_access "open" or "email").
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    # Who voted, for every vote: "email:<hash>" for accounts and confirmed
+    # guests, so one address cannot vote once signed in and again as a guest;
+    # "anon:<random>" for open-link guests. Unique per submission via the
+    # uq_vote_voter index (app.db.add_vote_voter_index).
+    voter_key: Optional[str] = Field(default=None, index=True)
     fingerprint_hash: str = Field(default="", index=True)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
 

@@ -57,6 +57,7 @@ One row per reset link, whichever way it was issued (PLAN.md Phase 9).
 | `prize_config` | JSON dict | Shape: `{"prizes": [{"rank": "1st Place", "reward": "$500"}, ...]}`. A product convention, not a schema constraint — the column is a free-form `JSON` and nothing validates the inner shape server-side, so this is documented here rather than in a migration (PLAN.md Phase 7.1) |
 | `max_team_size` | int | Default `4`, matching the hackathon's own "Team Size: 1–4" rule; enforced server-side in `teams/router.py`'s `join_team` (PLAN.md Phase 7.2) |
 | `voting_enabled` | bool | Gates the Phase 3 vote/comment endpoints |
+| `voting_access` | str | `authenticated` (default), `email` or `open` - who may vote; see `voting/voter.py` and THREAT-MODEL.md entry 25. `email` is refused while SMTP is off |
 | `results_hidden_until` | timestamptz, nullable | Gates who may see vote counts and standings — enforced in the API response itself, not just hidden in the UI |
 | `results_revealed_notified` | bool | One-shot guard so the `event.results_revealed` webhook topic fires exactly once, flipped the first time `public_results` is read after `results_are_public()` goes true (PLAN.md Phase 7.3) |
 | `created_by_id` | int, FK → `users.id` | Must be `organizer` or `admin` |
@@ -237,11 +238,13 @@ Unique constraint: `(event_id, prize_rank)`. A submission may win more than one 
 | `votes` column | Type | Notes |
 |---|---|---|
 | `id` | int, PK | |
-| `event_id`, `submission_id`, `user_id` | int, FK | |
+| `event_id`, `submission_id` | int, FK | |
+| `user_id` | int, FK, nullable | `NULL` for a guest vote (`voting_access` `open` or `email`) |
+| `voter_key` | str | `email:<sha256>` for accounts and email-confirmed guests (so one address is one voter either way), `anon:<random>` for open-link guests |
 | `fingerprint_hash` | str | `sha256(client-ip \| user-agent)`, truncated — a **soft** flag only, never a block (see JUDGING.md) |
 | `created_at` | timestamptz | |
 
-Unique constraint: `(user_id, submission_id)` — the **hard** duplicate-vote guard;
+Unique constraints: `(user_id, submission_id)` and `(voter_key, submission_id)` — the **hard** duplicate-vote guards;
 enforced by catching the resulting `IntegrityError`, not a pre-`SELECT` a concurrent
 request could race past.
 
