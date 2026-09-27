@@ -153,7 +153,7 @@ function ParticipationRecords({
  * judge on an event that's still running sees when that will be, rather than
  * an empty list and no explanation.
  */
-function JudgingEvents() {
+export function JudgingEvents() {
   const [events, setEvents] = useState<JudgeEvent[] | null>(null);
 
   useEffect(() => {

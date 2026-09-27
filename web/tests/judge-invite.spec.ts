@@ -86,7 +86,7 @@ test.describe('redeeming an invitation', () => {
     await register(invitee, email, 'New Judge');
     // Role-aware nav: no Judging link before accepting.
     await openMenu(invitee);
-    await expect(invitee.getByRole('link', { name: 'Judging' })).toHaveCount(0);
+    await expect(invitee.getByRole('link', { name: 'Judging', exact: true })).toHaveCount(0);
     await invitee.keyboard.press('Escape');
 
     await invitee.goto(path);
@@ -97,7 +97,7 @@ test.describe('redeeming an invitation', () => {
     await expect(invitee.getByText("You're a judge now")).toBeVisible();
     // refresh() means the nav reflects the new role without a manual reload.
     await openMenu(invitee);
-    await expect(invitee.getByRole('link', { name: 'Judging' }).first()).toBeVisible();
+    await expect(invitee.getByRole('link', { name: 'Judging', exact: true }).first()).toBeVisible();
     await invitee.keyboard.press('Escape');
 
     await invitee.goto('/judge');
