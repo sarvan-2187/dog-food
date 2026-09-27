@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Tokens live in src/styles/tokens.ts (mirrored into tailwind.config.ts).
+ * Fonts: DESIGN_SYSTEM.md 3.1 forbids CDN font links. Until a self-hosted
+ * Inter .woff2 is committed under public/fonts/, the system stack in
+ * tokens.ts fontFamily.sans is what renders. Do not add a <link> to
+ * fonts.googleapis.com.
+ */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-surface-200 text-ink-700 font-sans text-body antialiased;
+  }
+
+  /* Numeric columns and countdowns must not jitter (DESIGN_SYSTEM.md 3.3). */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 80ms !important;
+  }
+}
