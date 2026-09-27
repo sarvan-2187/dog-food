@@ -162,24 +162,35 @@ function ScoreForm() {
                       </span>
                     </div>
                     {c.description && <p className="text-meta text-ink-600">{c.description}</p>}
-                    <input
-                      id={`c-${c.key}`}
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      max={c.max_score}
-                      step={0.5}
-                      value={values[c.key] ?? ''}
-                      aria-invalid={error ? true : undefined}
-                      aria-describedby={error ? `c-${c.key}-error` : undefined}
-                      onChange={(e) => setValues((v) => ({ ...v, [c.key]: e.target.value }))}
-                      onBlur={() => setTouched((t) => ({ ...t, [c.key]: true }))}
-                      className={[
-                        'h-10 rounded-md bg-surface-0 px-3 text-body text-ink-800 border',
-                        'focus:outline-none focus:ring-[3px] focus:ring-brand-500/20',
-                        error ? 'border-danger-fg focus:border-danger-fg' : 'border-border focus:border-brand-500',
-                      ].join(' ')}
-                    />
+                    <div className="flex items-start gap-4">
+                      <ScoreSlider
+                        value={values[c.key] ?? ''}
+                        max={c.max_score}
+                        onChange={(value) => {
+                          setValues((v) => ({ ...v, [c.key]: value }));
+                          setTouched((t) => ({ ...t, [c.key]: true }));
+                        }}
+                      />
+                      <input
+                        id={`c-${c.key}`}
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        max={c.max_score}
+                        step={0.5}
+                        value={values[c.key] ?? ''}
+                        placeholder="–"
+                        aria-invalid={error ? true : undefined}
+                        aria-describedby={error ? `c-${c.key}-error` : undefined}
+                        onChange={(e) => setValues((v) => ({ ...v, [c.key]: e.target.value }))}
+                        onBlur={() => setTouched((t) => ({ ...t, [c.key]: true }))}
+                        className={[
+                          'tabular h-10 w-20 shrink-0 rounded-md bg-surface-0 px-2 text-center text-body text-ink-800 border',
+                          'focus:outline-none focus:ring-[3px] focus:ring-brand-500/20',
+                          error ? 'border-danger-fg focus:border-danger-fg' : 'border-border focus:border-brand-500',
+                        ].join(' ')}
+                      />
+                    </div>
                     {error && (
                       <p id={`c-${c.key}-error`} className="text-meta text-danger-fg">
                         {error}
@@ -241,6 +252,43 @@ function ScoreForm() {
       <ToastRegion>
         {toast && <Toast status={toast.ok ? 'success' : 'danger'} message={toast.message} onDismiss={() => setToast(null)} />}
       </ToastRegion>
+    </div>
+  );
+}
+
+/**
+ * Drag to score. It mirrors the number box beside it, which stays the one
+ * accessible control (label, arrow keys, validation), so the slider is hidden
+ * from assistive tech rather than announced twice.
+ *
+ * A browser range always holds *some* value, so an unscored criterion shows a
+ * greyed thumb at the midpoint and "Not yet scored" while the value stays
+ * empty; Submit stays disabled until every criterion is really set. Releasing
+ * the thumb counts as setting it, so a judge who wants the midpoint can click
+ * it without having to wiggle the value first.
+ */
+function ScoreSlider({ value, max, onChange }: { value: string; max: number; onChange: (value: string) => void }) {
+  const n = Number(value);
+  const unscored = value.trim() === '' || Number.isNaN(n);
+  return (
+    <div className="min-w-0 flex-1 pt-2">
+      <input
+        type="range"
+        aria-hidden="true"
+        tabIndex={-1}
+        min={0}
+        max={max}
+        step={0.5}
+        value={unscored ? max / 2 : Math.min(Math.max(n, 0), max)}
+        onChange={(e) => onChange(e.target.value)}
+        onPointerUp={(e) => unscored && onChange(e.currentTarget.value)}
+        className={`h-2 w-full cursor-pointer accent-brand-500 ${unscored ? 'opacity-40' : ''}`}
+      />
+      <div aria-hidden="true" className="mt-1 flex justify-between text-meta text-ink-400">
+        <span>0 · Weak</span>
+        <span className={unscored ? 'text-ink-600' : undefined}>{unscored ? 'Not yet scored' : 'Solid'}</span>
+        <span>Outstanding · {max}</span>
+      </div>
     </div>
   );
 }

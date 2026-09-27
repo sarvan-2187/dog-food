@@ -1,7 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './components/auth/guards';
 import { GuidedTour } from './components/GuidedTour';
-import { NavBar } from './components/layout/NavBar';
+import { AppFrame } from './components/layout/AppShell';
 import { AuthProvider } from './lib/auth-context';
 import { DashboardPage } from './pages/DashboardPage';
 import { EventCreatePage } from './pages/EventCreatePage';
@@ -31,8 +31,7 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <div className="min-h-screen">
-          <NavBar />
+        <AppFrame>
           <GuidedTour />
           <Routes>
             <Route path="/" element={<LandingPage />} />
@@ -88,8 +87,9 @@ export default function App() {
             />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
-        </div>
+        </AppFrame>
       </BrowserRouter>
     </AuthProvider>
   );
 }
+
