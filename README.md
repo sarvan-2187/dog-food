@@ -245,16 +245,18 @@ that lives only in the frontend.
 
 ## Known limits
 
-- **No embeddable gallery widget.** Submission links open in a new tab and are never
-  embedded, by design, so T4 is not claimed.
-- **No eligibility review step.** An organizer can't mark a submission ineligible or
-  disqualify it. Every submitted entry goes to judge assignment.
-- **Community voting can be gamed with multiple accounts.** Voting needs a signed-in
-  account and is rate-limited, but anyone can register, so one person with several email
-  addresses can vote several times. See `THREAT-MODEL.md` entry 25.
-- **No judging deadline.** Judges see the projects assigned to them but no due date.
-  Organizers follow up by hand from the progress view, with reminder emails when email is
-  on.
+- **Voting still can't stop someone with several real inboxes.** An event can require a
+  verified email and set a voter cutoff (accounts made later can't vote), and organizers can
+  void votes cast from one device by several voters. A person who registered several
+  verified accounts before the cutoff still gets several votes. See `THREAT-MODEL.md`
+  entry 25.
+- **The judging deadline is soft, on purpose.** Judges see the due date and organizers see
+  who is overdue, but a late score still saves (flagged late in the audit log). Locking
+  scoring would leave projects with no reviews.
+- **Disqualification has no appeal flow in the app.** The team sees the reason and is told
+  to contact the organizers; reinstating is one click and restores the entry's scores.
+- **The gallery widget is a read-only list.** No search, filters or voting inside the
+  embed. Those stay on the full gallery it links to.
 
 ## Status
 
@@ -262,7 +264,7 @@ that lives only in the frontend.
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 363 passed |
+| Backend | `docker compose exec api pytest tests/ -v` | 377 passed |
 | Frontend unit | `cd web && npm test` | 9 passed |
 | Browser E2E | `cd web && npx playwright test` | 109 passed, 1 skipped |
 
@@ -278,8 +280,9 @@ specs can time out; each passes on its own, and `--workers=1` or a fresh volume 
 `acceptance-report.txt` is the unedited output of the official DOGFOOD checker
 (`run.py`): 7 of 7 checks pass, and T1 and T2 are verified. T3 is claimed too. The
 organisers judge T3 and T4 by hand because `run.py` has no checks for them, so the
-report's "claimed but not verified: T3" line is expected. T4 is not claimed, because the
-embeddable gallery widget is missing (see Known limits). The earlier self-issued report, written
+report's "claimed but not verified: T3, T4" line is expected. T4 is claimed now that the
+embeddable gallery widget exists (`/embed/events/{slug}`, copy the snippet from **Event
+settings → Embed on your site**). The earlier self-issued report, written
 before the checker was published, is kept at `docs/self-test-report.txt`.
 
 ## Documentation
@@ -295,7 +298,7 @@ before the checker was published, is kept at `docs/self-test-report.txt`.
 - **`DATA-MODEL.md`** — full schema, entity relationships, import/export paths.
 - **`JUDGING.md`** — the assignment algorithm, the normalization math, and the role-
   isolation and integrity decisions behind them.
-- **`THREAT-MODEL.md`** — twenty-four attacks, each paired with the mitigation already
+- **`THREAT-MODEL.md`** — twenty-nine attacks, each paired with the mitigation already
   built and the file that enforces it.
 - **`CREDITS.md`** — who made the bundled photographs and under which licence, plus the
   third-party software the stack runs.
