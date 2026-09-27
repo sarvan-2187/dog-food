@@ -382,8 +382,13 @@ export interface EventBackup {
     results_hidden_until: string | null;
   };
   rubrics: { name: string; criteria: unknown[] }[];
-  teams: { name: string }[];
+  /** Members are matched to accounts by email on import (DOGFOOD T4). */
+  teams: { name: string; members?: { email: string; name: string }[]; captain_email?: string | null }[];
   submissions: { team_name: string; title: string; description: string; track: string; status: string }[];
+  /** The judge panel, assignments and scores: optional, for older backups. */
+  judges?: { email: string; name: string; track: string | null }[];
+  assignments?: { team_name: string; judge_email: string }[];
+  scores?: { team_name: string; judge_email: string; values: Record<string, number>; comment: string }[];
 }
 
 /** Password recovery (PLAN.md Phase 9). */

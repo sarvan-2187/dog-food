@@ -44,10 +44,10 @@ class ResultRow(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Bulk event import (PLAN.md Phase 4 T4). Deliberately scoped to the data an
-# organizer would restore or migrate -- config, teams, and submissions.
-# Judge assignments/scores are tied to specific judge accounts and are not
-# re-created on import (see the router docstring for why).
+# Bulk event import (PLAN.md Phase 4 T4, extended for DOGFOOD T4: "leave as
+# easily as they arrived"). Config, rubrics, teams with their members,
+# submissions, the judge panel, assignments and scores. Every section after
+# submissions is optional, so a backup from before they existed still imports.
 # ---------------------------------------------------------------------------
 
 class RubricImport(BaseModel):
@@ -98,8 +98,38 @@ class SubmissionImport(BaseModel):
         return {k: str(a).strip() for k, a in v.items()}
 
 
+class MemberImport(BaseModel):
+    email: str
+    name: str = ""
+
+
 class TeamImport(BaseModel):
     name: str
+    # Matched to accounts by email; a participant account is created only for
+    # an email with none (see the router).
+    members: List[MemberImport] = []
+    captain_email: Optional[str] = None
+
+
+class JudgeImport(BaseModel):
+    """A judge on the panel. Matched to an existing judge account by email and
+    never created: the judge role is only ever granted by invitation."""
+
+    email: str
+    name: str = ""
+    track: Optional[str] = None
+
+
+class AssignmentImport(BaseModel):
+    team_name: str
+    judge_email: str
+
+
+class ScoreImport(BaseModel):
+    team_name: str
+    judge_email: str
+    values: Dict[str, float]
+    comment: str = ""
 
 
 class EventImportPayload(BaseModel):
@@ -121,6 +151,9 @@ class EventImportPayload(BaseModel):
     rubrics: List[RubricImport] = []
     teams: List[TeamImport] = []
     submissions: List[SubmissionImport] = []
+    judges: List[JudgeImport] = []
+    assignments: List[AssignmentImport] = []
+    scores: List[ScoreImport] = []
 
     @field_validator("questions")
     @classmethod

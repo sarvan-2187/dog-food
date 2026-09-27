@@ -1,7 +1,7 @@
 # HackFlow by Hackathon Raptors
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-3ddc84?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-510%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
+[![Tests](https://img.shields.io/badge/tests-559%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
 [![Python](https://img.shields.io/badge/python-3.12-1F2426?style=flat-square&logo=python&logoColor=white)](api/requirements.txt)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-1F2426?style=flat-square&logo=fastapi&logoColor=white)](api/requirements.txt)
 [![React](https://img.shields.io/badge/React-18-1F2426?style=flat-square&logo=react&logoColor=white)](web/package.json)
@@ -35,8 +35,8 @@ dog-food/
 ├── DATA-MODEL.md            ← the schema, and the ways data gets in and out
 ├── JUDGING.md               ← assignment, weighted scoring, normalization, defended
 ├── LICENSE                  ← MIT
-├── api/                     ← our backend: FastAPI + SQLModel, with api/tests/ (387 tests)
-├── web/                     ← our frontend: React + TypeScript, with web/tests/ (114 browser tests)
+├── api/                     ← our backend: FastAPI + SQLModel, with api/tests/ (428 tests)
+├── web/                     ← our frontend: React + TypeScript, with web/tests/ (121 browser tests)
 ├── docs/                    ← everything else: manual, threat model, credits, screenshots
 ├── fixtures.json, run.py    ← the organizers' dataset and checker, unchanged
 └── fixtures/                ← our extra demo events, users and teams
@@ -209,7 +209,8 @@ anyone (an employer, a university) can check at `/verify` without an account.
 ### 10. Long-term archival and retrieval
 Finished events stay in HackFlow: **Past events** plus search finds any of them years
 later, with its winners, gallery and standings. Every event exports as one JSON backup
-(config, rubrics, teams, submissions, stages) that imports into any HackFlow, and CSV
+(config, rubrics, questions, teams and their members, submissions, the judge panel,
+assignments and scores) that imports into any HackFlow, and CSV
 exports cover users, submissions, assignments, raw scores and normalized results. The audit
 log keeps every consequential action.
 
@@ -432,9 +433,13 @@ prints a one-time reset link for any account.
 - **Certificates & signed records**: server-rendered participation certificates (PDF, no
   external service) that name any prize won, and judge participation records signed with a local Ed25519 key,
   verifiable offline against `GET /api/public-key` without trusting the server again.
-- **Bulk event export/import**: an event's config (including rules), rubric, teams and
-  submissions (including links) as one JSON file, for backup or migration between
-  environments. An import arrives as a draft, and its links are validated like any other.
+- **Bulk event export/import**: an event's config (including rules and questions), rubrics,
+  teams with their members, submissions, judge panel, assignments and scores as one JSON
+  file, for backup or migration between environments. Members are matched by email, and
+  new participant accounts are created only when needed (the organizer sends reset links);
+  judges must already have a judge account. Scores import all or nothing: any unmatched
+  judge or rubric criterion refuses the import with a list of what to fix. An import arrives
+  as a draft, and its links are validated like any other.
 - **Guided onboarding**: a role-aware tour (driver.js, bundled, no network calls) starts
   once on first login and is replayable from `/profile`, so a fresh cohort of participants
   and judges can be pointed at the site rather than at a support doc. See
@@ -477,13 +482,13 @@ that lives only in the frontend.
 
 ## Status
 
-510 tests passing across three suites, run live against this exact stack:
+559 tests passing across three suites, run live against this exact stack:
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 387 passed |
-| Frontend unit | `cd web && npm test` | 9 passed |
-| Browser E2E | `cd web && npx playwright test` | 114 passed, 1 skipped |
+| Backend | `docker compose exec api pytest tests/ -v` | 428 passed |
+| Frontend unit | `cd web && npm test` | 10 passed |
+| Browser E2E | `cd web && npx playwright test` | 121 passed, 1 skipped |
 
 The skipped spec is the emailed password-reset flow. It needs the local test inbox, so
 it runs only when the stack is started with `docker-compose.mail.yml` (see "Email"
