@@ -126,19 +126,18 @@ test.describe('comments', () => {
 });
 
 test.describe('shuffled ordering', () => {
-  test('the order is stable across visits within one session', async ({ page }) => {
+  test('an event with voting on opens shuffled, stable across visits within one session', async ({ page }) => {
     const shuffled = async () => {
-      await page.goto('/events/dogfood-2026/gallery');
-      // Selecting the order triggers a refetch. Waiting only for an <h3> to be
-      // visible is not enough -- the previous ordering is still on screen until
-      // the new response renders, so the read has to be anchored to that
-      // response, not to the mere presence of cards.
+      // Shuffled is the default while voting is on (DOGFOOD T3), so the first
+      // gallery fetch is already the random one. Waiting only for an <h3> to be
+      // visible is not enough, so the read is anchored to that response.
       const [response] = await Promise.all([
         page.waitForResponse(
           (r) => r.url().includes('/api/gallery') && r.url().includes('order=random') && r.ok(),
         ),
-        selectOrder(page, 'Shuffled'),
+        page.goto('/events/dogfood-2026/gallery'),
       ]);
+      await expect(page.getByRole('combobox', { name: 'Order' })).toContainText('Shuffled');
       const expected: string[] = (await response.json()).map((row: { title: string }) => row.title);
       // Wait for the DOM to actually reflect that response before reading it.
       await expect(page.locator('section h3')).toHaveText(expected);
@@ -152,11 +151,20 @@ test.describe('shuffled ordering', () => {
 
     // Other specs run in parallel against this same stack and may submit a new
     // entry between the two loads. What must hold is that the entries present in
-    // both keep their relative order -- comparing the raw lists would make this
+    // both keep their relative order: comparing the raw lists would make this
     // test fail for an unrelated insert rather than for real reshuffling.
     const common = new Set(first.filter((t) => second.includes(t)));
     expect(common.size, 'nothing in common between the two loads').toBeGreaterThan(1);
     expect(second.filter((t) => common.has(t))).toEqual(first.filter((t) => common.has(t)));
+  });
+
+  test('an event without voting keeps Most recent as its default', async ({ page }) => {
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/api/gallery?') && r.ok()),
+      page.goto('/events/fintech-rails-2026/gallery'),
+    ]);
+    expect(response.url()).toContain('order=recent');
+    await expect(page.getByRole('combobox', { name: 'Order' })).toContainText('Most recent');
   });
 });
 
