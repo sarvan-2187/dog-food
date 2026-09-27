@@ -295,7 +295,7 @@ runs HackFlow.
 | Where | Cost (approx.) | Time to live | Keeps uploads & signing key | How |
 |---|---|---|---|---|
 | **Render** (free) | Free, no card | ~10 min | No: reset on restart | Click the button above, or **New → Blueprint** on this repo. `render.yaml` creates the site and database. |
-| **Any VPS** (Hetzner, DigitalOcean, Vultr, Hostinger) | ~₹350–500 / $4–6 a month | ~5 min | Yes | Commands below |
+| **Any VPS** (Hetzner, DigitalOcean, Vultr, Hostinger) | ~$4–6 a month | ~5 min | Yes | Commands below |
 | **Google Cloud / AWS / Azure VM** | Free-trial credit | ~5 min | Yes | Commands below |
 | **Oracle Cloud Always Free** (ARM) | Free | ~5 min | Yes | Commands below. Images build for ARM as-is. |
 | **Your own laptop + Cloudflare Tunnel** | Free, no account | ~2 min | Yes | `docker compose up`, then `cloudflared tunnel --url http://localhost:8000`. The link lives only while the laptop is on. |

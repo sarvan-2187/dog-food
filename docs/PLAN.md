@@ -560,7 +560,7 @@ Completion & Correctness (40%). Both items land squarely in **Adoptability & Ope
 software"* — and an organization running 35+ events across 85+ countries onboards an
 entirely fresh set of participants and judges every single time. A platform that explains
 itself in plain language is the difference between adopting it and writing a support doc
-around it. The manual additionally serves the Write Up Quest (4 × ₹10,000). The brief's own
+around it. The manual additionally serves the Write Up Quest (3 × $100). The brief's own
 warning governs the sequencing: *"a clean, correct T2 is better than a broken T4"* and *"one
 challenge done properly beats four unfinished features."* This phase is therefore polish on
 a finished ladder, and would have been the wrong call at any earlier point in the build.
