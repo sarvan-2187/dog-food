@@ -5,7 +5,9 @@ from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from ..audit.log import record
-from ..auth import User, get_current_user, get_current_user_optional
+from ..auth import Role, User, get_current_user, get_current_user_optional, require_role
+from ..judging.models import JudgeAssignment
+from ..scoring.models import Score
 from ..db import get_session
 from ..events.models import Event
 from ..events.visibility import may_see_results
@@ -17,9 +19,9 @@ from ..voting.models import Comment, Vote
 from ..voting.schemas import GalleryItem
 from ..voting.voter import read_voter_key
 from ..webhooks.service import notify
-from .models import Submission, SubmissionStatus
+from .models import Submission, SubmissionStatus, in_competition
 from ..scoring.awards import awards_by_submission
-from .schemas import SubmissionPublic, SubmissionUpdate
+from .schemas import EligibilityRow, EligibilityUpdate, SubmissionPublic, SubmissionUpdate
 
 router = APIRouter(tags=["submissions"])
 
@@ -55,7 +57,73 @@ def _public(session: Session, sub: Submission) -> SubmissionPublic:
         repo_url=sub.repo_url,
         demo_url=sub.demo_url,
         video_url=sub.video_url,
+        disqualified_at=sub.disqualified_at,
+        disqualified_reason=sub.disqualified_reason,
     )
+
+
+@router.get("/api/events/{event_id}/eligibility", response_model=list[EligibilityRow])
+def list_eligibility(
+    event_id: int,
+    _: User = Depends(require_role(Role.organizer, Role.admin)),
+    session: Session = Depends(get_session),
+) -> list[EligibilityRow]:
+    """Every submitted entry, disqualified ones first, so the organizer can rule on
+    each and undo a ruling from the same list."""
+    subs = session.exec(
+        select(Submission).where(Submission.event_id == event_id, Submission.status == SubmissionStatus.submitted)
+    ).all()
+    teams = {t.id: t.name for t in session.exec(select(Team).where(Team.event_id == event_id))}
+    subs = sorted(subs, key=lambda s: (s.disqualified_at is None, (s.title or "").lower(), s.id))
+    return [
+        EligibilityRow(
+            submission_id=s.id,
+            title=s.title or "Untitled submission",
+            team_name=teams.get(s.team_id, ""),
+            disqualified_at=s.disqualified_at,
+            disqualified_reason=s.disqualified_reason,
+        )
+        for s in subs
+    ]
+
+
+@router.post("/api/submissions/{submission_id}/eligibility", response_model=SubmissionPublic)
+def set_eligibility(
+    submission_id: int,
+    payload: EligibilityUpdate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
+    session: Session = Depends(get_session),
+) -> SubmissionPublic:
+    """Disqualify or reinstate. A disqualified entry leaves the gallery, voting,
+    assignment, awards and standings; its scores stay, so reinstating restores it."""
+    sub = session.get(Submission, submission_id)
+    if not sub or sub.status != SubmissionStatus.submitted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Only a submitted project can be ruled on.")
+    reason = payload.reason.strip()
+    if payload.eligible:
+        sub.disqualified_at, sub.disqualified_reason = None, ""
+        action = "submission.reinstated"
+    else:
+        if not reason:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Give a reason - the team will see it.")
+        sub.disqualified_at, sub.disqualified_reason = utcnow(), reason[:500]
+        action = "submission.disqualified"
+        # Unscored work would sit on judges' lists for nothing. Scored assignments
+        # stay with their scores.
+        scored = select(Score.assignment_id).where(Score.submission_id == sub.id)
+        for assignment in session.exec(
+            select(JudgeAssignment).where(
+                JudgeAssignment.submission_id == sub.id, JudgeAssignment.id.not_in(scored)
+            )
+        ):
+            session.delete(assignment)
+    session.add(sub)
+    record(session, action, actor=user, entity_type="submission", entity_id=sub.id, reason=reason)
+    session.commit()
+    session.refresh(sub)
+    notify(session, background_tasks, sub.event_id, action, submission_id=sub.id, title=sub.title)
+    return _public(session, sub)
 
 
 @router.get("/api/teams/{team_id}/submission", response_model=SubmissionPublic)
@@ -128,7 +196,7 @@ def gallery(
     user: "User | None" = Depends(get_current_user_optional),
     session: Session = Depends(get_session),
 ) -> list[GalleryItem]:
-    stmt = select(Submission).where(Submission.status == SubmissionStatus.submitted)
+    stmt = select(Submission).where(in_competition())
     if event_id is not None:
         stmt = stmt.where(Submission.event_id == event_id)
     if q:
@@ -210,7 +278,7 @@ def get_public_submission(
 ) -> GalleryItem:
     """Public detail for one gallery entry. Carries no score data at any time."""
     submission = session.get(Submission, submission_id)
-    if not submission or submission.status != SubmissionStatus.submitted:
+    if not submission or not submission.competing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That submission is not in the public gallery.")
     event = session.get(Event, submission.event_id)
     if event is not None and event.status != "published":

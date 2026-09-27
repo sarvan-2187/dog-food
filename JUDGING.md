@@ -188,6 +188,30 @@ weights — seemed clearly worse for judging integrity. There is currently no "r
 scoring" action; an organizer who needs to change a rubric after scoring has begun has to
 delete the affected scores first (a deliberate speed bump, not an oversight).
 
+## Disqualification and the standings
+
+An organizer can rule a submitted entry ineligible (`POST /api/submissions/{id}/eligibility`,
+a reason is required and shown to the team). One predicate, `in_competition()` in
+`submissions/models.py`, is what the gallery, voting, assignment and awards all filter on,
+so a disqualified entry leaves every one of them together rather than one list at a time.
+
+For the standings, `_raw_by_judge` drops the entry's scores **before** normalization, so
+every judge's `mu_j` and `sigma_j` are recomputed as if it had never been judged. Leaving
+the scores in and only hiding the row would have been wrong: a judge who gave the
+disqualified entry a very low score would keep that score in their mean, and every other
+project they scored would look better than it was. Disqualifying deletes only the entry's
+*unscored* assignments; scores stay in the database, so reinstating puts the entry and
+its reviews straight back and the normalization reruns on the next read.
+
+## The judging deadline is soft
+
+`Event.judging_deadline` is shown to judges (a countdown, then "Overdue") and to the
+organizer's progress view, and reminder emails name it. It never locks scoring. A hard
+lock would leave some projects with fewer reviews, and normalization can't repair a
+missing review; a late one is still a real review. So a score saved after the deadline
+simply records `late: true` in its audit entry, and the organizer decides what to do
+about it.
+
 ## Results visibility (Phase 3)
 
 `Event.results_hidden_until` gates who may see vote counts and normalized standings, and

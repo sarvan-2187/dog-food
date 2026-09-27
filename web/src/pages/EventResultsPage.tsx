@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { EligibilityCard } from '../components/EligibilityCard';
+import { SuspiciousVotesCard } from '../components/SuspiciousVotesCard';
 import { JudgeInvitePanel } from '../components/JudgeInvitePanel';
 import { JudgePanelCard } from '../components/JudgePanelCard';
 import { WinnersEditor } from '../components/EventSections';
@@ -93,27 +95,39 @@ function EventResults() {
     voting_enabled?: boolean;
     voting_access?: EventRecord['voting_access'];
     results_hidden_until?: string | null;
-  }) {
+    voting_requires_verified?: boolean;
+    voting_account_cutoff?: string | null;
+  }, message?: string) {
     if (!event) return;
     setSavingVoting(true);
     try {
       const updated = await api.patch<EventRecord>(`/api/events/${event.id}`, patch);
       setEvent(updated);
       setToast({
-        message:
-          patch.voting_access !== undefined
+        message: message ??
+          (patch.voting_access !== undefined
             ? 'Who can vote was updated.'
             : patch.voting_enabled === undefined
             ? 'Results reveal time updated.'
             : patch.voting_enabled
               ? 'Community voting is now open.'
-              : 'Community voting is now closed.',
+              : 'Community voting is now closed.'),
         ok: true,
       });
     } catch (err) {
       setToast({ message: err instanceof ApiError ? err.message : 'Could not update voting.', ok: false });
     } finally {
       setSavingVoting(false);
+    }
+  }
+
+  async function saveDeadline(judging_deadline: string | null) {
+    if (!event) return;
+    try {
+      setEvent(await api.patch<EventRecord>(`/api/events/${event.id}`, { judging_deadline }));
+      setToast({ message: judging_deadline ? 'Judging deadline saved.' : 'Judging deadline removed.', ok: true });
+    } catch (err) {
+      setToast({ message: err instanceof ApiError ? err.message : 'Could not save the deadline.', ok: false });
     }
   }
 
@@ -158,10 +172,18 @@ function EventResults() {
             Assignment gives each submitted entry three judges, never one from the submitting team. Running it again
             only fills gaps - it never duplicates existing assignments.
           </p>
-          <div>
+          <div className="flex flex-wrap items-end gap-3">
             <Button variant="primary" loading={assigning} loadingLabel="Assigning judges..." onClick={runAssignment}>
               Assign judges
             </Button>
+            <Input
+              label="Judges should finish by"
+              type="datetime-local"
+              className="md:w-64"
+              value={event?.judging_deadline ? toLocalInput(event.judging_deadline) : ''}
+              onChange={(e) => saveDeadline(e.target.value ? new Date(e.target.value).toISOString() : null)}
+              hint="Shown to judges; late scores still count. Leave empty for none."
+            />
           </div>
           {summary && summary.coverage_warnings.length > 0 && (
             <div role="alert" className="rounded-md border border-border bg-warning-bg px-4 py-3 text-body text-warning-fg">
@@ -219,6 +241,40 @@ function EventResults() {
               hint="Leave empty to show counts immediately."
             />
           </div>
+          <fieldset className="flex flex-col gap-3 border-t border-border-subtle pt-4">
+            <legend className="text-label text-ink-800">Stop one person voting from several accounts</legend>
+            <label className="flex items-start gap-2 text-body text-ink-700">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={Boolean(event?.voting_requires_verified)}
+                disabled={savingVoting}
+                onChange={(e) =>
+                  updateVoting(
+                    { voting_requires_verified: e.target.checked },
+                    e.target.checked ? 'Only verified emails can vote now.' : 'Email verification is no longer required.',
+                  )
+                }
+              />
+              <span>
+                Require a verified email to vote
+                <span className="block text-meta text-ink-500">Needs email set up. Each extra account then needs an inbox of its own.</span>
+              </span>
+            </label>
+            <Input
+              label="Only accounts created before"
+              type="datetime-local"
+              className="md:w-64"
+              value={event?.voting_account_cutoff ? toLocalInput(event.voting_account_cutoff) : ''}
+              onChange={(e) =>
+                updateVoting(
+                  { voting_account_cutoff: e.target.value ? new Date(e.target.value).toISOString() : null },
+                  'Voter cutoff updated.',
+                )
+              }
+              hint="Accounts made after this can't vote, so new accounts can't be spun up to swing a result. Works offline."
+            />
+          </fieldset>
         </div>
       </Card>
 
@@ -226,6 +282,8 @@ function EventResults() {
           rather than rendering against an id that isn't known yet. */}
       {event && (
         <>
+          <SuspiciousVotesCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
+          <EligibilityCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} onChanged={load} />
           <JudgePanelCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
           <JudgeInvitePanel eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
           <WinnersEditor eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />

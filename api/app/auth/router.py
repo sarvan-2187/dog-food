@@ -1,19 +1,28 @@
 """Register / login / logout / me, plus the signed-in and self-service halves
 of password recovery (PLAN.md Phase 9)."""
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlmodel import Session, select
 
 from ..audit.log import record
 from ..db import get_session
 from ..storage.lookup import image_url_for
-from ..ratelimit import forgot_email_limiter, forgot_ip_limiter, login_account_limiter, login_ip_limiter
+from ..ratelimit import (
+    forgot_email_limiter,
+    forgot_ip_limiter,
+    login_account_limiter,
+    login_ip_limiter,
+    verify_email_limiter,
+)
+from ..timeutil import utcnow
 from . import mailer
 from .deps import get_current_user
 from .models import ResetChannel, Role, User, UserPublic
 from .recovery import issue_reset, queue_changed_email, reset_email, validate_new_password
 from .security import hash_password, verify_password
-from .session import SESSION_COOKIE_NAME, SESSION_MAX_AGE, create_session_token
+from .session import SESSION_COOKIE_NAME, SESSION_MAX_AGE, SESSION_SECRET, create_session_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -25,6 +34,7 @@ def public_user(session: Session, user: User) -> UserPublic:
         name=user.name,
         role=user.role,
         avatar_url=image_url_for(session, "user", user.id),
+        email_verified=user.email_verified_at is not None,
     )
 
 
@@ -264,3 +274,56 @@ def change_name(
     session.commit()
     session.refresh(user)
     return public_user(session, user)
+
+
+# --------------------------------------------------------------------------
+# Email verification (THREAT-MODEL entry 25). A stateless signed link, like the
+# voter email link: nothing is stored until it is followed.
+# --------------------------------------------------------------------------
+
+_verify_link = URLSafeTimedSerializer(SESSION_SECRET, salt="dogfood-verify-email")
+VERIFY_LINK_MAX_AGE = 24 * 3600
+
+
+class VerifySent(BaseModel):
+    sent_to: str
+
+
+@router.post("/verify-email", response_model=VerifySent)
+def send_verification(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+) -> VerifySent:
+    if not mailer.CONFIG.enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Email isn't set up here, so addresses can't be verified.")
+    if user.email_verified_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Your email is already verified.")
+    allowed, retry_after = verify_email_limiter.check(f"verify:{user.id}")
+    if not allowed:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"A link was sent recently - try again in about {max(1, round(retry_after / 60))} minutes.",
+        )
+    token = _verify_link.dumps({"u": user.id, "m": user.email.lower()})
+    link = f"{mailer.APP_BASE_URL}/api/auth/verify-email/confirm?token={token}"
+    text = f"Confirm this address for your HackFlow account:\n\n{link}\n\nThe link works for 24 hours.\n\n- HackFlow\n"
+    background_tasks.add_task(mailer.send_quietly, user.email, "Confirm your email - HackFlow", text)
+    return VerifySent(sent_to=user.email)
+
+
+@router.get("/verify-email/confirm")
+def confirm_verification(token: str, session: Session = Depends(get_session)) -> RedirectResponse:
+    try:
+        data = _verify_link.loads(token, max_age=VERIFY_LINK_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return RedirectResponse("/profile?verified=0", status_code=status.HTTP_303_SEE_OTHER)
+    user = session.get(User, data["u"])
+    # The address must still be the one the link was sent to.
+    if user is None or user.email.lower() != data["m"]:
+        return RedirectResponse("/profile?verified=0", status_code=status.HTTP_303_SEE_OTHER)
+    if user.email_verified_at is None:
+        user.email_verified_at = utcnow()
+        session.add(user)
+        record(session, "user.email_verified", actor=user, entity_type="user", entity_id=user.id)
+        session.commit()
+    return RedirectResponse("/profile?verified=1", status_code=status.HTTP_303_SEE_OTHER)

@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -47,6 +47,7 @@ from .voting.router import router as voting_router
 from .audit.router import router as audit_router
 from .storage.router import router as storage_router
 from .webhooks.router import router as webhooks_router
+from .embed import router as embed_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -61,6 +62,21 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="HackFlow", description="A HackRaptors hackathon judging platform.", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def frame_policy(request: Request, call_next):
+    """Clickjacking (THREAT-MODEL): no other site may frame HackFlow - a framed
+    judge console or vote button can be overlaid and click-tricked. The one
+    exception is the gallery widget, which exists to be framed and has no
+    buttons that change anything."""
+    response = await call_next(request)
+    if request.url.path.startswith("/embed/"):
+        response.headers["Content-Security-Policy"] = "frame-ancestors *"
+    else:
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    return response
 
 
 @app.get("/healthz")
@@ -84,6 +100,7 @@ app.include_router(voting_router)
 app.include_router(audit_router)
 app.include_router(storage_router)
 app.include_router(webhooks_router)
+app.include_router(embed_router)
 
 if (STATIC_DIR / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
@@ -91,7 +108,7 @@ if (STATIC_DIR / "index.html").exists():
     # Anything the SPA owns; anything the API owns must still 404 as JSON.
     # Without this guard the catch-all answers GET /api/typo with the SPA shell
     # and a 200, so a client mistake looks like a successful empty response.
-    API_PREFIXES = ("api/", "healthz", "docs", "redoc", "openapi.json")
+    API_PREFIXES = ("api/", "embed/", "healthz", "docs", "redoc", "openapi.json")
 
     STATIC_DIR_RESOLVED = STATIC_DIR.resolve()
 

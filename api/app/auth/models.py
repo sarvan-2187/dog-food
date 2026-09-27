@@ -36,6 +36,11 @@ class User(SQLModel, table=True):
     # False blocks sign-in and, with a session_version bump, ends every session
     # (PLAN.md Phase 10.10). Admin accounts can't be deactivated.
     is_active: bool = Field(default=True)
+    # Set when the owner follows an emailed verification link, or by the seed for
+    # fixture accounts. Events can require it to vote (THREAT-MODEL entry 25).
+    email_verified_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
 
 
 class ResetChannel(str, enum.Enum):
@@ -68,3 +73,4 @@ class UserPublic(SQLModel):
     name: str
     role: Role
     avatar_url: Optional[str] = None
+    email_verified: bool = False

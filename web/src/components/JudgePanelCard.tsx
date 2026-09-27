@@ -4,6 +4,7 @@ import { ApiError, api } from '../lib/api';
 import type { EventJudgeRow, EventJudges } from '../types';
 import { Badge, Button, Card, Input } from '../components/ui';
 import { EmptyState, ErrorState, SkeletonRows } from '../components/feedback';
+import { DueBadge } from './DueBadge';
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -102,6 +103,7 @@ export function JudgePanelCard({
 
   const judges = data?.judges ?? null;
   const pct = data && data.assigned > 0 ? Math.round((data.scored / data.assigned) * 100) : 0;
+  const pastDeadline = Boolean(data?.judging_deadline && new Date(data.judging_deadline).getTime() < Date.now());
 
   return (
     <Card
@@ -120,6 +122,7 @@ export function JudgePanelCard({
                 {data.scored} of {data.assigned}
               </span>
               <span className="text-body text-ink-600">scores in</span>
+              <DueBadge at={data.judging_deadline} />
             </p>
             <div
               className="h-2 w-full overflow-hidden rounded-full bg-surface-200"
@@ -153,6 +156,7 @@ export function JudgePanelCard({
                       <span className="block truncate text-meta text-ink-500">{j.email}</span>
                     </span>
                     <span className="flex flex-wrap items-center gap-2">
+                      {pastDeadline && j.assigned > j.scored && <Badge status="danger">Overdue</Badge>}
                       {j.assigned === 0 ? (
                         <Badge status="neutral">Nothing assigned</Badge>
                       ) : (

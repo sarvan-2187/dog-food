@@ -13,6 +13,9 @@ from .schemas import EventCreate, EventUpdate
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
+# PATCH fields where an explicit null clears the value.
+CLEARABLE = {"judging_deadline", "voting_account_cutoff"}
+
 
 @router.post("", response_model=Event, status_code=status.HTTP_201_CREATED)
 def create_event(
@@ -159,12 +162,27 @@ def update_event(
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    # These may be cleared: an explicit null means "no deadline", not "no change".
+    for key in CLEARABLE & payload.model_fields_set:
+        changes.setdefault(key, None)
     start = changes.get("start_at", event.start_at)
     end = changes.get("end_at", event.end_at)
     if end <= start:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "End date must be after the start date.",
+        )
+    deadline = changes.get("judging_deadline", event.judging_deadline)
+    if deadline is not None and deadline <= end:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The judging deadline must be after submissions close - judging starts then.",
+        )
+    if changes.get("voting_requires_verified") and not mailer.CONFIG.enabled:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Requiring a verified email needs email set up first (SMTP_HOST), or nobody could verify. "
+            "The account cutoff works without email.",
         )
     if changes.get("voting_access") == "email" and not mailer.CONFIG.enabled:
         raise HTTPException(
