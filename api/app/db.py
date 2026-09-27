@@ -52,6 +52,7 @@ _ADDED_COLUMNS = (
     ("submissions", "video_url", "varchar NOT NULL DEFAULT ''"),
     ("events", "status", "varchar NOT NULL DEFAULT 'published'"),
     ("events", "rules", "varchar NOT NULL DEFAULT ''"),
+    ("events", "stages", "json NOT NULL DEFAULT '[]'"),
     ("users", "is_active", "boolean NOT NULL DEFAULT true"),
     # Voting access modes (DOGFOOD T3)
     ("events", "voting_access", "varchar NOT NULL DEFAULT 'authenticated'"),

@@ -1,4 +1,4 @@
-# HackFlow User Manual (v2)
+# HackFlow by Hackathon Raptors: User Manual (v3)
 
 This manual walks through HackFlow one screen at a time, in the order you will actually
 meet them. Every screenshot in it was taken from a real running copy of the software on
@@ -179,6 +179,8 @@ This page is the hackathon's front page. It shows:
   also appear on your **Dashboard**, so you do not have to keep checking.
 - **Rules** and **How projects are judged**: the scorecard judges will use, so you know
   what counts before you start.
+- **Stages**: the event's rounds in order (Stage 1: Registration, Stage 2: Build sprint, and
+  so on), with dates. The stage happening now is highlighted.
 - **Your team**, once you have one.
 
 ### Step 2: Get on a team
@@ -259,7 +261,9 @@ A few things are deliberately true here:
 - **The order can be shuffled** so the projects at the top do not get an unfair advantage.
 
 Once results are revealed, your team can download a **participation certificate** from your
-project page.
+project page. It names every member, the event, your project and any prize or rank, and
+carries a code at the bottom. Anyone you show it to (an employer, a university) can check it
+is genuine at **/verify** on the same HackFlow, with no account needed.
 
 ### Your account
 
@@ -450,6 +454,16 @@ Each prize comes with a **suggestion** from the standings: overall prizes in ran
 track prize from that track's best entry. Choose **Use suggestion** or pick another project.
 Nobody sees the winners until your results reveal time.
 
+### Stages: the rounds of your event
+
+**Event settings → Stages** lists your event's rounds, like Unstop's: a name, an optional
+description, and start and end times for each, up to ten. **Add stage** starts the new one
+where the last one ended, so the common case is one edit. **Save stages** puts them on the
+event page as a numbered timeline, with the current stage highlighted.
+
+Stages inform; they don't enforce. When submissions close is still decided by the event's
+own dates above them.
+
 ### Helping someone sign in
 
 When a participant or judge is locked out and the email reset isn't working for them, use
@@ -472,6 +486,20 @@ channel.
 Each notification is cryptographically signed, so the system receiving it can confirm it
 genuinely came from your HackFlow and was not altered on the way. This is entirely optional.
 Leave it empty and HackFlow never contacts anything outside itself.
+
+### Integrations: connecting other tools
+
+Everything you can do in HackFlow is also available to other software through its API: a
+Discord bot that posts new submissions, a spreadsheet that pulls results, your own scripts.
+
+1. Open **Integrations** in the sidebar.
+2. Give the key a name that says what uses it ("Discord bot") and choose **Create key**.
+3. **Copy** the key now. It is shown once and never again.
+4. Give it to the tool, which sends it with every request as `Authorization: Bearer hf_...`.
+
+A key can do exactly what you can do, nothing more. Make one per tool, so you can **Revoke**
+one without breaking the others; the list shows when each key was last used. The full list of
+endpoints is linked from the same page (**Interactive API reference**).
 
 ---
 

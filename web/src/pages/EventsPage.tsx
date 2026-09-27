@@ -4,10 +4,20 @@ import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { eventCover } from '../lib/event-cover';
 import type { EventRecord } from '../types';
-import { Button, Card } from '../components/ui';
+import { Button, Card, Input } from '../components/ui';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
-import { PhaseBadge } from '../components/EventTimeline';
+import { PhaseBadge, eventPhase } from '../components/EventTimeline';
 import { EventImportPanel } from '../components/EventImportPanel';
+
+type View = 'all' | 'open' | 'upcoming' | 'past';
+
+/** "Past events" is the archive: judging, or results out. Everything stays retrievable. */
+const VIEWS: Record<View, { label: string; phases: ReturnType<typeof eventPhase>[] }> = {
+  all: { label: 'All', phases: ['upcoming', 'open', 'judging', 'results'] },
+  open: { label: 'Open now', phases: ['open'] },
+  upcoming: { label: 'Upcoming', phases: ['upcoming'] },
+  past: { label: 'Past events', phases: ['judging', 'results'] },
+};
 
 export function EventsPage() {
   const { user } = useAuth();
@@ -15,6 +25,8 @@ export function EventsPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
   const canCreate = user?.role === 'organizer' || user?.role === 'admin';
+  const [view, setView] = useState<View>('all');
+  const [q, setQ] = useState('');
 
   function load() {
     setError(null);
@@ -39,6 +51,12 @@ export function EventsPage() {
     const bt = new Date(b.start_at).getTime();
     return aOpen ? at - bt : bt - at;
   });
+  const needle = q.trim().toLowerCase();
+  const shown = ordered?.filter(
+    (e) =>
+      VIEWS[view].phases.includes(eventPhase(e)) &&
+      (!needle || `${e.name} ${e.description} ${e.tracks.join(' ')}`.toLowerCase().includes(needle)),
+  );
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-section md:px-6">
@@ -62,6 +80,32 @@ export function EventsPage() {
         </div>
       )}
 
+      {events && events.length > 0 && (
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div role="tablist" aria-label="Filter events" className="flex flex-wrap gap-2">
+            {(Object.keys(VIEWS) as View[]).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={view === v}
+                onClick={() => setView(v)}
+                className={
+                  'rounded-full border px-4 py-1.5 text-label transition-colors duration-fast focus:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/20 ' +
+                  (view === v ? 'border-brand-500 bg-brand-500 text-surface-0' : 'border-border bg-surface-0 text-ink-700 hover:bg-surface-100')
+                }
+              >
+                {VIEWS[v].label}
+                <span className="tabular ml-1.5 opacity-70">
+                  {ordered!.filter((e) => VIEWS[v].phases.includes(eventPhase(e))).length}
+                </span>
+              </button>
+            ))}
+          </div>
+          <Input label="Search events" placeholder="Name, theme or track" value={q} onChange={(e) => setQ(e.target.value)} className="md:w-72" />
+        </div>
+      )}
+
       {events === null && !error && <SkeletonRows rows={4} cols={3} />}
       {error && <ErrorState description={error} onRetry={load} />}
       {events && events.length === 0 && (
@@ -77,9 +121,12 @@ export function EventsPage() {
           }
         />
       )}
+      {shown && events!.length > 0 && shown.length === 0 && (
+        <EmptyState title="No events here" description={needle ? `Nothing matches "${q}".` : 'Try another filter.'} />
+      )}
       {events && events.length > 0 && (
         <div data-tour="event-list" className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {ordered!.map((e) => (
+          {shown!.map((e) => (
             <Link key={e.id} to={`/events/${e.slug}`} className="group h-full">
               <Card
                 className="transition-shadow duration-base group-hover:shadow-md"

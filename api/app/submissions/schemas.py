@@ -81,6 +81,9 @@ class EligibilityRow(BaseModel):
     team_name: str
     disqualified_at: Optional[datetime] = None
     disqualified_reason: str = ""
+    # Automatic checks (no repo, duplicate repo, thin description, no track,
+    # oversized team). Advisory: the organizer still makes every ruling.
+    flags: list[str] = []
 
 
 class EligibilityUpdate(BaseModel):

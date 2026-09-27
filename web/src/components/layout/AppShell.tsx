@@ -8,6 +8,7 @@ import {
   LogOut,
   Menu,
   PanelLeft,
+  Plug,
   User,
   Users,
   UsersRound,
@@ -47,6 +48,9 @@ function navFor(role: Account['role']): { label: string; items: NavItem[] }[] {
     workspace.push({ to: '/events/new', label: 'Create event', icon: CirclePlus, tour: 'nav-create-event' });
   }
   if (role === 'admin') workspace.push({ to: '/admin/users', label: 'Users', icon: Users, tour: 'nav-users' });
+  if (role === 'organizer' || role === 'admin') {
+    workspace.push({ to: '/integrations', label: 'Integrations', icon: Plug, tour: 'nav-integrations' });
+  }
   return [
     { label: 'Workspace', items: workspace },
     {
@@ -80,6 +84,8 @@ export function pageTitle(path: string): string {
     [/^\/join/, 'Join a team'],
     [/^\/profile/, 'Profile'],
     [/^\/admin\/users/, 'Users'],
+    [/^\/integrations/, 'Integrations'],
+    [/^\/verify/, 'Verify a certificate'],
   ];
   return rules.find(([re]) => re.test(path))?.[1] ?? 'HackFlow';
 }
@@ -224,8 +230,11 @@ function SidebarContent({ user, collapsed }: { user: Account; collapsed: boolean
       >
         <RaptorMark className="h-5 w-10" />
         {!collapsed && (
-          <span className="text-h3">
-            Hack<span className="font-serif italic">Flow</span>
+          <span className="flex flex-col leading-none">
+            <span className="text-h3">
+              Hack<span className="font-serif italic">Flow</span>
+            </span>
+            <span className="mt-1 text-meta text-ink-500">by Hackathon Raptors</span>
           </span>
         )}
       </Link>

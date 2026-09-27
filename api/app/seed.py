@@ -83,6 +83,7 @@ def _seed_events(session: Session, email_to_id: dict[str, int]) -> dict[str, int
             cover_image_url=row.get("cover_image_url"),
             voting_enabled=row.get("voting_enabled", False),
             rules=row.get("rules", ""),
+            stages=row.get("stages", []),
             results_hidden_until=(
                 _fixture_dt(row["results_hidden_until"]) if row.get("results_hidden_until") else None
             ),

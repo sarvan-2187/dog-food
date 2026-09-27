@@ -70,6 +70,11 @@ class Event(SQLModel, table=True):
     status: str = Field(default="published")
     # Plain text shown on the event page, never rendered as HTML (PLAN.md 10.8).
     rules: str = ""
+    # Named rounds shown as a timeline on the event page (Stage 1: Registration,
+    # Stage 2: Build sprint, ...), like Unstop's rounds. Informational: the
+    # server's own gates are still start_at / end_at / results_hidden_until.
+    # [{"name", "description", "starts_at", "ends_at"}], ISO-8601 UTC, in order.
+    stages: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
 
 
 class Announcement(SQLModel, table=True):
