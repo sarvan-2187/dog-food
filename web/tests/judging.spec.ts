@@ -10,7 +10,13 @@ async function login(page: Page, email: string, password: string) {
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.locator('form').getByRole('button', { name: 'Log in' }).click();
-  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await expect(page).not.toHaveURL(/\/login$/);
+}
+
+/** The header hides nav links behind a circular hamburger button - open it first. */
+async function openMenu(page: Page) {
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  await expect(page.getByRole('dialog', { name: 'Site menu' })).toBeVisible();
 }
 
 const asOrganizer = (page: Page) => login(page, 'alice@example.com', 'organizer-pass1');
@@ -50,6 +56,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 test.describe('role-aware navigation for judging', () => {
   test('a judge sees Judging and never organizer links', async ({ page }) => {
     await asJudge(page);
+    await openMenu(page);
     await expect(page.getByRole('link', { name: 'Judging' }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: 'Create event' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'My teams' })).toHaveCount(0);
