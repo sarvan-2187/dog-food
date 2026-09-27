@@ -106,7 +106,7 @@ web/src/
 └── pages/            # one file per screen, each built from the primitives above
 ```
 
-Design tokens flow one direction: `DESIGN_SYSTEM.md` (derived from `reference_design.pdf`)
+Design tokens flow one direction: `docs/DESIGN_SYSTEM.md` (derived from `reference_design.pdf`)
 → `web/src/styles/tokens.ts` → `web/tailwind.config.ts`'s `theme.extend`. A component
 reaching for a raw hex or an ad-hoc spacing value instead of a token is the one thing the
 Phase 5 audit specifically checks for.
@@ -135,7 +135,7 @@ successful login clears that account's count.
 build time. Once running, the api container makes no *required* outbound network calls —
 no cloud database, no auth-as-a-service, no external API, no CDN-fetched font or script in
 the served app (PLAN.md §1). This is why fonts fall back to the system stack (see
-`DESIGN_SYSTEM.md` §3.1) rather than a Google Fonts `<link>`, and why CSV export uses the
+`docs/DESIGN_SYSTEM.md` §3.1) rather than a Google Fonts `<link>`, and why CSV export uses the
 Python stdlib `csv` module instead of a hosted export service. There are exactly two
 exceptions, both opt-in: outbound webhooks (below), configured per event, and
 password-reset email (below), configured per deployment. An install that sets up neither
