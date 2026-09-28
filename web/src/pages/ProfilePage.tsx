@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ImageUpload } from '../components/ImageUpload';
 import { Button, Card, RoleBadge } from '../components/ui';
 import { useAuth } from '../lib/auth-context';
 
@@ -10,7 +11,7 @@ import { useAuth } from '../lib/auth-context';
  * in the hamburger menu, only shown once a user is signed in.
  */
 export function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
@@ -33,6 +34,14 @@ export function ProfilePage() {
           <div className="flex items-center gap-3">
             <RoleBadge role={user.role} />
           </div>
+          <ImageUpload
+            uploadUrl="/api/users/me/avatar"
+            currentUrl={user.avatar_url}
+            label="avatar"
+            shape="circle"
+            responseKey="avatar_url"
+            onUploaded={() => refresh()}
+          />
           <dl className="flex flex-col gap-3">
             <div>
               <dt className="text-label text-ink-500">Name</dt>

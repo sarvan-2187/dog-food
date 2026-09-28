@@ -49,6 +49,26 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 
   /**
+   * Multipart upload. Deliberately bypasses request()'s default
+   * "Content-Type: application/json" header - fetch sets the multipart
+   * boundary itself from the FormData body, and overriding it manually
+   * would send a boundary-less header the server can't parse.
+   */
+  async upload<T>(path: string, file: File): Promise<T> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(path, { method: 'POST', credentials: 'include', body: form });
+    const isJson = res.headers.get('content-type')?.includes('application/json');
+    const body = isJson ? await res.json() : undefined;
+    if (!res.ok) {
+      const message = extractMessage(body);
+      if (!message) console.error(`Upload to ${path} failed with status ${res.status}`);
+      throw new ApiError(res.status, message ?? 'Could not upload this image. Please try again.');
+    }
+    return body as T;
+  },
+
+  /**
    * Trigger a file download. Kept here rather than as a bare <a href> so the
    * caller can show a loading state and surface a role rejection as a readable
    * message instead of the browser navigating to a raw 403 (PLAN.md 4.6).

@@ -20,12 +20,14 @@ def _team_public(session: Session, team: Team) -> TeamPublic:
         member_user = session.get(User, membership.user_id)
         if member_user:
             members.append(TeamMemberPublic(id=member_user.id, name=member_user.name, email=member_user.email))
+    event = session.get(Event, team.event_id)
     return TeamPublic(
         id=team.id,
         event_id=team.event_id,
         name=team.name,
         invite_code=team.invite_code,
         members=members,
+        max_team_size=event.max_team_size if event else 4,
     )
 
 
@@ -67,6 +69,11 @@ def join_team(
     ).first()
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "You are already a member of this team.")
+    event = session.get(Event, team.event_id)
+    max_size = event.max_team_size if event else 4
+    current_size = len(session.exec(select(TeamMembership).where(TeamMembership.team_id == team.id)).all())
+    if current_size >= max_size:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"This team is full (max {max_size} members).")
     session.add(TeamMembership(team_id=team.id, user_id=user.id))
     record(session, "team.invite_redeemed", actor=user, entity_type="team", entity_id=team.id)
     session.commit()

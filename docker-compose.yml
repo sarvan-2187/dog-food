@@ -24,10 +24,12 @@ services:
       FIXTURES_DIR: /app/fixtures
       STATIC_DIR: /app/static
       KEYS_DIR: /app/keys
+      UPLOAD_DIR: /app/uploads
     ports:
       - "8000:8000"
     volumes:
       - keys_data:/app/keys
+      - uploads_data:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -41,3 +43,4 @@ services:
 volumes:
   db_data:
   keys_data:
+  uploads_data:

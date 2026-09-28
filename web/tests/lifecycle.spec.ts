@@ -67,8 +67,9 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   await page.getByRole('button', { name: 'Submit for judging' }).click();
   await expect(page.getByText(/Submission sent for judging/)).toBeVisible();
 
-  // --- it shows up in the public gallery, and search finds it --------------
+  // --- it shows up in the event's gallery, and search finds it -------------
   await page.getByRole('link', { name: 'Gallery' }).click();
+  await page.getByText('JudgeR Hackathon 2026').click();
   await expect(page.getByText(projectTitle)).toBeVisible();
   await page.getByLabel('Search').fill(projectTitle);
   await expect(page.getByText(projectTitle)).toBeVisible();
@@ -92,7 +93,7 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   await expect(mate.getByRole('link', { name: 'Profile' })).toBeVisible();
   await mate.goto(inviteUrl);
   await expect(mate.getByText("You're in")).toBeVisible();
-  await expect(mate.getByText(/2 members/)).toBeVisible();
+  await expect(mate.getByText(/2 \/ \d+ members/)).toBeVisible();
 
   // Following the same invite again is a normal thing to do, not an error screen.
   await mate.goto(inviteUrl);

@@ -1,7 +1,7 @@
 """Votes and comments (PLAN.md Phase 3)."""
 import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -12,6 +12,8 @@ from ..events.models import Event
 from ..events.visibility import may_see_results, results_are_public
 from ..submissions.models import Submission, SubmissionStatus
 from ..teams.models import Team
+from ..timeutil import utcnow
+from ..webhooks.service import notify
 from .models import Comment, Vote
 from .ratelimit import comment_limiter, vote_limiter
 from .schemas import CommentPublic, CommentWrite, PublicResultRow, VoteResult
@@ -233,6 +235,7 @@ def delete_comment(
 @router.get("/api/events/{event_id}/public-results", response_model=list[PublicResultRow])
 def public_results(
     event_id: int,
+    background_tasks: BackgroundTasks,
     user: "User | None" = Depends(get_current_user_optional),
     session: Session = Depends(get_session),
 ) -> list[PublicResultRow]:
@@ -247,6 +250,19 @@ def public_results(
             f"Results are hidden until voting closes on "
             f"{event.results_hidden_until.strftime('%d %b %Y at %H:%M UTC')}.",
         )
+    # event.results_revealed fires once, on the first real read after the
+    # reveal moment has actually passed -- checked lazily here, not via a
+    # scheduler. results_are_public() (not may_see_results()) is the right
+    # check: an organizer reading early must not fire this prematurely.
+    if (
+        not event.results_revealed_notified
+        and event.results_hidden_until is not None
+        and results_are_public(event)
+    ):
+        event.results_revealed_notified = True
+        session.add(event)
+        session.commit()
+        notify(session, background_tasks, event_id, "event.results_revealed")
 
     submissions = session.exec(
         select(Submission).where(

@@ -364,3 +364,146 @@ Playwright unchanged at 81 (Phase 4 is backend-only; the hero/nav change
 is covered by the existing breakpoints.spec.ts / landing-motion.spec.ts
 suites, re-run and green after the fix). Total 271 -> 282, all passing
 serially against a freshly reset (`docker compose down -v`) volume.
+
+-----------------------------------------------------------------------------
+ADDENDUM 4 — Gallery-as-event-picker, multi-rubric events, Phase 6 storage
+-----------------------------------------------------------------------------
+GALLERY AS AN EVENT PICKER
+
+The gallery no longer mixes every hackathon's submissions into one flat
+list. "/gallery" is now an event picker (a grid of hackathon cards, reusing
+EventsPage's own card+badge pattern); clicking one opens
+"/events/:slug/gallery", the same component scoped to that event, with the
+search/sort/voting UI unchanged. Four Playwright specs that assumed the old
+flat list were updated to navigate through the picker or hit the scoped
+route directly (58 tests, all green).
+
+MULTIPLE RUBRICS PER EVENT
+
+An event's rubric is no longer a single object. `Rubric.event_id`'s unique
+constraint was dropped; an event now holds a *set* of named rubrics (e.g.
+"Technical Rubric", "Presentation Rubric"), and every submission is scored
+against the combined criteria of the whole set, grouped by rubric name on
+the score form. The per-rubric "weights must sum to 1.0" save-time
+validator was removed — it made building a multi-rubric set impossible,
+since the first rubric saved could never itself equal 1.0. That check moved
+to the moment it actually matters: judges cannot be assigned until the
+*combined* weight across every rubric in the event reaches 1.0, with the
+same "here is the real total" error message. New plural REST endpoints
+(`GET/POST /api/events/{id}/rubrics`, `PUT/DELETE .../rubrics/{rubric_id}`)
+replaced the old singular ones; `RubricBuilderPage.tsx` was rewritten to
+manage a list of independently-saveable rubric cards plus a page-level
+combined-weight indicator. Seed data was split into two rubrics
+(Technical + Presentation) whose combined weights still equal 1.0, so the
+feature is demonstrated by the seeded event, not just by tests.
+
+PHASE 6 — UPLOADED ASSETS & OBJECT STORAGE (not tier-gated; see PLAN.md's
+own reasoning for why this was added and why local disk beat MinIO/cloud+CDN)
+
+A `StorageService` interface with one shipped implementation (`LocalStorage`,
+writing to a Docker-volume-backed directory) now backs submission
+screenshots and user avatars end to end: upload endpoints
+(`POST /api/teams/{id}/submission/image`, `POST /api/users/me/avatar`),
+a public `GET /media/{key}` serving route, and a `StoredFile` metadata table
+(bytes never touch Postgres, only their record does). Keys are always
+server-generated UUIDs with an extension derived from the validated content
+type — never from the client's filename — and `LocalStorage._resolve()`
+proves the path can never leave its root. Uploading again deletes the
+superseded file rather than orphaning it. The gallery, submission detail,
+and profile page all render the real image with a "No image" placeholder
+when absent; a shared `ImageUpload` component (live preview, loading state,
+plain-language rejection messages) is used by both the submission-screenshot
+control and the avatar control, only the shape (`rectangle` vs `circle`)
+differing. `docker-compose.yml` gained one new named volume, not a new
+service — still exactly `db` + `api`. Three placeholder images were
+generated and wired into the seed pipeline so a fresh `docker compose up`
+shows a populated gallery, verified live via a real Chromium session (a
+seeded gallery card, a live avatar upload surviving a full page reload).
+One disclosed scope cut: the navbar itself does not show a small avatar
+thumbnail (the profile page does) — judged not worth the risk to shared nav
+styling for the value it added.
+
+Counts: backend 192 -> 206 (+4 multi-rubric test renames/additions, +10
+test_storage.py), Vitest unchanged at 9, Playwright 82 -> 84 (+2 from the
+scoped-gallery entry added to breakpoints.spec.ts's PUBLIC_PAGES list).
+Total 282 -> 299, all passing serially against a freshly reset
+(`docker compose down -v`) volume.
+
+-----------------------------------------------------------------------------
+ADDENDUM 5 — Phase 7: tracks/prizes UI, team-size cap, outbound webhooks
+-----------------------------------------------------------------------------
+Three features, chosen from a live gap audit rather than invented: T1 names
+"configurable dates, tracks and prizes" explicitly, but `Event.tracks`/
+`prize_config` had existed on the model and `EventCreate`/`EventUpdate` since
+Phase 0 with zero UI ever sending or showing either -- a real, unclaimed T1
+gap, not new scope. The other two are genuine additive scope, both mapped to
+something the brief names explicitly rather than inferred: the platform's own
+"Team Size: 1-4 members" rule (never enforced by the software running it),
+and T4's "REST API and webhooks" (only the REST/OpenAPI half ever existed).
+
+TRACKS & PRIZES
+
+`prize_config` given one fixed convention: {"prizes": [{"rank", "reward"}]}.
+A shared `TrackListEditor`/`PrizeListEditor` (new
+web/src/components/EventConfigEditors.tsx) reuses the rubric builder's
+"rows with a remove button" pattern -- no new interaction designed. Wired
+into EventCreatePage.tsx (previously hardcoded `tracks: []`, prize_config
+never sent at all) and a new EventSettingsPage.tsx
+(/events/:slug/settings, organizer/admin), the only way to change either
+after creation without a raw API call. SubmissionPage.tsx's Track field
+becomes a dropdown of the event's configured tracks when any exist, falling
+back to free text otherwise. EventDetailPage.tsx now shows configured
+tracks/prizes to every visitor, not just the organizer who set them.
+
+TEAM-SIZE CAP
+
+`Event.max_team_size: int = 4` -- default matches this hackathon's own rule,
+so every existing seeded event behaves identically to before. `join_team`
+counts existing memberships before inserting a new one and refuses with a
+409 naming the actual cap; the creator counts toward it too (a
+max_team_size=1 event refuses the very next joiner, verified). TeamCard,
+JoinTeamPage, and TeamsMinePage all show "N / max members"; TeamCard hides
+the invite link once full rather than leaving a dead control visible.
+
+OUTBOUND WEBHOOKS
+
+Fire-and-forget, one attempt, dispatched via FastAPI BackgroundTasks so a
+slow or unreachable endpoint never delays the request that triggered it --
+no queue, no retry/backoff, no new dependency (httpx was already pinned for
+the test suite; this is its first runtime use). Payloads are signed with
+the exact same Ed25519 key and canonical-JSON scheme built for Phase 4's
+judge participation records -- a receiver who already verifies those needs
+zero new code to verify a webhook. Fires on submission.submitted,
+assignments.run, score.submitted, and event.results_revealed (the last
+guarded by a new results_revealed_notified flag, checked against
+results_are_public() specifically so an organizer's own early read never
+fires it prematurely). One deliberate deviation from the original plan,
+for the better: delivery status lives on the WebhookSubscription row itself
+(last_status: never fired/delivered/failed) rather than the audit log,
+since an organizer wants "is my webhook working" answered directly, and no
+other feature in this app queries the audit log for "the latest status of
+this one entity." A second deviation: no separate deactivate endpoint --
+delete is the only stop-delivery action (immediate, permanent), since
+nothing in the UI ever needed to flip a webhook back on after pausing it.
+
+Testing note: two test_webhooks.py cases needed a small testability seam in
+_deliver() (an optional `session` parameter). A background task's real
+production behavior opens a fresh DB connection deliberately (the
+request's own session is already closed by the time it runs) -- but that
+fresh connection can never see this test harness's per-test,
+savepoint-isolated setup data, which is a property of the test isolation
+strategy itself, not a bug in the delivery code. Documented inline in both
+the service module and the test file rather than left unexplained.
+
+Verified live, not just in tests: created an event with a track and a
+prize through the real form; opened /events/dogfood-2026/settings and
+confirmed it loaded the seeded event's existing tracks; added a webhook
+through the panel and watched it appear with a "NEVER FIRED" badge, then
+removed it.
+
+Counts: backend 206 -> 215 (+3 team-cap cases, +6 test_webhooks.py),
+Vitest unchanged at 9, Playwright unchanged at 84 (one pre-existing spec,
+lifecycle.spec.ts, needed its exact-text member-count assertion updated for
+the new "N / max members" copy -- a copy change this phase intentionally
+made, not a regression). Total 299 -> 308, all passing serially against a
+freshly reset (`docker compose down -v`) volume.

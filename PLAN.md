@@ -4,7 +4,7 @@
 
 > **Audience:** this file is written for an AI coding agent (Claude Code) executing this build, not for a human reading for context. It is the execution-ready companion to `dogfood-2026-implementation-plan-colorful.pdf`, which holds the full strategic rationale, trade-off discussion, and formulas. This file exists so you don't have to re-derive decisions — it tells you exactly what to build, in what order, with what files, and what "done" means at each gate. If you need the *why* behind a decision here, the PDF has it; don't re-litigate it, just build.
 >
-> This plan is organized as **seven sequential phases (Phase 0 → Phase 6)**. Each phase has a functional checklist *and* a user-experience checklist — treat both as part of the same Definition of Done. A phase that passes the acceptance suite but ships confusing, unresponsive, or unstyled screens is not done; UX is not a separate pass bolted on later, it's a gate criterion at every phase.
+> This plan is organized as **eight sequential phases (Phase 0 → Phase 7)**. Each phase has a functional checklist *and* a user-experience checklist — treat both as part of the same Definition of Done. A phase that passes the acceptance suite but ships confusing, unresponsive, or unstyled screens is not done; UX is not a separate pass bolted on later, it's a gate criterion at every phase.
 
 ## 0. How to use this file
 
@@ -62,7 +62,8 @@
 │   │   ├── scoring/           # normalization pipeline, CSV export
 │   │   ├── voting/            # votes, comments, rate limiting, duplicate detection
 │   │   ├── audit/             # append-only log writer + query helpers
-│   │   └── storage/           # StorageService interface + LocalStorage — see Phase 6
+│   │   ├── storage/           # StorageService interface + LocalStorage — see Phase 6
+│   │   └── webhooks/          # WebhookSubscription CRUD + signed delivery — see Phase 7
 │   └── tests/
 │       ├── test_auth.py
 │       ├── test_events.py
@@ -72,7 +73,8 @@
 │       ├── test_scoring.py
 │       ├── test_voting.py
 │       ├── test_role_isolation.py   # the cross-cutting 403 matrix — see Phase 2
-│       └── test_storage.py          # see Phase 6
+│       ├── test_storage.py          # see Phase 6
+│       └── test_webhooks.py         # see Phase 7
 └── web/
     ├── Dockerfile              # multi-stage: build with node, discard node in final api image
     ├── package.json
@@ -415,23 +417,133 @@ backend nobody asked for is exactly the kind of unfinished-feature scope §11 an
 "one challenge done properly beats four unfinished features" guidance warn against.
 
 ### Functional checklist
-- [ ] `StorageService` interface (new `api/app/storage/`): `save(file, key) -> key`, `url_for(key) -> str`, `delete(key)`, `exists(key) -> bool`
-- [ ] `LocalStorage` implementation: writes under a Docker-named-volume-backed directory; generates its own key (never trusts the client's filename — no path-traversal surface); validates content-type (image formats only) and size server-side before writing
-- [ ] File-metadata table (key, owner type/id, content_type, size_bytes, checksum, created_at) in Postgres — bytes never touch the database, only the record of them does
-- [ ] Upload endpoints: submission screenshot (participant, own team's submission only) and user avatar (self only) — gated the same way every other mutating endpoint is: `require_role()` **plus** the same per-resource ownership check already used for scores (§8)
-- [ ] Serving route (e.g. `GET /media/{key}`) streaming from disk with correct `Content-Type`/`Cache-Control`; public by design for gallery screenshots and avatars, exactly as public as the gallery data itself — nothing sensitive is ever put behind this route
-- [ ] `docker-compose.yml`: one new named volume for the upload directory, mounted into `api` only — still 2 services at runtime, per §5's tech stack table
-- [ ] Gallery, submission detail, and navbar/profile wired to render the uploaded image where present, with a defined placeholder (never a broken-image icon) where absent
-- [ ] `api/tests/test_storage.py`: successful upload, oversized/wrong-content-type rejection, cross-team ownership rejection, and a test proving `LocalStorage` cannot be made to write outside its root directory
-- [ ] `fixtures/submissions.json` + seeding extended with a couple of seeded placeholder images, so a fresh `docker compose up` shows a populated gallery, not blank cards
+- [x] `StorageService` interface (`api/app/storage/service.py`): `save(data, content_type) -> key`, `read(key) -> bytes`, `url_for(key) -> str`, `delete(key)`, `exists(key) -> bool`. `read()` (not a filesystem path) is what `GET /media/{key}` calls, so the router never depends on `LocalStorage`'s internal path layout.
+- [x] `LocalStorage` implementation (`api/app/storage/service.py`): writes under `UPLOAD_DIR` (Docker-volume-backed); keys are always `uuid4().hex` + an extension derived from `content_type` — never from the client's filename; rejects any content type outside `image/{png,jpeg,webp,gif}` and anything over 5MB before writing.
+- [x] File-metadata table — `StoredFile` (`api/app/storage/models.py`): `key, owner_type, owner_id, content_type, size_bytes, checksum, created_at`, unique on `(owner_type, owner_id)` so a submission/user has at most one current image; replacing it updates the same row and deletes the old key's bytes.
+- [x] Upload endpoints (`api/app/storage/router.py`): `POST /api/teams/{team_id}/submission/image` (gated by the existing `require_team_member` ownership dependency) and `POST /api/users/me/avatar` (self only, via `get_current_user`).
+- [x] Serving route `GET /media/{key}`: no auth, reads via `StorageService.read()`, 404s if the `StoredFile` row is gone even if bytes briefly still exist mid-replace.
+- [x] `docker-compose.yml`: one new `uploads_data` volume, mounted into `api` only via `UPLOAD_DIR=/app/uploads` — still exactly `db` + `api` at runtime.
+- [x] Gallery, submission detail, and profile wired to render the uploaded image with a defined "No image" placeholder. **Scope cut, disclosed:** the navbar itself does not show a small avatar thumbnail next to "Profile" — the pill-nav tabs are plain text links and adding an image there risked destabilizing shared nav styling for a low-value polish item; the avatar itself is fully wired and visible on `/profile`.
+- [x] `api/tests/test_storage.py` (10 cases): `LocalStorage` save/read round-trip, unsupported content-type rejection, oversized-file rejection, a test proving `_resolve()` refuses a traversal key, successful upload + serve, replace-deletes-the-old-key, cross-team upload refused with 403, disallowed content-type refused with 422, avatar upload visible on `/api/auth/me`, unknown key 404s.
+- [x] `fixtures/submissions.json` + `fixtures/images/*.png` (3 generated placeholder images) + `seed.py`'s `_seed_submissions` extended to save them via `StorageService` and create their `StoredFile` rows — a fresh `docker compose up` shows a populated gallery, verified live.
 
 ### UX checklist (see Section 4 for detail)
-- [ ] Upload control shows a preview, a loading state while the request is in flight, and a specific rejection message ("Image must be under 5MB", not "Upload failed") — same pattern as every other form in this build
-- [ ] Gallery cards and submission detail render the image responsively at all three breakpoints, with the defined placeholder when no image exists
-- [ ] Avatar upload (if built) reuses the same upload component as the submission screenshot control rather than a second bespoke one
-- [ ] Replacing an existing image is a clear, confirmed action; the superseded file's key is deleted rather than silently orphaned on disk
+- [x] `ImageUpload` component (`web/src/components/ImageUpload.tsx`) shows a live local preview via `URL.createObjectURL`, a loading state on the button while the request is in flight, and a specific rejection message ("Image must be under 5MB", "Use PNG, JPEG, WebP, or GIF.") — both client-checked before the request and server-enforced regardless.
+- [x] Gallery cards (`aspect-video` frame) and submission detail (`max-h-96`) render the image responsively, with a "No image" placeholder frame when absent — confirmed live, not just in code.
+- [x] Avatar upload (`ProfilePage.tsx`) reuses the exact same `ImageUpload` component as the submission screenshot control (`SubmissionPage.tsx`), only `shape="circle"` differs.
+- [x] Replacing an image is a clear action (the button relabels to "Replace screenshot"/"Replace avatar" once one exists); the superseded key is deleted server-side in the same request that saves the new one — verified live and in `test_storage.py`.
 
-**Definition of Done — Phase 6 gate:** `test_storage.py` green; the gallery and submission detail render real seeded images on a clean `docker compose up -d --build`; `docker-compose.yml` still runs exactly `db` + `api`; no MinIO/S3 client/CDN dependency exists anywhere in `api/pyproject.toml`, `web/package.json`, or `docker-compose.yml`.
+**Definition of Done — Phase 6 gate:** `test_storage.py` green (10/10, part of the full 206/206 backend suite); the gallery, submission detail, and profile render real seeded/uploaded images on a clean `docker compose down -v && docker compose up -d --build` — confirmed live with a real avatar upload surviving a full page reload; `docker-compose.yml` still runs exactly `db` + `api` (one new named volume, not a new service); no MinIO/S3 client/CDN dependency exists anywhere in `api/requirements.txt`, `web/package.json`, or `docker-compose.yml`. Full Playwright suite (84/84) and Vitest (9/9) re-run clean after this phase.
+
+---
+
+## Phase 7 — Tracks & Prizes UI, Team-Size Limits, Outbound Webhooks
+
+**Entry condition:** Phases 1–6 gates are green. Unlike Phase 6, item 7.1 below is **not**
+additive scope — it closes a gap in an already-claimed tier. Audited live before writing this
+phase: `Event.tracks: List[str]` and `Event.prize_config: Dict[str, Any]` have existed on the
+model since Phase 0, and `EventCreate`/`EventUpdate` already accept both fields with full
+validation — but `EventCreatePage.tsx` hardcodes `tracks: []` on every create and no screen
+anywhere, at creation or after, ever sends or displays `prize_config`. T1 names "configurable
+dates, **tracks and prizes**" explicitly; dates are configurable, tracks and prizes are not,
+despite the backend already supporting both. This is a real T1 completeness gap, not a new
+feature — closing it is worth more against Tier Completion & Correctness (40%) than any of
+this phase's other items. 7.2 and 7.3 are genuine additive scope (7.2 closes a named platform
+*rule* this app doesn't enforce on itself; 7.3 closes a named T4 item — "REST API **and
+webhooks**" — where only the REST/OpenAPI half was ever built).
+
+### 7.1 — Tracks & prize configuration (closes a T1 gap, frontend-only) — DONE
+
+No backend change: `EventCreate`/`EventUpdate`/the `Event` model already accepted and stored
+both fields before this phase; it was purely wiring a UI to an API surface that has existed
+since Phase 0.
+
+- [x] `prize_config` convention fixed app-wide: `{"prizes": [{"rank": "1st Place", "reward":
+      "$500"}, ...]}`. Documented in `DATA-MODEL.md`.
+- [x] `TrackListEditor`/`PrizeListEditor` (new `web/src/components/EventConfigEditors.tsx`) —
+      one shared pair of components, not duplicated per page, reusing the rubric builder's
+      "rows with a remove button" interaction.
+- [x] `EventCreatePage.tsx` sends real `tracks`, `prize_config`, and `max_team_size` instead of
+      the old hardcoded `tracks: []`. An event with neither tracks nor prizes still creates
+      cleanly (both are optional).
+- [x] New **event settings** screen (`EventSettingsPage.tsx`, `/events/:slug/settings`,
+      organizer/admin only) using `PATCH /api/events/{id}` — the only way to change tracks,
+      prizes, or team size after creation.
+- [x] `SubmissionPage.tsx`'s Track field becomes a `<select>` of the event's configured tracks
+      when any exist, falling back to the original free-text `<input>` when none do.
+- [x] `EventDetailPage.tsx` renders configured tracks and prizes under the event description,
+      visible to every visitor, not just the organizer who set them.
+- [x] `EventDetailPage.tsx`'s "Organizing this event" card gets an "Event settings" button
+      alongside "Judging rubric" and "Assignments & results".
+
+### 7.2 — Team-size cap (closes a named platform rule this app doesn't enforce) — DONE
+
+- [x] `Event.max_team_size: int = 4` — default matches this hackathon's own rule, so existing
+      seeded events behave identically to before (verified: `test_default_max_team_size_...`).
+- [x] `EventCreate`/`EventUpdate` accept `max_team_size`, bounded 1–20, same validation style as
+      `AssignmentRun.judges_per_submission`.
+- [x] `join_team` (`teams/router.py`) counts existing `TeamMembership` rows before inserting a
+      new one; refuses with 409 `"This team is full (max N members)."` — the creator counts
+      toward the cap too (verified: a `max_team_size=1` event refuses the very next joiner).
+- [x] The team-size field lives on the same `EventSettingsPage.tsx` from 7.1.
+- [x] `TeamCard`/`JoinTeamPage.tsx`/`TeamsMinePage.tsx` all show "N / max members"; `TeamCard`
+      additionally hides the invite link once full, rather than leaving a dead control up.
+- [x] `api/tests/test_teams.py`: `test_a_full_team_refuses_a_new_join_in_plain_language`,
+      `test_joining_up_to_the_cap_succeeds_one_over_it_does_not`,
+      `test_default_max_team_size_matches_the_hackathons_own_rule` — all green.
+
+### 7.3 — Outbound webhooks (closes a named T4 item: "REST API and webhooks") — DONE
+
+**Architecture decision (as built):** fire-and-forget, single attempt, signed, opt-in per event —
+no queue, no retry/backoff, no new dependency (`httpx`, already pinned for the test suite, is
+now also a runtime HTTP client for the first time). Dispatched via FastAPI `BackgroundTasks` so
+a slow/unreachable endpoint never delays the triggering request (`TIMEOUT_SECONDS = 5.0`, one
+attempt). **One deviation from the original plan, for the better:** delivery outcome is recorded
+on the `WebhookSubscription` row itself (`last_status: "never fired" | "delivered" | "failed"`)
+rather than the audit log — an organizer wants "is my webhook working," which a per-row status
+answers directly; the audit log has no per-entity "latest status" query pattern anywhere else in
+this app, so adding one just for this would have been a second convention for the same idea.
+
+Signing reuses `api/app/crypto.py` exactly as built for Phase 4's judge participation records —
+verifiable by any receiver against the same already-published `GET /api/public-key`.
+
+- [x] `WebhookSubscription` model (`api/app/webhooks/models.py`): `id, event_id, url,
+      created_by_id, active, last_status, created_at`.
+- [x] CRUD endpoints, organizer/admin only: `GET/POST /api/events/{id}/webhooks`,
+      `DELETE /api/events/{id}/webhooks/{webhook_id}`. **Deviation:** no separate deactivate
+      endpoint — delete is the only stop-delivery action, immediate and permanent, rather than
+      a `active` toggle nothing in the UI ever sets to false. Simpler surface, same guarantee
+      ("stops now, no grace period").
+- [x] `notify(session, background_tasks, event_id, topic, **detail)` (`webhooks/service.py`),
+      called from the same sites that already call `audit.log.record()`:
+      - `submission.submitted` (`submissions/router.py`)
+      - `assignments.run` (`judging/router.py`)
+      - `score.submitted` (`scoring/router.py`)
+      - `event.results_revealed` (`voting/router.py`'s `public_results`) — fires once, guarded
+        by a new `Event.results_revealed_notified` flag checked against `results_are_public()`
+        (not `may_see_results()`, so an organizer's own early read never fires it prematurely).
+- [x] Delivered payload is exactly `crypto.sign_record()`'s output: `{"record": {...}, "signature",
+      "public_key", "algorithm": "ed25519"}`.
+- [x] `WebhookPanel` (in `EventSettingsPage.tsx`): add a URL, see each webhook's `last_status`
+      badge, remove one. States plainly that it fires zero outbound calls with nothing configured.
+- [x] `api/tests/test_webhooks.py` (6 cases): CRUD + role gating + URL-format validation; a
+      signed payload is sent and verifies with `crypto.verify_record()`; an unreachable URL
+      does not raise and records `"failed"`; deleting a webhook stops further deliveries. Two
+      of these needed a small testability seam in `_deliver()` (an optional `session` param) —
+      a background task's real fresh DB connection can't see this test harness's per-test
+      savepoint-isolated data, which is a property of the test isolation strategy, not a
+      production bug; documented inline in both the code and the test.
+- [x] Documented in `ARCHITECTURE.md` and `README.md`: webhooks are opt-in and make zero
+      outbound calls unless an organizer explicitly configures one.
+
+**Definition of Done — Phase 7 gate:** `test_teams.py`'s 3 new cases and `test_webhooks.py`'s 6
+cases green as part of a full clean-suite run (215/215 backend); an event created with tracks
+and prizes shows both back to a participant without any raw API call — confirmed live; a team at
+its cap refuses a new join with a plain-language 409; a webhook added live through the settings
+screen shows "NEVER FIRED" immediately and is removable — confirmed live; `docker-compose.yml`
+unchanged at exactly `db` + `api`. Full Playwright suite and Vitest re-run clean after this phase
+(one pre-existing spec's exact-text assertion needed updating for the new "N / max members"
+copy — not a regression, a copy change this phase intentionally made).
 
 ---
 
@@ -934,3 +1046,16 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   `npx playwright test --workers=1` for a fully deterministic local run, both already
   documented; worth deciding before Phase 5 freeze whether the suite should default to
   serial execution or gain per-worker database isolation.
+- **Phase 7 planned, not yet built (tracks/prizes UI, team-size cap, webhooks).** A live
+  audit found `Event.tracks`/`Event.prize_config` have been fully supported by the model
+  and `EventCreate`/`EventUpdate` since Phase 0, but no screen anywhere ever sends or
+  displays either — `EventCreatePage.tsx` hardcodes `tracks: []` and `prize_config` is
+  never touched by any UI. That is a real, unclaimed T1 gap ("configurable dates, tracks
+  and prizes"), not new scope, and is 7.1. 7.2 (a per-event team-size cap, default 4,
+  matching this hackathon's own stated rule) and 7.3 (opt-in, signed, fire-and-forget
+  outbound webhooks reusing the Ed25519 signing already built for Phase 4's judge
+  records, closing T4's "REST API **and webhooks**" — only the REST half existed) are
+  genuine additive scope, chosen over other candidates (event archiving, duplicate-
+  submission-content detection) because both map to something the spec names explicitly
+  rather than something inferred. See Phase 7's own header for the full reasoning. Not
+  started as of this entry — planning only.

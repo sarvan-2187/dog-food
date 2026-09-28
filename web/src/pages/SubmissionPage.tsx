@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { DeadlineCountdown } from '../components/DeadlineCountdown';
 import { ErrorState, InlineStatus, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import type { SaveState } from '../components/feedback';
+import { ImageUpload } from '../components/ImageUpload';
 import { Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import type { EventRecord, Submission, Team } from '../types';
@@ -64,6 +65,7 @@ export function SubmissionPage() {
             status: 'draft',
             created_at: '',
             updated_at: '',
+            image_url: null,
           });
         } else {
           setError(err instanceof ApiError ? err.message : 'Could not load your submission.');
@@ -199,14 +201,47 @@ export function SubmissionPage() {
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-label text-ink-800">Track</span>
-            <input
-              className={`h-10 ${FIELD_CLASS}`}
-              value={track}
-              disabled={deadlinePassed}
-              onChange={(e) => edit('track', e.target.value)}
-              onBlur={() => saveField('track', track)}
-            />
+            {event && event.tracks.length > 0 ? (
+              // A dropdown commits immediately on pick - there's no natural
+              // "blur" moment for a <select> the way there is for typing.
+              <select
+                className={`h-10 ${FIELD_CLASS}`}
+                value={track}
+                disabled={deadlinePassed}
+                onChange={(e) => {
+                  edit('track', e.target.value);
+                  saveField('track', e.target.value);
+                }}
+              >
+                <option value="">No track</option>
+                {event.tracks.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className={`h-10 ${FIELD_CLASS}`}
+                value={track}
+                disabled={deadlinePassed}
+                onChange={(e) => edit('track', e.target.value)}
+                onBlur={() => saveField('track', track)}
+              />
+            )}
           </label>
+          {submission.id !== 0 && !deadlinePassed && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-label text-ink-800">Screenshot</span>
+              <ImageUpload
+                uploadUrl={`/api/teams/${teamId}/submission/image`}
+                currentUrl={submission.image_url}
+                label="screenshot"
+                responseKey="image_url"
+                onUploaded={(url) => setSubmission((s) => (s ? { ...s, image_url: url } : s))}
+              />
+            </div>
+          )}
           <Button
             variant="primary"
             loading={submitLoading}

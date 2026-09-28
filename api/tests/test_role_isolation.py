@@ -66,9 +66,11 @@ def world(client, session):
         status=SubmissionStatus.submitted,
     )
     session.add(submission)
-    session.add(Rubric(event_id=event.id, name="Isolation Rubric", criteria=CRITERIA))
+    rubric = Rubric(event_id=event.id, name="Isolation Rubric", criteria=CRITERIA)
+    session.add(rubric)
     session.commit()
     session.refresh(submission)
+    session.refresh(rubric)
 
     owning_judge = User(email="iso-judge-owner@example.com", name="Owner Judge", role=Role.judge, password_hash="x")
     session.add(owning_judge)
@@ -96,6 +98,7 @@ def world(client, session):
         "submission": submission,
         "assignment": assignment,
         "owning_judge": owning_judge,
+        "rubric": rubric,
     }
 
 
@@ -135,9 +138,11 @@ MATRIX = [
     ("post", "/api/teams/join", {"invite_code": "whatever"}, [Role.judge, Role.organizer, Role.admin]),
 
     # --- rubric writes (organizer/admin only) ------------------------------
-    ("put", "/api/events/{event_id}/rubric", {"name": "Hijacked", "criteria": CRITERIA},
+    ("post", "/api/events/{event_id}/rubrics", {"name": "Hijacked", "criteria": CRITERIA},
      [Role.participant, Role.judge]),
-    ("delete", "/api/events/{event_id}/rubric", None, [Role.participant, Role.judge]),
+    ("put", "/api/events/{event_id}/rubrics/{rubric_id}", {"name": "Hijacked", "criteria": CRITERIA},
+     [Role.participant, Role.judge]),
+    ("delete", "/api/events/{event_id}/rubrics/{rubric_id}", None, [Role.participant, Role.judge]),
 
     # --- assignment run + full matrix (organizer/admin only) ---------------
     ("post", "/api/events/{event_id}/assignments", {"judges_per_submission": 3},
@@ -178,7 +183,7 @@ MATRIX = [
 )
 def test_wrong_role_is_refused(client, session, world, method, url, body, role):
     _become(client, session, role)
-    target = url.format(event_id=world["event"].id, assignment_id=world["assignment"].id)
+    target = url.format(event_id=world["event"].id, assignment_id=world["assignment"].id, rubric_id=world["rubric"].id)
     response = _call(client, method, target, body)
     assert response.status_code == 403, f"{method.upper()} {target} as {role.value} -> {response.status_code}"
 
@@ -190,7 +195,7 @@ def test_wrong_role_is_refused(client, session, world, method, url, body, role):
 )
 def test_anonymous_is_refused(client, session, world, method, url, body):
     client.post("/api/auth/logout")
-    target = url.format(event_id=world["event"].id, assignment_id=world["assignment"].id)
+    target = url.format(event_id=world["event"].id, assignment_id=world["assignment"].id, rubric_id=world["rubric"].id)
     response = _call(client, method, target, body)
     assert response.status_code == 401, f"{method.upper()} {target} anonymously -> {response.status_code}"
 

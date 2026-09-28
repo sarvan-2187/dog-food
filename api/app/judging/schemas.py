@@ -45,7 +45,13 @@ class CriterionWrite(BaseModel):
 
 
 class RubricWrite(BaseModel):
-    """PLAN.md Phase 2: weights must sum to 1.0 on save, rejected otherwise."""
+    """One rubric within an event's rubric set. Keys must be unique within
+    this rubric (checked here) AND across every other rubric in the same
+    event (a cross-row check the router does, since a single rubric's own
+    payload can't see its siblings). The combined weight-sums-to-1.0 rule
+    is enforced when judges are assigned, not here -- an organizer builds
+    the set up one rubric at a time, and a lone rubric summing to e.g. 0.35
+    is normal mid-setup, not a mistake."""
 
     name: str
     criteria: List[CriterionWrite] = Field(min_length=1)
@@ -59,15 +65,10 @@ class RubricWrite(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def weights_sum_to_one(self) -> "RubricWrite":
+    def keys_unique_within_rubric(self) -> "RubricWrite":
         keys = [c.key for c in self.criteria]
         if len(set(keys)) != len(keys):
             raise ValueError("Each criterion needs its own key.")
-        total = sum(c.weight for c in self.criteria)
-        if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
-            # The message names the actual total, so the organizer can see how
-            # far off they are instead of guessing (PLAN.md 4.3).
-            raise ValueError(f"Criteria weights must add up to 1.0 - they currently add up to {total:.4f}.")
         return self
 
 
@@ -90,18 +91,29 @@ class AssignmentPublic(BaseModel):
     scored: bool
 
 
+class RubricGroup(BaseModel):
+    """One rubric's own slice of the combined score form, so the UI can
+    group criteria under the rubric's name instead of showing one
+    undifferentiated list."""
+
+    rubric_id: int
+    rubric_name: str
+    criteria: List[dict]
+
+
 class ScoringSheet(BaseModel):
     """Everything the score form needs in one call, scoped to the owning judge:
-    the submission being judged, the rubric to judge it against, and this judge's
-    own existing score if they have already given one."""
+    the submission being judged, every rubric in the event grouped with its own
+    criteria, and this judge's own existing score if they have already given
+    one. `my_values` is still one flat dict keyed by criterion key across all
+    rubrics, matching how Score.values is stored."""
 
     assignment_id: int
     submission_id: int
     submission_title: str
     submission_description: str
     submission_track: str
-    rubric_name: str
-    criteria: List[dict]
+    rubrics: List[RubricGroup]
     my_values: Optional[dict] = None
     my_comment: str = ""
     my_raw_total: Optional[float] = None
@@ -127,4 +139,3 @@ class AssignmentSummary(BaseModel):
     existing: int
     judges_per_submission: int
     coverage_warnings: List[CoverageWarning]
-    rubric_id: Optional[int] = None

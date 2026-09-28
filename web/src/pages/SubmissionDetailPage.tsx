@@ -139,6 +139,11 @@ export function SubmissionDetailPage() {
       </p>
 
       <Card title={item.title} meta={item.track || undefined}>
+        {item.image_url && (
+          <div className="mb-4 max-h-96 overflow-hidden rounded-md bg-surface-100">
+            <img src={item.image_url} alt="" className="w-full object-cover" />
+          </div>
+        )}
         <p className="whitespace-pre-wrap text-body text-ink-700">{item.description}</p>
         <div className="mt-5 flex flex-wrap items-center gap-3">
           {user ? (

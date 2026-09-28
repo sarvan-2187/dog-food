@@ -104,11 +104,44 @@ are hashed with `passlib[bcrypt]`; `password_hash` is never part of any response
 
 `docker compose up` builds both images from local Dockerfiles and pulls only
 `postgres:16-alpine` and `node:20-slim`/`python:3.12-slim` from the standard registries at
-build time. Once running, the api container makes zero outbound network calls — no cloud
-database, no auth-as-a-service, no external API, no CDN-fetched font or script in the
-served app (PLAN.md §1). This is why fonts fall back to the system stack (see
+build time. Once running, the api container makes no *required* outbound network calls —
+no cloud database, no auth-as-a-service, no external API, no CDN-fetched font or script in
+the served app (PLAN.md §1). This is why fonts fall back to the system stack (see
 `DESIGN_SYSTEM.md` §3.1) rather than a Google Fonts `<link>`, and why CSV export uses the
-Python stdlib `csv` module instead of a hosted export service.
+Python stdlib `csv` module instead of a hosted export service. The one exception is
+outbound webhooks (below), and those are opt-in per event — an organizer who never
+configures one gets the original zero-outbound-calls behavior unchanged.
+
+## Uploaded images: local disk, no CDN
+
+Submission screenshots and profile avatars are stored on the api container's local disk
+behind a `StorageService` interface (`api/app/storage/service.py`), not a cloud bucket —
+the same self-hostable/offline constraint that governs everything else in this document.
+`save()`/`read()`/`url_for()`/`delete()`/`exists()` is the whole interface; `LocalStorage`
+is the only implementation. Keys are server-generated (`uuid4().hex` plus an extension
+derived from the validated content-type), never taken from a client-supplied filename, so
+there is no path-traversal surface. `StoredFile` (`api/app/storage/models.py`, see
+DATA-MODEL.md) tracks ownership; a submission or user has at most one current file, and
+uploading a new one deletes the old one rather than accumulating orphans on disk. There is
+no CDN: images are served straight from the api container, which is consistent with the
+"works fully offline" requirement — a CDN would be a hard external dependency this
+platform is specifically built not to need.
+
+## Outbound webhooks: fire-and-forget, signed, opt-in
+
+An organizer can subscribe an event to a URL (`WebhookSubscription`, DATA-MODEL.md) for
+four topics: `submission.submitted`, `assignments.run`, `score.submitted`, and
+`event.results_revealed`. `webhooks/service.py`'s `notify()` looks up that event's active
+subscriptions and, for each one, schedules delivery via FastAPI `BackgroundTasks` so the
+triggering request (a submission, an assignment run, a score, a results read) never waits
+on a third party's server. Delivery is single-attempt with no retry queue — a deliberate
+scope cut, since a durable retry system is real infrastructure a hackathon-scale platform
+does not need. Every payload is signed with the same Ed25519 key already built for judge
+participation records (`api/app/crypto.py`), so a receiver can verify authenticity offline
+against `GET /api/public-key` without trusting the network path. The `event.results_
+revealed` topic fires exactly once per event, guarded by a one-shot flag checked lazily
+the next time results are actually read (not by a background scheduler), and gated on
+results being *publicly* visible so an organizer's own early access can't trigger it.
 
 ## Testing architecture
 

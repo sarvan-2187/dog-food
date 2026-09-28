@@ -73,6 +73,6 @@ class EventImportPayload(BaseModel):
     prize_config: Dict[str, Any] = {}
     voting_enabled: bool = False
     results_hidden_until: Optional[str] = None
-    rubric: Optional[RubricImport] = None
+    rubrics: List[RubricImport] = []
     teams: List[TeamImport] = []
     submissions: List[SubmissionImport] = []

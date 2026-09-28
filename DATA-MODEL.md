@@ -20,6 +20,7 @@ exist — a schema change means a fresh `docker compose down -v` in development.
 | `name` | str | |
 | `password_hash` | str | bcrypt via `passlib`; never leaves the server — `UserPublic` is the response shape |
 | `role` | enum | `participant` \| `judge` \| `organizer` \| `admin`. Public registration always creates `participant`; the other three roles exist only via `fixtures/users.json` seeding |
+| `avatar_url` | str, nullable | Set via the `stored_files` upload flow below; `null` until the user uploads one |
 | `created_at` | timestamptz | |
 
 ### `events` (`api/app/events/models.py`)
@@ -31,9 +32,11 @@ exist — a schema change means a fresh `docker compose down -v` in development.
 | `name`, `description` | str | |
 | `start_at`, `end_at` | timestamptz | `end_at` is the hard submission/team-formation deadline, enforced server-side on every write |
 | `tracks` | JSON list[str] | |
-| `prize_config` | JSON dict | Free-form; organizer-configurable |
+| `prize_config` | JSON dict | Shape: `{"prizes": [{"rank": "1st Place", "reward": "$500"}, ...]}`. A product convention, not a schema constraint — the column is a free-form `JSON` and nothing validates the inner shape server-side, so this is documented here rather than in a migration (PLAN.md Phase 7.1) |
+| `max_team_size` | int | Default `4`, matching the hackathon's own "Team Size: 1–4" rule; enforced server-side in `teams/router.py`'s `join_team` (PLAN.md Phase 7.2) |
 | `voting_enabled` | bool | Gates the Phase 3 vote/comment endpoints |
 | `results_hidden_until` | timestamptz, nullable | Gates who may see vote counts and standings — enforced in the API response itself, not just hidden in the UI |
+| `results_revealed_notified` | bool | One-shot guard so the `event.results_revealed` webhook topic fires exactly once, flipped the first time `public_results` is read after `results_are_public()` goes true (PLAN.md Phase 7.3) |
 | `created_by_id` | int, FK → `users.id` | Must be `organizer` or `admin` |
 | `created_at` | timestamptz | |
 
@@ -75,16 +78,19 @@ Unique constraint: `(team_id, user_id)` — a user can't join the same team twic
 
 ### `rubrics` (`api/app/judging/models.py`)
 
-**One rubric per event** — see PLAN.md Open Questions: normalization takes per-judge
-z-scores of *raw totals*, which assumes every submission in an event was scored on the
-same scale, so two rubrics in one event would silently break that assumption.
+**An event holds a *set* of named rubrics** (e.g. "Technical" + "Presentation"), combined
+into one flat criteria list at scoring time — not the one-rubric-per-event model this
+table used earlier. Normalization still takes per-judge z-scores of *raw totals*, which
+assumes every submission in an event was scored on the same combined scale, so the
+weight-sum-to-1.0 check is enforced across the **combined** set at assignment time, not
+per-rubric at save time.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | int, PK | |
-| `event_id` | int, FK → `events.id`, **unique** | |
-| `name` | str | |
-| `criteria` | JSON list[dict] | Each item: `{key, label, weight, max_score}`. Weights must sum to 1.0, enforced on every write. The rubric **locks** (`PUT`/`DELETE` return `409`) once any score exists for the event — see JUDGING.md |
+| `event_id` | int, FK → `events.id` | No longer unique — an event can hold several rubrics |
+| `name` | str | e.g. `"Technical"`, `"Presentation"` |
+| `criteria` | JSON list[dict] | Each item: `{key, label, weight, max_score}`. The rubric **locks** (`PUT`/`DELETE` return `409`) once any score exists for the event — see JUDGING.md |
 | `created_at`, `updated_at` | timestamptz | |
 
 ### `judge_assignments` (`api/app/judging/models.py`)
@@ -138,6 +144,48 @@ request could race past.
 | `body` | str | |
 | `created_at` | timestamptz | |
 
+### `stored_files` (`api/app/storage/models.py`)
+
+Polymorphic ownership: `(owner_type, owner_id)` is unique, so an owner (a submission or a
+user) has at most one current file — uploading a replacement deletes the old one. Content
+lives on local disk behind the `StorageService` interface (`api/app/storage/service.py`);
+this table only tracks metadata. Keys are server-generated (`uuid4().hex` + an extension
+derived from the validated content-type), never taken from the client's filename, so a
+client can't path-traverse or overwrite an arbitrary key (see THREAT-MODEL.md).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `owner_type` | str | `"submission"` \| `"user"` |
+| `owner_id` | int | The submission or user id |
+| `key` | str | Server-generated storage key; also the on-disk filename |
+| `content_type` | str | Validated at upload time against an image allow-list |
+| `created_at` | timestamptz | |
+
+Unique constraint: `(owner_type, owner_id)`.
+
+### `webhook_subscriptions` (`api/app/webhooks/models.py`)
+
+Opt-in per event (PLAN.md Phase 7.3) — zero outbound calls unless an organizer configures
+one. Delivery is fire-and-forget via FastAPI `BackgroundTasks`, single attempt, no retry
+queue (a deliberate scope cut: "a retry system is real infrastructure this hackathon-scale
+platform does not need").
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `event_id` | int, FK → `events.id` | |
+| `url` | str | Must start with `http://` or `https://`, max 500 chars |
+| `created_by_id` | int, FK → `users.id` | Must be `organizer` or `admin` |
+| `active` | bool | Default `true`; there is no separate deactivate toggle — deleting the row is how a subscription is turned off |
+| `last_status` | str | `"never fired"` \| `"delivered"` \| `"failed"`, updated after each delivery attempt |
+| `created_at` | timestamptz | |
+
+Payload topics: `submission.submitted`, `assignments.run`, `score.submitted`,
+`event.results_revealed`. Every payload is signed with the same Ed25519 key used for judge
+participation records (`api/app/crypto.py`'s `sign_record()`), verifiable offline against
+`GET /api/public-key`.
+
 ### `audit_log` (`api/app/audit/models.py`)
 
 Append-only **by construction**, not by a database-level guarantee (no `REVOKE` or
@@ -164,13 +212,16 @@ action and its log entry commit or roll back together.
 users ──< events (created_by)
 users ──< team_memberships >── teams ──< events
 users ──< submissions (via teams, one-to-one with team)
-events ──< rubrics (one-to-one)
+events ──< rubrics (one-to-many)
 events ──< judge_assignments >── submissions
 users (judges) ──< judge_assignments
 judge_assignments ──< scores (one-to-one)
 users ──< votes >── submissions
 users ──< comments >── submissions
 users ──< audit_log (nullable actor)
+submissions ──< stored_files (owner_type="submission")
+users ──< stored_files (owner_type="user")
+events ──< webhook_subscriptions
 ```
 
 ## Import / export paths
@@ -183,3 +234,6 @@ users ──< audit_log (nullable actor)
 - **CSV export** (`api/app/scoring/router.py`, stdlib `csv` only): `users.csv`,
   `submissions.csv`, `assignments.csv`, `scores.csv`, `results.csv` per event, organizer/
   admin only (see `test_role_isolation.py`).
+- **Uploaded images**: not part of bulk event export/import — a `stored_files` row's
+  content lives only on the API container's local disk, so restoring an export into a
+  different environment restores data, not the accompanying images (see ARCHITECTURE.md).

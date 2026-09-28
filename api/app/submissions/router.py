@@ -1,6 +1,6 @@
 import random
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
@@ -9,13 +9,15 @@ from ..auth import User, get_current_user, get_current_user_optional
 from ..db import get_session
 from ..events.models import Event
 from ..events.visibility import may_see_results
+from ..storage.lookup import image_url_for, image_urls_for
 from ..teams.deps import require_team_member
 from ..teams.models import Team
 from ..timeutil import utcnow
 from ..voting.models import Comment, Vote
 from ..voting.schemas import GalleryItem
+from ..webhooks.service import notify
 from .models import Submission, SubmissionStatus
-from .schemas import SubmissionUpdate
+from .schemas import SubmissionPublic, SubmissionUpdate
 
 router = APIRouter(tags=["submissions"])
 
@@ -36,25 +38,40 @@ def _escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-@router.get("/api/teams/{team_id}/submission", response_model=Submission)
+def _public(session: Session, sub: Submission) -> SubmissionPublic:
+    return SubmissionPublic(
+        id=sub.id,
+        team_id=sub.team_id,
+        event_id=sub.event_id,
+        title=sub.title,
+        description=sub.description,
+        track=sub.track,
+        status=sub.status.value,
+        created_at=sub.created_at,
+        updated_at=sub.updated_at,
+        image_url=image_url_for(session, "submission", sub.id),
+    )
+
+
+@router.get("/api/teams/{team_id}/submission", response_model=SubmissionPublic)
 def get_submission(
     team_id: int,
     team: Team = Depends(require_team_member),
     session: Session = Depends(get_session),
-) -> Submission:
+) -> SubmissionPublic:
     sub = session.exec(select(Submission).where(Submission.team_id == team_id)).first()
     if not sub:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No submission started yet.")
-    return sub
+    return _public(session, sub)
 
 
-@router.patch("/api/teams/{team_id}/submission", response_model=Submission)
+@router.patch("/api/teams/{team_id}/submission", response_model=SubmissionPublic)
 def upsert_submission(
     team_id: int,
     payload: SubmissionUpdate,
     team: Team = Depends(require_team_member),
     session: Session = Depends(get_session),
-) -> Submission:
+) -> SubmissionPublic:
     _load_open_event(session, team.event_id)
     sub = session.exec(select(Submission).where(Submission.team_id == team_id)).first()
     if not sub:
@@ -67,16 +84,17 @@ def upsert_submission(
     session.add(sub)
     session.commit()
     session.refresh(sub)
-    return sub
+    return _public(session, sub)
 
 
-@router.post("/api/teams/{team_id}/submission/submit", response_model=Submission)
+@router.post("/api/teams/{team_id}/submission/submit", response_model=SubmissionPublic)
 def submit_submission(
     team_id: int,
+    background_tasks: BackgroundTasks,
     team: Team = Depends(require_team_member),
     _member: User = Depends(get_current_user),
     session: Session = Depends(get_session),
-) -> Submission:
+) -> SubmissionPublic:
     _load_open_event(session, team.event_id)
     sub = session.exec(select(Submission).where(Submission.team_id == team_id)).first()
     if not sub or not sub.title.strip() or not sub.description.strip():
@@ -87,7 +105,8 @@ def submit_submission(
     record(session, "submission.submitted", actor=_member, entity_type="submission", entity_id=sub.id)
     session.commit()
     session.refresh(sub)
-    return sub
+    notify(session, background_tasks, sub.event_id, "submission.submitted", submission_id=sub.id, title=sub.title)
+    return _public(session, sub)
 
 
 @router.get("/api/gallery", response_model=list[GalleryItem])
@@ -149,6 +168,7 @@ def gallery(
             )
         rows.sort(key=lambda r: (-votes.get(r.id, 0), r.id))
 
+    images = image_urls_for(session, "submission", [r.id for r in rows])
     return [
         GalleryItem(
             id=r.id,
@@ -161,6 +181,7 @@ def gallery(
             comment_count=comments.get(r.id, 0),
             votes=votes.get(r.id, 0) if visible.get(r.event_id, False) else None,
             voted_by_me=r.id in mine,
+            image_url=images.get(r.id),
         )
         for r in rows
     ]
@@ -192,4 +213,5 @@ def get_public_submission(
         comment_count=comment_count,
         votes=len(vote_rows) if visible else None,
         voted_by_me=any(user is not None and v.user_id == user.id for v in vote_rows),
+        image_url=image_url_for(session, "submission", submission.id),
     )

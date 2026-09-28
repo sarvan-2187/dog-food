@@ -5,12 +5,23 @@ from sqlmodel import Session, select
 
 from ..audit.log import record
 from ..db import get_session
+from ..storage.lookup import image_url_for
 from .deps import get_current_user
 from .models import Role, User, UserPublic
 from .security import hash_password, verify_password
 from .session import SESSION_COOKIE_NAME, SESSION_MAX_AGE, create_session_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _public(session: Session, user: User) -> UserPublic:
+    return UserPublic(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        role=user.role,
+        avatar_url=image_url_for(session, "user", user.id),
+    )
 
 
 class RegisterRequest(BaseModel):
@@ -50,7 +61,7 @@ def _set_session_cookie(response: Response, user_id: int) -> None:
 
 
 @router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, session: Session = Depends(get_session)) -> User:
+def register(payload: RegisterRequest, response: Response, session: Session = Depends(get_session)) -> UserPublic:
     """Public sign-up always creates a participant. Judge/organizer/admin accounts
     are seeded from fixtures only (PLAN.md Open Questions)."""
     existing = session.exec(select(User).where(User.email == payload.email)).first()
@@ -68,18 +79,18 @@ def register(payload: RegisterRequest, response: Response, session: Session = De
     session.commit()
     session.refresh(user)
     _set_session_cookie(response, user.id)
-    return user
+    return _public(session, user)
 
 
 @router.post("/login", response_model=UserPublic)
-def login(payload: LoginRequest, response: Response, session: Session = Depends(get_session)) -> User:
+def login(payload: LoginRequest, response: Response, session: Session = Depends(get_session)) -> UserPublic:
     user = session.exec(select(User).where(User.email == payload.email)).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password.")
     record(session, "user.logged_in", actor=user, entity_type="user", entity_id=user.id)
     session.commit()
     _set_session_cookie(response, user.id)
-    return user
+    return _public(session, user)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -88,5 +99,5 @@ def logout(response: Response) -> None:
 
 
 @router.get("/me", response_model=UserPublic)
-def me(user: User = Depends(get_current_user)) -> User:
-    return user
+def me(user: User = Depends(get_current_user), session: Session = Depends(get_session)) -> UserPublic:
+    return _public(session, user)

@@ -108,6 +108,8 @@ def _seed_teams(session: Session, email_to_id: dict[str, int], slug_to_id: dict[
 
 
 def _seed_submissions(session: Session, slug_to_id: dict[str, int], name_to_id: dict[str, int]) -> None:
+    from .storage.models import StoredFile
+    from .storage.service import checksum_of, storage
     from .submissions.models import Submission, SubmissionStatus
 
     for row in load_fixture("submissions.json"):
@@ -115,24 +117,48 @@ def _seed_submissions(session: Session, slug_to_id: dict[str, int], name_to_id: 
         existing = session.exec(select(Submission).where(Submission.team_id == team_id)).first()
         if existing:
             continue
+        submission = Submission(
+            team_id=team_id,
+            event_id=slug_to_id[row["event_slug"]],
+            title=row.get("title", ""),
+            description=row.get("description", ""),
+            track=row.get("track", ""),
+            status=SubmissionStatus(row.get("status", "draft")),
+        )
+        session.add(submission)
+        image_name = row.get("image")
+        if not image_name:
+            continue
+        session.flush()  # need submission.id before it can own a StoredFile
+        image_path = FIXTURES_DIR / "images" / image_name
+        if not image_path.exists():
+            log.warning("seed image %s not found, skipping", image_path)
+            continue
+        data = image_path.read_bytes()
+        key = storage.save(data, "image/png")
         session.add(
-            Submission(
-                team_id=team_id,
-                event_id=slug_to_id[row["event_slug"]],
-                title=row.get("title", ""),
-                description=row.get("description", ""),
-                track=row.get("track", ""),
-                status=SubmissionStatus(row.get("status", "draft")),
+            StoredFile(
+                key=key,
+                owner_type="submission",
+                owner_id=submission.id,
+                content_type="image/png",
+                size_bytes=len(data),
+                checksum=checksum_of(data),
             )
         )
 
 
 def _seed_rubrics(session: Session, slug_to_id: dict[str, int]) -> None:
+    """An event may have several rubrics now, so idempotency is keyed on
+    (event, name) rather than "this event already has a rubric" -- the old
+    check would have skipped every rubric past the first on a re-run."""
     from .judging.models import Rubric
 
     for row in load_fixture("rubrics.json"):
         event_id = slug_to_id[row["event_slug"]]
-        if session.exec(select(Rubric).where(Rubric.event_id == event_id)).first():
+        if session.exec(
+            select(Rubric).where(Rubric.event_id == event_id, Rubric.name == row["name"])
+        ).first():
             continue
         session.add(Rubric(event_id=event_id, name=row["name"], criteria=row["criteria"]))
 

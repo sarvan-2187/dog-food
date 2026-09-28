@@ -5,6 +5,7 @@ import { AuthProvider } from './lib/auth-context';
 import { EventCreatePage } from './pages/EventCreatePage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { EventResultsPage } from './pages/EventResultsPage';
+import { EventSettingsPage } from './pages/EventSettingsPage';
 import { EventsPage } from './pages/EventsPage';
 import { GalleryPage } from './pages/GalleryPage';
 import { JoinTeamPage } from './pages/JoinTeamPage';
@@ -35,7 +36,9 @@ export default function App() {
             <Route path="/events/new" element={<EventCreatePage />} />
             <Route path="/events/:slug" element={<EventDetailPage />} />
             <Route path="/events/:slug/rubric" element={<RubricBuilderPage />} />
+            <Route path="/events/:slug/settings" element={<EventSettingsPage />} />
             <Route path="/events/:slug/results" element={<EventResultsPage />} />
+            <Route path="/events/:slug/gallery" element={<GalleryPage />} />
             <Route path="/judge" element={<JudgeDashboardPage />} />
             <Route path="/judge-invite/:token" element={<JudgeInvitePage />} />
             <Route path="/assignments/:assignmentId/score" element={<ScorePage />} />

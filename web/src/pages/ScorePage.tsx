@@ -52,7 +52,10 @@ function ScoreForm() {
     };
   }, [assignmentId]);
 
-  const criteria: Criterion[] = sheet?.criteria ?? [];
+  // Flat for the scoring math (running total, completeness, submit payload) --
+  // Score.values is one flat dict across every rubric in the event, same as
+  // the backend. Grouping by rubric only matters for how this renders below.
+  const criteria: Criterion[] = sheet?.rubrics.flatMap((r) => r.criteria) ?? [];
 
   function fieldError(c: Criterion): string | undefined {
     const raw = values[c.key];
@@ -124,53 +127,60 @@ function ScoreForm() {
         </Link>
       </p>
 
-      <Card title={sheet.submission_title} meta={sheet.rubric_name}>
+      <Card title={sheet.submission_title} meta={sheet.rubrics.map((r) => r.rubric_name).join(' + ')}>
         {sheet.submission_description && (
           <p className="mb-6 whitespace-pre-wrap border-b border-border-subtle pb-4 text-body text-ink-600">
             {sheet.submission_description}
           </p>
         )}
 
-        <form className="flex flex-col gap-5" onSubmit={onSubmit} noValidate>
-          {criteria.map((c) => {
-            const error = fieldError(c);
-            return (
-              <div key={c.key} className="flex flex-col gap-1.5">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <label htmlFor={`c-${c.key}`} className="text-label text-ink-800">
-                    {c.label}
-                  </label>
-                  {/* The weight is shown with the field, not only in a legend. */}
-                  <span className="text-meta text-ink-500">
-                    weight {(c.weight * 100).toFixed(0)}% &middot; out of {c.max_score}
-                  </span>
-                </div>
-                <input
-                  id={`c-${c.key}`}
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  max={c.max_score}
-                  step={0.5}
-                  value={values[c.key] ?? ''}
-                  aria-invalid={error ? true : undefined}
-                  aria-describedby={error ? `c-${c.key}-error` : undefined}
-                  onChange={(e) => setValues((v) => ({ ...v, [c.key]: e.target.value }))}
-                  onBlur={() => setTouched((t) => ({ ...t, [c.key]: true }))}
-                  className={[
-                    'h-10 rounded-md bg-surface-0 px-3 text-body text-ink-800 border',
-                    'focus:outline-none focus:ring-[3px] focus:ring-brand-500/20',
-                    error ? 'border-danger-fg focus:border-danger-fg' : 'border-border focus:border-brand-500',
-                  ].join(' ')}
-                />
-                {error && (
-                  <p id={`c-${c.key}-error`} className="text-meta text-danger-fg">
-                    {error}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+        <form className="flex flex-col gap-6" onSubmit={onSubmit} noValidate>
+          {sheet.rubrics.map((group) => (
+            <div key={group.rubric_id} className="flex flex-col gap-5">
+              {sheet.rubrics.length > 1 && (
+                <h4 className="text-label uppercase tracking-wide text-ink-500">{group.rubric_name}</h4>
+              )}
+              {group.criteria.map((c) => {
+                const error = fieldError(c);
+                return (
+                  <div key={c.key} className="flex flex-col gap-1.5">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <label htmlFor={`c-${c.key}`} className="text-label text-ink-800">
+                        {c.label}
+                      </label>
+                      {/* The weight is shown with the field, not only in a legend. */}
+                      <span className="text-meta text-ink-500">
+                        weight {(c.weight * 100).toFixed(0)}% &middot; out of {c.max_score}
+                      </span>
+                    </div>
+                    <input
+                      id={`c-${c.key}`}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={c.max_score}
+                      step={0.5}
+                      value={values[c.key] ?? ''}
+                      aria-invalid={error ? true : undefined}
+                      aria-describedby={error ? `c-${c.key}-error` : undefined}
+                      onChange={(e) => setValues((v) => ({ ...v, [c.key]: e.target.value }))}
+                      onBlur={() => setTouched((t) => ({ ...t, [c.key]: true }))}
+                      className={[
+                        'h-10 rounded-md bg-surface-0 px-3 text-body text-ink-800 border',
+                        'focus:outline-none focus:ring-[3px] focus:ring-brand-500/20',
+                        error ? 'border-danger-fg focus:border-danger-fg' : 'border-border focus:border-brand-500',
+                      ].join(' ')}
+                    />
+                    {error && (
+                      <p id={`c-${c.key}-error`} className="text-meta text-danger-fg">
+                        {error}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor="score-comment" className="text-label text-ink-800">

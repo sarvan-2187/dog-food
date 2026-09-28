@@ -6,7 +6,7 @@ import { ErrorState, InlineStatus, SkeletonRows } from '../components/feedback';
 import { Button, Card, Input } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
-import type { EventRecord, Team } from '../types';
+import type { EventRecord, GalleryItem, Team } from '../types';
 
 export function EventDetailPage() {
   const { slug = '' } = useParams();
@@ -14,6 +14,7 @@ export function EventDetailPage() {
   const [event, setEvent] = useState<EventRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [myTeam, setMyTeam] = useState<Team | null>(null);
+  const [preview, setPreview] = useState<GalleryItem[] | null>(null);
 
   useEffect(() => {
     api
@@ -21,6 +22,14 @@ export function EventDetailPage() {
       .then(setEvent)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load this event.'));
   }, [slug]);
+
+  useEffect(() => {
+    if (!event) return;
+    api
+      .get<GalleryItem[]>(`/api/gallery?event_id=${event.id}&order=recent`)
+      .then((items) => setPreview(items.slice(0, 3)))
+      .catch(() => setPreview([]));
+  }, [event]);
 
   useEffect(() => {
     if (!user || user.role !== 'participant' || !event) return;
@@ -53,6 +62,18 @@ export function EventDetailPage() {
         <div className="mt-4">
           <DeadlineCountdown endAt={event.end_at} />
         </div>
+        {event.tracks.length > 0 && (
+          <p className="mt-3 text-meta text-ink-500">Tracks: {event.tracks.join(', ')}</p>
+        )}
+        {(event.prize_config.prizes?.length ?? 0) > 0 && (
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-meta text-ink-700">
+            {event.prize_config.prizes!.map((p, i) => (
+              <li key={i}>
+                <span className="font-semibold text-ink-900">{p.rank}:</span> {p.reward}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {user?.role === 'participant' && (
@@ -65,9 +86,38 @@ export function EventDetailPage() {
         </Link>
       )}
 
+      <Card
+        title="Submitted projects"
+        meta={
+          <Link to={`/events/${event.slug}/gallery`} className="text-brand-500">
+            See full gallery →
+          </Link>
+        }
+      >
+        {preview === null && <SkeletonRows rows={2} cols={1} />}
+        {preview && preview.length === 0 && (
+          <p className="text-body text-ink-600">No submissions yet - be the first to submit.</p>
+        )}
+        {preview && preview.length > 0 && (
+          <ul className="flex flex-col divide-y divide-border-subtle">
+            {preview.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-baseline justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                <Link to={`/submissions/${s.id}`} className="text-body font-semibold text-ink-900 hover:text-brand-500">
+                  {s.title}
+                </Link>
+                {s.track && <span className="text-meta text-ink-500">{s.track}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       {(user?.role === 'organizer' || user?.role === 'admin') && (
         <Card title="Organizing this event">
           <div className="flex flex-wrap gap-2">
+            <Link to={`/events/${event.slug}/settings`}>
+              <Button variant="secondary">Event settings</Button>
+            </Link>
             <Link to={`/events/${event.slug}/rubric`}>
               <Button variant="secondary">Judging rubric</Button>
             </Link>
@@ -95,16 +145,24 @@ function TeamCard({ team }: { team: Team }) {
     }
   }
 
+  const full = team.members.length >= team.max_team_size;
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-h3 text-ink-800">{team.name}</p>
-      <p className="text-meta text-ink-500">{team.members.map((m) => m.name).join(', ')}</p>
-      <div className="flex flex-col gap-2 md:flex-row md:items-end">
-        <Input label="Invite link" readOnly value={inviteUrl} className="flex-1" />
-        <Button variant="secondary" onClick={copy}>
-          {copied ? 'Copied' : 'Copy'}
-        </Button>
-      </div>
+      <p className="text-meta text-ink-500">
+        {team.members.length} / {team.max_team_size} members: {team.members.map((m) => m.name).join(', ')}
+      </p>
+      {full ? (
+        <p className="text-meta text-ink-500">This team is full - the invite link is no longer usable.</p>
+      ) : (
+        <div className="flex flex-col gap-2 md:flex-row md:items-end">
+          <Input label="Invite link" readOnly value={inviteUrl} className="flex-1" />
+          <Button variant="secondary" onClick={copy}>
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+        </div>
+      )}
       {copied && <InlineStatus state="saved" />}
     </div>
   );

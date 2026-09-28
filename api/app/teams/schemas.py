@@ -29,3 +29,4 @@ class TeamPublic(BaseModel):
     name: str
     invite_code: str
     members: list[TeamMemberPublic]
+    max_team_size: int
