@@ -14,6 +14,8 @@ export interface User {
   name: string;
   role: Role;
   avatar_url: string | null;
+  /** Proven by following an emailed link. Events can require it to vote. */
+  email_verified?: boolean;
 }
 
 export interface PrizeEntry {
@@ -39,6 +41,11 @@ export interface EventRecord {
   voting_access: 'authenticated' | 'email' | 'open';
   /** null means results were never hidden. */
   results_hidden_until: string | null;
+  /** Soft judging deadline; null means none set. */
+  judging_deadline?: string | null;
+  /** Opt-in sybil defences for account voters (THREAT-MODEL entry 25). */
+  voting_requires_verified?: boolean;
+  voting_account_cutoff?: string | null;
   /** Organizer-supplied cover art; null falls back to a bundled photo (lib/event-cover.ts). */
   cover_image_url: string | null;
   /** PLAN.md 10.12 - drafts are only ever returned to organizers/admins. */
@@ -81,6 +88,17 @@ export interface Submission {
   repo_url: string;
   demo_url: string;
   video_url: string;
+  disqualified_at?: string | null;
+  disqualified_reason?: string;
+}
+
+/** An organizer's view of one submitted entry's eligibility. */
+export interface EligibilityRow {
+  submission_id: number;
+  title: string;
+  team_name: string;
+  disqualified_at: string | null;
+  disqualified_reason: string;
 }
 
 // --- Phase 2: judging ------------------------------------------------------
@@ -111,6 +129,8 @@ export interface Assignment {
   scored: boolean;
   event_id: number;
   event_name: string;
+  /** The event's soft judging deadline, if set. */
+  due_at?: string | null;
 }
 
 export interface JudgeProgress {
@@ -345,6 +365,7 @@ export interface EventJudges {
   assigned: number;
   judges: EventJudgeRow[];
   email_enabled: boolean;
+  judging_deadline?: string | null;
 }
 
 export interface JudgeEvent {
@@ -353,6 +374,7 @@ export interface JudgeEvent {
   slug: string;
   end_at: string;
   judging_open: boolean;
+  judging_deadline?: string | null;
 }
 
 export interface PrizeSlot {

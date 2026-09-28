@@ -6,6 +6,7 @@ import { eventCover } from '../lib/event-cover';
 import type { Announcement, AuditEntry, EventRecord, GalleryItem, JudgeProgress, Team } from '../types';
 import { Badge, Button, Card, MetricTile, RoleBadge } from '../components/ui';
 import { EmptyState, ErrorState, SkeletonRows } from '../components/feedback';
+import { DueBadge } from '../components/DueBadge';
 import { EmailDeliveryPanel, HelpSignInPanel } from '../components/AccountRecoveryPanels';
 
 /**
@@ -172,6 +173,7 @@ function JudgeDashboard() {
             {p.pending.map((a) => (
               <li key={a.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
                 <span className="text-body text-ink-800">{a.submission_title}</span>
+                <DueBadge at={a.due_at} />
                 <Link to={`/assignments/${a.id}/score`}>
                   <Button variant="secondary">Score</Button>
                 </Link>

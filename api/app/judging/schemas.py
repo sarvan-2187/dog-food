@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -106,6 +107,8 @@ class AssignmentPublic(BaseModel):
     # which is keyed on event_id -- the dashboard has no other route to it.
     event_id: int
     event_name: str
+    # The event's soft judging deadline, if the organizer set one.
+    due_at: Optional[datetime] = None
 
 
 class RubricGroup(BaseModel):

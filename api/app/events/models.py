@@ -44,6 +44,12 @@ class Event(SQLModel, table=True):
     # (a guest who confirmed an emailed link) or "open" (anyone with the link).
     # See voting/voter.py and THREAT-MODEL.md for what each one does and does not stop.
     voting_access: str = Field(default="authenticated")
+    # Opt-in sybil defences for account voters (THREAT-MODEL entry 25). Both off
+    # by default so an offline install behaves exactly as before.
+    voting_requires_verified: bool = Field(default=False)
+    voting_account_cutoff: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
     results_hidden_until: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )
@@ -51,6 +57,12 @@ class Event(SQLModel, table=True):
     # first time any read happens after results_hidden_until has passed -- checked
     # lazily on read, not via a background scheduler this app has no other need for.
     results_revealed_notified: bool = Field(default=False)
+    # When judges should be done. Soft: shown to judges and organizers, and a late
+    # score is flagged in the audit log, but scoring never locks - a missed
+    # deadline must not strand a project with no reviews.
+    judging_deadline: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
     created_by_id: int = Field(foreign_key="users.id")
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
     # "draft" | "published" (PLAN.md Phase 10.12). Defaults to published so seeded and

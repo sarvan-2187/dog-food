@@ -13,7 +13,7 @@ from ..db import get_session
 from ..events.models import Event
 from ..events.visibility import may_see_results
 from ..judging.models import JudgeAssignment, Rubric
-from ..submissions.models import Submission, SubmissionStatus
+from ..submissions.models import Submission, SubmissionStatus, in_competition
 from ..teams.models import Team, TeamMembership
 from ..timeutil import ensure_utc, utcnow
 from ..webhooks.service import notify
@@ -122,6 +122,7 @@ def submit_score(
         entity_id=assignment.submission_id,
         assignment_id=assignment_id,
         raw_total=score.raw_total,
+        late=_is_late(session, assignment.event_id),
     )
     session.commit()
     session.refresh(score)
@@ -170,6 +171,12 @@ def judge_scores(
     return [ScorePublic(**s.model_dump()) for s in scores]
 
 
+def _is_late(session: Session, event_id: int) -> bool:
+    """Past the event's soft judging deadline. Recorded, never enforced."""
+    event = session.get(Event, event_id)
+    return bool(event and event.judging_deadline and utcnow() > event.judging_deadline)
+
+
 # --------------------------------------------------------------------------
 # Results -- organizer/admin only
 # --------------------------------------------------------------------------
@@ -179,7 +186,12 @@ def _raw_by_judge(session: Session, event_id: int) -> dict[int, dict[int, float]
     if not assignment_ids:
         return {}
     raw: dict[int, dict[int, float]] = {}
-    for score in session.exec(select(Score).where(Score.assignment_id.in_(assignment_ids))):
+    # A disqualified entry's scores are kept (reinstating restores them) but left out
+    # here, so every judge's normalization is recomputed as if it were never judged.
+    competing = select(Submission.id).where(Submission.event_id == event_id, in_competition())
+    for score in session.exec(
+        select(Score).where(Score.assignment_id.in_(assignment_ids), Score.submission_id.in_(competing))
+    ):
         raw.setdefault(score.judge_id, {})[score.submission_id] = score.raw_total
     return raw
 
