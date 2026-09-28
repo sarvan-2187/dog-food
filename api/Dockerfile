@@ -22,6 +22,9 @@ COPY api/pytest.ini ./pytest.ini
 COPY fixtures ./fixtures
 # The official DOGFOOD fixtures stay at the repo root, where run.py looks.
 COPY fixtures.json ./fixtures/dogfood.json
+# Both acceptance checkers, so they can also be run from inside the container
+# with no network at all (docker-compose.offline-proof.yml, README).
+COPY run.py check_t3_t4.py .dogfood.toml fixtures.json ./checks/
 COPY --from=web /web/dist ./static
 
 EXPOSE 8000

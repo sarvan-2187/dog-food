@@ -1,0 +1,13 @@
+# Offline proof: the portal running with no route to the internet.
+#
+#   docker compose up -d --build        # once, with internet: pulls base images
+#   docker compose down                 # keeps the data volume
+#   docker compose -f docker-compose.yml -f docker-compose.offline-proof.yml up -d
+#
+# The stack's network becomes internal, so no container can reach anything
+# outside it. Ports aren't published on an internal network, so the checks run
+# inside the api container (README, "Runs offline"). Go back to normal with a
+# `docker compose down` and a plain `docker compose up -d`.
+networks:
+  default:
+    internal: true

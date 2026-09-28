@@ -1,0 +1,120 @@
+HackFlow T3/T4 check report (companion to run.py)
+portal: http://localhost:8000
+run at: 2026-09-28 17:41 UTC
+each line lists the requests behind it; replay any of them with curl
+
+--  setup: own event with six submitted entries ......... PASS
+      POST /api/events  as organizer  -> 201
+      POST /api/events/11/publish  as organizer  -> 200
+
+T3  voting toggle per event ............................. PASS
+      brief: Voting toggle per event
+      POST /api/submissions/49/vote  as participant0  -> 409
+      PATCH /api/events/11  as organizer  -> 200
+      POST /api/submissions/49/vote  as participant0  -> 200
+
+T3  results hidden during voting, in the API ............ PASS
+      brief: Hidden results during voting
+      GET /api/gallery?event_id=11  as anonymous  -> 200
+      GET /api/events/11/public-results  as anonymous  -> 425
+      GET /api/events/11/public-results  as participant0  -> 425
+      GET /api/gallery?event_id=11  as organizer  -> 200
+
+T3  randomized ordering, stable per seed ................ PASS
+      brief: Randomized project ordering
+      GET /api/gallery?event_id=11&order=random&seed=1  as anonymous  -> 200
+      GET /api/gallery?event_id=11&order=random&seed=1  as anonymous  -> 200
+      GET /api/gallery?event_id=11&order=random&seed=2  as anonymous  -> 200
+      GET /api/gallery?event_id=11&order=random&seed=3  as anonymous  -> 200
+      GET /api/gallery?event_id=11&order=random&seed=4  as anonymous  -> 200
+      GET /api/gallery?event_id=11&order=random&seed=5  as anonymous  -> 200
+
+T3  comments: add, list, delete own only ................ PASS
+      brief: Comments
+      POST /api/submissions/49/comments  as participant0  -> 201
+      GET /api/submissions/49/comments  as anonymous  -> 200
+      DELETE /api/comments/1  as participant2  -> 403
+      DELETE /api/comments/1  as participant0  -> 204
+
+T3  rate limiting on votes, with Retry-After ............ PASS
+      brief: Rate limiting
+      POST /api/submissions/51/vote (then DELETE), repeated  as participant1  -> 429 on vote 21
+
+T3  duplicate votes refused ............................. PASS
+      brief: Duplicate detection
+      POST /api/submissions/49/vote  as participant0  -> 409
+      GET /api/gallery?event_id=11  as organizer  -> 200
+
+T3  audit trail records votes and comments .............. PASS
+      brief: Audit trail
+      GET /api/audit?action=vote.cast&entity_type=submission&entity_id=49  as organizer  -> 200
+      GET /api/audit?action=comment.added&entity_type=submission&entity_id=49  as organizer  -> 200
+      GET /api/audit  as participant0  -> 403
+
+T2  track judge only sees their track ................... PASS
+      brief: Judging integrity (extra)
+      GET /api/auth/me  as judge_a  -> 200
+      POST /api/events/11/rubrics  as organizer  -> 201
+      POST /api/events/11/judges  as organizer  -> 201
+      PUT /api/events/11/judges/14/track  as organizer  -> 200
+      PATCH /api/events/11  as organizer  -> 200
+      POST /api/events/11/assignments  as organizer  -> 201
+      GET /api/judge/assignments  as judge_a  -> 200
+
+T2  no one else can read or write that score sheet ...... PASS
+      brief: Judging integrity (extra)
+      GET /api/assignments/124/sheet  as judge_b  -> 403
+      PUT /api/assignments/124/score  as judge_b  -> 403
+      PUT /api/assignments/124/score  as organizer  -> 403
+      PUT /api/assignments/124/score  as judge_a  -> 200
+
+T4  REST API with OpenAPI docs .......................... PASS
+      brief: REST API + OpenAPI docs
+      GET /openapi.json  as anonymous  -> 200
+      GET /docs  as anonymous  -> 200
+
+T4  API keys for integrations ........................... PASS
+      brief: REST API for integrations
+      POST /api/api-keys  as organizer  -> 201
+      GET /api/events/11/results  as api key  -> 200
+      DELETE /api/api-keys/1  as organizer  -> 204
+      GET /api/events/11/results  as api key  -> 401
+
+T4  certificate PDF with a verifiable serial ............ PASS
+      brief: Certificate generation
+      GET /api/submissions/49/certificate.pdf  as organizer  -> 200
+      GET /api/submissions/50/certificate.pdf  as participant0  -> 403
+      GET /api/certificates/HF-49-DF868CF80F  as anonymous  -> 404
+      PATCH /api/events/11  as organizer  -> 200
+      GET /api/certificates/HF-49-DF868CF80F  as anonymous  -> 200
+      GET /api/certificates/HF-49-DF868CF80A  as anonymous  -> 404
+
+T4  signed judge participation record ................... PASS
+      brief: Signed judge participation records
+      GET /api/events/11/judges/14/participation-record  as judge_a  -> 200
+      GET /api/public-key  as anonymous  -> 200
+      GET /api/events/11/judges/14/participation-record  as judge_b  -> 403
+      (Ed25519 signature verified offline)
+
+T4  bulk export and import, people and scores included .. PASS
+      brief: Bulk import/export
+      GET /api/events/11/export.json  as organizer  -> 200
+      POST /api/events/import  as organizer  -> 201
+      GET /api/events/12/export.json  as organizer  -> 200
+
+T4  a webhook for every action .......................... PASS
+      brief: Webhooks covering every action
+      POST /api/events/11/webhooks  as organizer  -> 201
+      PATCH /api/events/11  as organizer  -> 200
+      POST /api/submissions/49/comments  as participant0  -> 201
+      DELETE /api/events/11/webhooks/1  as organizer  -> 204
+      topics received: comment.added, event.updated, webhook.created
+
+T4  embeddable gallery widget ........................... PASS
+      brief: Embeddable gallery widget
+      GET /embed/events/t34-check-1790617268446  as anonymous  -> 200
+
+T2: 2 of 2 checks pass
+T3: 7 of 7 checks pass
+T4: 7 of 7 checks pass
+all checks pass

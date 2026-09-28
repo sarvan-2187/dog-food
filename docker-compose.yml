@@ -42,6 +42,11 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-}
     ports:
       - "8000:8000"
+    # Lets the portal reach this machine as host.docker.internal on Linux too
+    # (Docker Desktop has it built in). Only check_t3_t4.py's webhook receiver
+    # uses it; nothing outside this machine is contacted.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - keys_data:/app/keys
       - uploads_data:/app/uploads

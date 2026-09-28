@@ -1,7 +1,7 @@
 # HackFlow by Hackathon Raptors
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-3ddc84?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-559%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
+[![Tests](https://img.shields.io/badge/tests-561%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
 [![Python](https://img.shields.io/badge/python-3.12-1F2426?style=flat-square&logo=python&logoColor=white)](api/requirements.txt)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-1F2426?style=flat-square&logo=fastapi&logoColor=white)](api/requirements.txt)
 [![React](https://img.shields.io/badge/React-18-1F2426?style=flat-square&logo=react&logoColor=white)](web/package.json)
@@ -22,12 +22,21 @@ build. HackFlow is a DOGFOOD entry, not an official Hackathon Raptors product; s
 ## For evaluators
 
 **Claimed tiers: T1, T2, T3, T4.** The official checker verifies T1 and T2 (7 of 7 checks pass,
-[`acceptance-report.txt`](acceptance-report.txt)); T3 and T4 are judged by hand.
+[`acceptance-report.txt`](acceptance-report.txt)). `run.py` has no T3 or T4 checks, so its
+"claimed but not verified: T3 T4" line is expected. To back those claims anyway, we ship a
+second checker in the same style, [`check_t3_t4.py`](check_t3_t4.py): standard-library
+Python, plain HTTP against the running portal, one file you can read in ten minutes. It
+checks every T3 and T4 bullet (and two extra T2 integrity rules), and its committed report,
+[`t3-t4-report.txt`](t3-t4-report.txt), lists the exact request behind every PASS
+(16 of 16 pass).
 
 ```text
 dog-food/
 ├── .dogfood.toml            ← where things are, and what we claim (T1-T4)
 ├── acceptance-report.txt    ← what run.py printed: 7/7, T1 and T2 verified
+├── check_t3_t4.py           ← our companion checker for every T3 and T4 bullet
+├── t3-t4-report.txt         ← what it printed: 16/16, with the requests behind each PASS
+├── docker-compose.offline-proof.yml ← the same stack with no route to the internet
 ├── docker-compose.yml       ← one command to a seeded, working portal
 ├── .env.example             ← optional: real email and your public URL; not needed to run
 ├── README.md                ← this file: what it does, how to run it, honest limits
@@ -35,8 +44,8 @@ dog-food/
 ├── DATA-MODEL.md            ← the schema, and the ways data gets in and out
 ├── JUDGING.md               ← assignment, weighted scoring, normalization, defended
 ├── LICENSE                  ← MIT
-├── api/                     ← our backend: FastAPI + SQLModel, with api/tests/ (428 tests)
-├── web/                     ← our frontend: React + TypeScript, with web/tests/ (121 browser tests)
+├── api/                     ← our backend: FastAPI + SQLModel, with api/tests/ (429 tests)
+├── web/                     ← our frontend: React + TypeScript, with web/tests/ (122 browser tests)
 ├── docs/                    ← everything else: manual, threat model, credits, screenshots
 ├── fixtures.json, run.py    ← the organizers' dataset and checker, unchanged
 └── fixtures/                ← our extra demo events, users and teams
@@ -56,13 +65,65 @@ Every document, and what it is for:
 | [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Design tokens and component rules the UI is built from |
 | [docs/PLAN.md](docs/PLAN.md) | The execution spec, phase by phase, with every judgment call (`## Open Questions`) |
 
-**Verify it in three commands:**
+**Verify it in four commands:**
 
 ```bash
-docker compose up --build        # seeded portal at http://localhost:8000, no .env needed
-python run.py .dogfood.toml      # the official checker: 7/7
+docker compose up --build             # seeded portal at http://localhost:8000, no .env needed
+python run.py .dogfood.toml           # the official checker: 7/7
+python check_t3_t4.py .dogfood.toml   # every T3 and T4 bullet: 16/16
 docker compose exec api pytest tests/ -q
 ```
+
+Every brief bullet above T2, and the check in `check_t3_t4.py` that exercises it:
+
+| Tier | Brief bullet | Check (report line) | What it proves over HTTP |
+|---|---|---|---|
+| T3 | Voting toggle per event | voting toggle per event | A vote is 409 until the organizer opens voting, then 200 |
+| T3 | Hidden results during voting | results hidden during voting, in the API | Anonymous gallery reads carry `votes: null`, `/public-results` is 425 for anonymous and participants, the organizer sees the real count |
+| T3 | Randomized project ordering | randomized ordering, stable per seed | The same seed gives the same order; other seeds reshuffle |
+| T3 | Comments | comments: add, list, delete own only | Post 201, listed publicly, another user's delete 403, the author's 204 |
+| T3 | Rate limiting | rate limiting on votes, with Retry-After | The 21st vote in a minute is 429 with `Retry-After` |
+| T3 | Duplicate detection | duplicate votes refused | A second vote is 409 and the count stays at 1 |
+| T3 | Audit trail | audit trail records votes and comments | `vote.cast` and `comment.added` are in `/api/audit`; a participant gets 403 there |
+| T4 | REST API + OpenAPI docs | REST API with OpenAPI docs | `/openapi.json` has 80+ paths; `/docs` is the live explorer |
+| T4 | REST API for integrations | API keys for integrations | A Bearer key reads results; once revoked it gets 401 |
+| T4 | Certificate generation | certificate PDF with a verifiable serial | The PDF's serial is 404 at `/api/certificates/{serial}` until the reveal, 200 after; a forged serial is 404; off-team is 403 |
+| T4 | Signed judge participation records | signed judge participation record | Signed with the key at `/api/public-key` (verified offline with Ed25519 when `cryptography` is installed); another judge gets 403 |
+| T4 | Bulk import/export ("leave as easily as they arrived") | bulk export and import, people and scores included | Export, import as a copy, re-export: same teams, submissions, judges, assignments and scores |
+| T4 | Webhooks covering every action | a webhook for every action | A local receiver gets signed `webhook.created`, `event.updated` and `comment.added` posts |
+| T4 | Embeddable gallery widget | embeddable gallery widget | `/embed/events/{slug}` serves the entries and can be framed |
+| T2 | Judging integrity (extra) | track judge only sees their track; no one else can read or write that score sheet | A Tools judge is assigned exactly the Tools entries; another judge and the organizer get 403 on the sheet and score |
+
+The checker builds its own throwaway event under a unique slug, so it can be run any number
+of times and never touches the fixture event: `run.py` still passes after it. The webhook
+check posts to a receiver on your machine at `host.docker.internal`, which
+`docker-compose.yml` maps to the host on Linux as well.
+
+**Runs offline.** The first `docker compose up --build` needs the internet once, to pull the
+base images (`node:20-slim`, `python:3.12-slim`, `postgres:16-alpine`) and the pinned npm and
+pip packages. After that the portal needs no network at all: no CDN, no external fonts,
+email off by default, nothing phones home. To prove it, put the stack on a network with no
+route out and run both checkers inside the container:
+
+```bash
+docker compose down
+docker compose -f docker-compose.yml -f docker-compose.offline-proof.yml up -d
+docker compose exec api python -c "import urllib.request; urllib.request.urlopen('https://pypi.org', timeout=5)"
+#   fails: no route out
+docker compose exec -w /app/checks api python run.py .dogfood.toml                                  # 7/7
+docker compose exec -w /app/checks -e CHECK_WEBHOOK_HOST=localhost api python check_t3_t4.py .dogfood.toml  # 16/16
+```
+
+For a machine that is offline from the start, build once where there is internet and carry
+the images over: `docker compose build && docker save dog-food-api postgres:16-alpine -o hackflow.tar`,
+then `docker load -i hackflow.tar` and `docker compose up` on the offline machine.
+
+**Normalization proof (bonus).** [JUDGING.md](JUDGING.md#worked-on-the-official-dogfood-fixtures)
+shows the method and the maths, and a before/after table on the official fixture event:
+raw rank against normalized rank, with how far each project moved. Reproduce it from
+`GET /api/events/10/export/results.csv`, which lists `raw_mean` beside `z_bar` for every
+project. The same results carry each entry's place within its track (`track`, `track_rank`),
+for track prizes; see "Track standings" in JUDGING.md.
 
 **Fig. 02. Role isolation matrix.** What each caller gets back from the server, enforced by
 `require_role()` plus ownership and track checks, never by the UI hiding a control.
@@ -482,13 +543,13 @@ that lives only in the frontend.
 
 ## Status
 
-559 tests passing across three suites, run live against this exact stack:
+561 tests passing across three suites, run live against this exact stack:
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 428 passed |
+| Backend | `docker compose exec api pytest tests/ -v` | 429 passed |
 | Frontend unit | `cd web && npm test` | 10 passed |
-| Browser E2E | `cd web && npx playwright test` | 121 passed, 1 skipped |
+| Browser E2E | `cd web && npx playwright test` | 122 passed, 1 skipped |
 
 The skipped spec is the emailed password-reset flow. It needs the local test inbox, so
 it runs only when the stack is started with `docker-compose.mail.yml` (see "Email"
@@ -502,7 +563,9 @@ specs can time out; each passes on its own, and `--workers=1` or a fresh volume 
 `acceptance-report.txt` is the unedited output of the official DOGFOOD checker
 (`run.py`): 7 of 7 checks pass, and T1 and T2 are verified. T3 is claimed too. The
 organisers judge T3 and T4 by hand because `run.py` has no checks for them, so the
-report's "claimed but not verified: T3, T4" line is expected. T4 is claimed now that the
+report's "claimed but not verified: T3, T4" line is expected. `t3-t4-report.txt` is the
+unedited output of our own `check_t3_t4.py` against a fresh stack: 16 of 16 checks pass,
+covering every T3 and T4 bullet (see [For evaluators](#for-evaluators)). T4 is claimed now that the
 embeddable gallery widget exists (`/embed/events/{slug}`, copy the snippet from **Event
 settings → Embed on your site**). The earlier self-issued report, written
 before the checker was published, is kept at `docs/self-test-report.txt`.
