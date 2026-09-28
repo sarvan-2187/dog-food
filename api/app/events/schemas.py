@@ -25,6 +25,7 @@ class EventCreate(BaseModel):
     tracks: List[str] = []
     prize_config: Dict[str, Any] = {}
     max_team_size: int = 4
+    cover_image_url: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -71,6 +72,7 @@ class EventUpdate(BaseModel):
     tracks: Optional[List[str]] = None
     prize_config: Optional[Dict[str, Any]] = None
     max_team_size: Optional[int] = None
+    cover_image_url: Optional[str] = None
     voting_enabled: Optional[bool] = None
     results_hidden_until: Optional[datetime] = None
 

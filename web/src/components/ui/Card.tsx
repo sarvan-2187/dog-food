@@ -19,18 +19,27 @@ import { cn } from '../../lib/cn';
 export function Card({
   title,
   meta,
+  media,
   footer,
   className,
   children,
 }: {
   title?: ReactNode;
   meta?: ReactNode;
+  /**
+   * Full-bleed art above the header (an event's cover, say). Sits outside the
+   * padded body so it meets the card's edges, and above the title so a row of
+   * cards lines its images up even when one title wraps to two lines and
+   * another doesn't.
+   */
+  media?: ReactNode;
   footer?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className={cn('flex h-full flex-col rounded-lg border border-border bg-surface-0', className)}>
+    <section className={cn('flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface-0', className)}>
+      {media}
       {(title || meta) && (
         <header className="flex items-baseline justify-between gap-4 border-b border-border-subtle px-card py-4">
           {title && <h3 className="text-h3 text-ink-800">{title}</h3>}

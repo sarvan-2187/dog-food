@@ -150,3 +150,19 @@
     border-width: 0;
   }
 }
+
+/* Slow drift for the landing hero's photo collage. */
+@keyframes hero-drift {
+  0%, 100% { transform: translateY(0) scale(1.02); }
+  50%      { transform: translateY(-10px) scale(1.05); }
+}
+
+.hero-drift {
+  animation: hero-drift 14s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-drift {
+    animation: none;
+  }
+}

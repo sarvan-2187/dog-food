@@ -4,7 +4,9 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, Logo, MetricTile } from '../components/ui';
+import { WordmarkMerge } from '../components/WordmarkMerge';
 import { api } from '../lib/api';
+import { cn } from '../lib/cn';
 import { useAuth } from '../lib/auth-context';
 import type { EventRecord, Submission } from '../types';
 
@@ -69,7 +71,21 @@ export function LandingPage() {
   useEffect(() => {
     api
       .get<EventRecord[]>('/api/events')
-      .then((events) => setEvent(events[0] ?? null))
+      .then((events) => {
+        // The API orders by start date, so events[0] is whatever ran longest
+        // ago - a landing page showing last spring's finished event as "the
+        // current event" reads as a dead site. Prefer the next event that is
+        // still open, and only fall back to the most recent finished one when
+        // nothing is running.
+        const now = Date.now();
+        const open = events
+          .filter((e) => new Date(e.end_at).getTime() > now)
+          .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+        const past = [...events].sort(
+          (a, b) => new Date(b.end_at).getTime() - new Date(a.end_at).getTime(),
+        );
+        setEvent(open[0] ?? past[0] ?? null);
+      })
       .catch(() => setEvent(null));
     api
       .get<Submission[]>('/api/gallery')
@@ -136,11 +152,12 @@ export function LandingPage() {
     return () => ctx.revert();
   }, [reduceMotion]);
 
-  const primaryTo = user ? '/events' : '/register';
-  const primaryLabel = user ? 'Go to your events' : 'Get started';
+  const primaryTo = user ? '/dashboard' : '/register';
+  const primaryLabel = user ? 'Go to your dashboard' : 'Get started';
 
   return (
     <div className="flex flex-col">
+      <WordmarkMerge />
       {/* 2. Hero — RiskSentinel's centered composition, our ink/cream palette,
           and raptors.dev's real hero-background mesh (sampled live from
           their bg-light.png: peach FDEAD9, purple DFC0F1, mint B8EEDA,
@@ -209,6 +226,49 @@ export function LandingPage() {
             Built for organizers, judges, and the teams building.
           </motion.p>
         </motion.div>
+      </section>
+
+      {/* 2b. Community band. Real hackathon photographs (CC-licensed, see
+          CREDITS.md) rather than stock illustration: this product is about
+          rooms full of people building, and the landing page should look like
+          one. */}
+      <section className="border-y border-border-subtle bg-surface-0 px-4 py-section md:px-6">
+        <div className="mx-auto max-w-[1200px]">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-eyebrow uppercase text-ink-500">Built with the community</p>
+              <h2 className="mt-3 max-w-[20ch] text-h1 text-ink-900">
+                Run by the people who <span className="font-serif italic">show up at 2am.</span>
+              </h2>
+            </div>
+            <p className="max-w-[40ch] text-body text-ink-600">
+              Campus jams, company hack weeks, 500-person invitationals — the same
+              submission-to-verdict pipeline underneath each one.
+            </p>
+          </div>
+
+          {/* Deliberately uneven: a tidy 3x2 grid of equal boxes reads as a stock
+              photo shelf, a mixed-span mosaic reads as a scrapbook. */}
+          <div className="mt-10 grid auto-rows-[160px] grid-cols-2 gap-3 md:auto-rows-[190px] md:grid-cols-4">
+            <CommunityShot src="/images/community/wide-room.jpg" className="col-span-2 row-span-2" />
+            <CommunityShot src="/images/community/pair-building.jpg" />
+            <CommunityShot src="/images/community/chalkboard-huddle.jpg" />
+            <CommunityShot src="/images/community/demo-stage.jpg" className="col-span-2" />
+            <CommunityShot src="/images/community/opening-hall.jpg" />
+            <CommunityShot src="/images/community/winners-lineup.jpg" />
+            <CommunityShot src="/images/community/team-laptops.jpg" />
+            <CommunityShot src="/images/community/certificate-team.jpg" />
+          </div>
+
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+            <p className="text-meta text-ink-500">
+              Photos from real hackathons, used under Creative Commons — see CREDITS.md.
+            </p>
+            <Link to="/events" className="text-body text-ink-900 underline underline-offset-4">
+              Browse open events
+            </Link>
+          </div>
+        </div>
       </section>
 
       {/* 3. Product proof */}
@@ -604,5 +664,22 @@ function FaqAccordion({ items }: { items: FaqItem[] }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * One tile in the community mosaic. Decorative, so alt is empty and the image
+ * is skipped by screen readers - the surrounding copy carries the meaning.
+ */
+function CommunityShot({ src, className }: { src: string; className?: string }) {
+  return (
+    <span className={cn('group relative block overflow-hidden rounded-lg bg-surface-100', className)}>
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        className="h-full w-full object-cover transition-transform duration-slow ease-standard group-hover:scale-105"
+      />
+    </span>
   );
 }

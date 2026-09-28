@@ -30,6 +30,12 @@ class Event(SQLModel, table=True):
     # PLAN.md Phase 7.2: matches this hackathon's own "Team Size: 1-4" rule as the default,
     # so existing seeded events keep behaving exactly as they do today with no fixture change.
     max_team_size: int = Field(default=4)
+    # Cover art for the event card. A URL, not an upload: organizers overwhelmingly
+    # already have a flyer hosted somewhere, and the /media store exists for
+    # user-generated submission images, not for event chrome. None is a normal
+    # state -- the web app falls back to a bundled photo (web/src/lib/event-cover.ts)
+    # rather than rendering a hole in the grid.
+    cover_image_url: Optional[str] = Field(default=None)
     # Phase 3. voting_enabled gates the vote endpoints; results_hidden_until
     # gates who may see vote counts and standings, enforced in the response
     # itself rather than by hiding a control in the UI.
