@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { EligibilityCard } from '../components/EligibilityCard';
 import { JudgeInvitePanel } from '../components/JudgeInvitePanel';
 import { JudgePanelCard } from '../components/JudgePanelCard';
 import { WinnersEditor } from '../components/EventSections';
@@ -226,6 +227,7 @@ function EventResults() {
           rather than rendering against an id that isn't known yet. */}
       {event && (
         <>
+          <EligibilityCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} onChanged={load} />
           <JudgePanelCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
           <JudgeInvitePanel eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
           <WinnersEditor eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />

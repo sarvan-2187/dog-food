@@ -81,6 +81,17 @@ export interface Submission {
   repo_url: string;
   demo_url: string;
   video_url: string;
+  disqualified_at?: string | null;
+  disqualified_reason?: string;
+}
+
+/** An organizer's view of one submitted entry's eligibility. */
+export interface EligibilityRow {
+  submission_id: number;
+  title: string;
+  team_name: string;
+  disqualified_at: string | null;
+  disqualified_reason: string;
 }
 
 // --- Phase 2: judging ------------------------------------------------------

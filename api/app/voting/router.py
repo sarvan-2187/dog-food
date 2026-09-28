@@ -12,7 +12,7 @@ from ..auth import Role, User, get_current_user, get_current_user_optional, mail
 from ..db import get_session
 from ..events.models import Event
 from ..events.visibility import may_see_results, results_are_public
-from ..submissions.models import Submission, SubmissionStatus
+from ..submissions.models import Submission, in_competition
 from ..teams.models import Team
 from ..timeutil import utcnow
 from ..webhooks.service import notify
@@ -60,7 +60,7 @@ def _rate_limit(limiter, key: str, what: str) -> None:
 
 def _votable_submission(session: Session, submission_id: int) -> tuple[Submission, Event]:
     submission = session.get(Submission, submission_id)
-    if not submission or submission.status != SubmissionStatus.submitted:
+    if not submission or not submission.competing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That submission is not in the public gallery.")
     event = session.get(Event, submission.event_id)
     if not event:
@@ -352,7 +352,7 @@ def public_results(
 
     submissions = session.exec(
         select(Submission).where(
-            Submission.event_id == event_id, Submission.status == SubmissionStatus.submitted
+            Submission.event_id == event_id, in_competition()
         )
     ).all()
     counts = {s.id: _count_votes(session, s.id) for s in submissions}
