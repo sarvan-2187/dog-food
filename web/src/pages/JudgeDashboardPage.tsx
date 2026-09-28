@@ -6,6 +6,7 @@ import { Badge, Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import type { Assignment, JudgeEvent, JudgeProgress } from '../types';
+import { DueBadge } from '../components/DueBadge';
 
 export function JudgeDashboardPage() {
   return (
@@ -62,7 +63,10 @@ function AssignmentRow({ assignment }: { assignment: Assignment }) {
         {assignment.scored ? (
           <Badge status="success"><span aria-hidden="true">&#10003;</span> Scored</Badge>
         ) : (
-          <Badge status="warning">Not scored</Badge>
+          <>
+            <DueBadge at={assignment.due_at} />
+            <Badge status="warning">Not scored</Badge>
+          </>
         )}
         <Link to={`/assignments/${assignment.id}/score`}>
           <Button variant={assignment.scored ? 'secondary' : 'primary'} size="sm">
@@ -169,6 +173,7 @@ function JudgingEvents() {
             <Link to={`/events/${e.slug}`} className="text-label text-ink-800 hover:text-brand-500">
               {e.name}
             </Link>
+            <DueBadge at={e.judging_deadline} />
             <span className="text-meta text-ink-500">
               Judging opens {new Date(e.end_at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </span>

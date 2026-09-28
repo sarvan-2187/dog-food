@@ -61,6 +61,7 @@ class EventJudges(BaseModel):
     assigned: int
     judges: list[EventJudgePublic]
     email_enabled: bool
+    judging_deadline: Optional[datetime] = None
 
 
 @router.get("/api/events/{event_id}/judges", response_model=EventJudges)
@@ -69,7 +70,7 @@ def list_event_judges(
     _: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> EventJudges:
-    _event_or_404(session, event_id)
+    event = _event_or_404(session, event_id)
     members = list(session.exec(select(EventJudge).where(EventJudge.event_id == event_id)))
     assignments = list(session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id)))
     assignment_ids = [a.id for a in assignments]
@@ -118,6 +119,7 @@ def list_event_judges(
         assigned=len(assignments),
         judges=rows,
         email_enabled=mailer.CONFIG.enabled,
+        judging_deadline=event.judging_deadline,
     )
 
 
@@ -258,10 +260,11 @@ def remind_judge(
         )
     first = judge.name.split()[0] if judge.name.strip() else "there"
     plural = "" if remaining == 1 else "s"
+    due = f" Scores are due by {event.judging_deadline:%d %b %Y, %H:%M} UTC." if event.judging_deadline else ""
     text = (
         f"Hi {first},\n\n"
         f"A reminder from the organizers of {event.name}: you have {remaining} project{plural} "
-        f"still to score.\n\n{mailer.APP_BASE_URL}/judge\n\nThank you for judging.\n\n- HackFlow\n"
+        f"still to score.{due}\n\n{mailer.APP_BASE_URL}/judge\n\nThank you for judging.\n\n- HackFlow\n"
     )
     background_tasks.add_task(
         mailer.send_quietly, judge.email, f"{remaining} project{plural} left to score - {event.name}", text
@@ -328,6 +331,7 @@ class JudgeEvent(BaseModel):
     slug: str
     end_at: datetime
     judging_open: bool
+    judging_deadline: Optional[datetime] = None
 
 
 @router.get("/api/judge/events", response_model=list[JudgeEvent])
@@ -342,6 +346,7 @@ def my_judging_events(
         select(Event).join(EventJudge, EventJudge.event_id == Event.id).where(EventJudge.user_id == user.id)
     ).all()
     return [
-        JudgeEvent(event_id=e.id, name=e.name, slug=e.slug, end_at=e.end_at, judging_open=now >= e.end_at)
+        JudgeEvent(event_id=e.id, name=e.name, slug=e.slug, end_at=e.end_at, judging_open=now >= e.end_at,
+                   judging_deadline=e.judging_deadline)
         for e in sorted(events, key=lambda e: e.end_at)
     ]

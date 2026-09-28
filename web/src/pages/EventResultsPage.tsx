@@ -118,6 +118,16 @@ function EventResults() {
     }
   }
 
+  async function saveDeadline(judging_deadline: string | null) {
+    if (!event) return;
+    try {
+      setEvent(await api.patch<EventRecord>(`/api/events/${event.id}`, { judging_deadline }));
+      setToast({ message: judging_deadline ? 'Judging deadline saved.' : 'Judging deadline removed.', ok: true });
+    } catch (err) {
+      setToast({ message: err instanceof ApiError ? err.message : 'Could not save the deadline.', ok: false });
+    }
+  }
+
   async function download(file: string, label: string) {
     if (!event) return;
     setDownloading(file);
@@ -159,10 +169,18 @@ function EventResults() {
             Assignment gives each submitted entry three judges, never one from the submitting team. Running it again
             only fills gaps - it never duplicates existing assignments.
           </p>
-          <div>
+          <div className="flex flex-wrap items-end gap-3">
             <Button variant="primary" loading={assigning} loadingLabel="Assigning judges..." onClick={runAssignment}>
               Assign judges
             </Button>
+            <Input
+              label="Judges should finish by"
+              type="datetime-local"
+              className="md:w-64"
+              value={event?.judging_deadline ? toLocalInput(event.judging_deadline) : ''}
+              onChange={(e) => saveDeadline(e.target.value ? new Date(e.target.value).toISOString() : null)}
+              hint="Shown to judges; late scores still count. Leave empty for none."
+            />
           </div>
           {summary && summary.coverage_warnings.length > 0 && (
             <div role="alert" className="rounded-md border border-border bg-warning-bg px-4 py-3 text-body text-warning-fg">

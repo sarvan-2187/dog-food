@@ -122,6 +122,7 @@ def submit_score(
         entity_id=assignment.submission_id,
         assignment_id=assignment_id,
         raw_total=score.raw_total,
+        late=_is_late(session, assignment.event_id),
     )
     session.commit()
     session.refresh(score)
@@ -168,6 +169,12 @@ def judge_scores(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Judges can only read their own scores.")
     scores = session.exec(select(Score).where(Score.judge_id == judge_id).order_by(Score.id))
     return [ScorePublic(**s.model_dump()) for s in scores]
+
+
+def _is_late(session: Session, event_id: int) -> bool:
+    """Past the event's soft judging deadline. Recorded, never enforced."""
+    event = session.get(Event, event_id)
+    return bool(event and event.judging_deadline and utcnow() > event.judging_deadline)
 
 
 # --------------------------------------------------------------------------

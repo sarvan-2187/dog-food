@@ -76,6 +76,7 @@ class EventUpdate(BaseModel):
     voting_enabled: Optional[bool] = None
     voting_access: Optional[Literal["authenticated", "email", "open"]] = None
     results_hidden_until: Optional[datetime] = None
+    judging_deadline: Optional[datetime] = None
     rules: Optional[str] = None
 
     @field_validator("name")
@@ -97,7 +98,7 @@ class EventUpdate(BaseModel):
             raise ValueError("Max team size must be between 1 and 20.")
         return v
 
-    @field_validator("start_at", "end_at", "results_hidden_until")
+    @field_validator("start_at", "end_at", "results_hidden_until", "judging_deadline")
     @classmethod
     def as_utc(cls, v: Optional[datetime]) -> Optional[datetime]:
         return v if v is None else ensure_utc(v)
