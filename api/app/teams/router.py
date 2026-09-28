@@ -7,31 +7,13 @@ from ..db import get_session
 from ..events.models import Event
 from ..timeutil import utcnow
 from .deps import require_team_member
-from .models import Team, TeamMembership
-from .schemas import TeamCreate, TeamJoin, TeamMemberPublic, TeamPublic
+from ..storage.models import StoredFile
+from ..storage.service import storage
+from ..submissions.models import Submission, SubmissionStatus
+from .models import Team, TeamMembership, _default_expiry, _invite_code
+from .schemas import CaptainChange, TeamCreate, TeamJoin, TeamMemberPublic, TeamPublic, TeamRename
 
 router = APIRouter(tags=["teams"])
-
-
-def _team_in_event(session: Session, user_id: int, event_id: int) -> Team | None:
-    """The team this person is already on for this event, if any.
-
-    Phase 10.2. One entrant, one team, per event. Membership rows carry only a
-    team_id, so "already in this event" has to be resolved through the teams
-    table rather than read off the membership directly. Enforced here on the
-    server, because the consequence of getting it wrong is a person competing
-    against themselves and, downstream, the conflict-of-interest rule in
-    assignment silently protecting the wrong set of submissions.
-    """
-    memberships = session.exec(select(TeamMembership).where(TeamMembership.user_id == user_id)).all()
-    if not memberships:
-        return None
-    return session.exec(
-        select(Team).where(
-            Team.id.in_([m.team_id for m in memberships]),
-            Team.event_id == event_id,
-        )
-    ).first()
 
 
 def _team_public(session: Session, team: Team) -> TeamPublic:
@@ -49,6 +31,24 @@ def _team_public(session: Session, team: Team) -> TeamPublic:
         invite_code=team.invite_code,
         members=members,
         max_team_size=event.max_team_size if event else 4,
+        captain_id=team.captain_id,
+        invite_code_expires_at=team.invite_code_expires_at,
+    )
+
+
+def _team_in_event(session: Session, event_id: int, user_id: int) -> "Team | None":
+    """The team `user_id` is already on in this event, if any (PLAN.md 10.2)."""
+    return session.exec(
+        select(Team)
+        .join(TeamMembership, TeamMembership.team_id == Team.id)
+        .where(Team.event_id == event_id, TeamMembership.user_id == user_id)
+    ).first()
+
+
+def _already_on_a_team(team: Team) -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        f"You're already on {team.name} for this event. Leave it first to join another team.",
     )
 
 
@@ -62,16 +62,13 @@ def create_team(
     event = session.get(Event, event_id)
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
+    if event.status != "published":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
     if event.end_at < utcnow():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This event's deadline has passed.")
-    already = _team_in_event(session, user.id, event_id)
-    if already:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"You are already on a team for this event ({already.name}). "
-            "Leave that team before creating another one.",
-        )
-    team = Team(event_id=event_id, name=payload.name)
+    if existing_team := _team_in_event(session, event_id, user.id):
+        raise _already_on_a_team(existing_team)
+    team = Team(event_id=event_id, name=payload.name, captain_id=user.id)
     session.add(team)
     session.commit()
     session.refresh(team)
@@ -97,14 +94,11 @@ def join_team(
     ).first()
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "You are already a member of this team.")
-    already = _team_in_event(session, user.id, team.event_id)
-    if already:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"You are already on a team for this event ({already.name}). "
-            "Leave that team before joining another one.",
-        )
+    if other := _team_in_event(session, team.event_id, user.id):
+        raise _already_on_a_team(other)
     event = session.get(Event, team.event_id)
+    if event and event.end_at < utcnow():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This event's deadline has passed.")
     max_size = event.max_team_size if event else 4
     current_size = len(session.exec(select(TeamMembership).where(TeamMembership.team_id == team.id)).all())
     if current_size >= max_size:
@@ -136,4 +130,167 @@ def get_team(
     ).first()
     if not is_member and user.role not in (Role.organizer, Role.admin):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to view this team.")
+    return _team_public(session, team)
+
+
+# --------------------------------------------------------------------------
+# Team management (PLAN.md Phase 10.9). Any member may leave; the captain -
+# whoever created the team - may rename it, remove members, hand the role on
+# and replace the invite link. Nothing changes after the deadline.
+# --------------------------------------------------------------------------
+
+def _open_team(session: Session, team: Team) -> Event:
+    event = session.get(Event, team.event_id)
+    if event is None or event.end_at < utcnow():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This event's deadline has passed, so the team is locked.")
+    return event
+
+
+def _require_captain(team: Team, user: User) -> None:
+    if team.captain_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the team captain can do that.")
+
+
+def _members(session: Session, team_id: int) -> list[TeamMembership]:
+    return list(
+        session.exec(
+            select(TeamMembership).where(TeamMembership.team_id == team_id).order_by(TeamMembership.joined_at, TeamMembership.id)
+        )
+    )
+
+
+def _delete_team(session: Session, team: Team) -> None:
+    """Only ever reached for a team whose entry was never submitted, so nothing
+    judged, voted on or commented on is lost - just a draft and its image."""
+    submission = session.exec(select(Submission).where(Submission.team_id == team.id)).first()
+    if submission is not None:
+        for stored in session.exec(
+            select(StoredFile).where(StoredFile.owner_type == "submission", StoredFile.owner_id == submission.id)
+        ):
+            storage.delete(stored.key)
+            session.delete(stored)
+        session.delete(submission)
+    session.delete(team)
+
+
+def _remove_member(session: Session, team: Team, membership: TeamMembership) -> bool:
+    """Returns True if the team was deleted because nobody was left."""
+    remaining = [m for m in _members(session, team.id) if m.id != membership.id]
+    if not remaining:
+        submitted = session.exec(
+            select(Submission).where(Submission.team_id == team.id, Submission.status == SubmissionStatus.submitted)
+        ).first()
+        if submitted is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "You're the last member and your team has already submitted, so leaving would abandon that entry. "
+                "Ask an organizer if you need it withdrawn.",
+            )
+    session.delete(membership)
+    session.flush()
+    if not remaining:
+        _delete_team(session, team)
+        return True
+    if team.captain_id == membership.user_id:
+        team.captain_id = remaining[0].user_id  # earliest remaining member
+        session.add(team)
+    return False
+
+
+@router.post("/api/teams/{team_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
+def leave_team(
+    team_id: int,
+    user: User = Depends(get_current_user),
+    team: Team = Depends(require_team_member),
+    session: Session = Depends(get_session),
+) -> None:
+    _open_team(session, team)
+    membership = session.exec(
+        select(TeamMembership).where(TeamMembership.team_id == team_id, TeamMembership.user_id == user.id)
+    ).one()
+    deleted = _remove_member(session, team, membership)
+    record(session, "team.left", actor=user, entity_type="team", entity_id=team_id, team_deleted=deleted)
+    session.commit()
+
+
+@router.delete("/api/teams/{team_id}/members/{member_id}", response_model=TeamPublic)
+def remove_member(
+    team_id: int,
+    member_id: int,
+    user: User = Depends(get_current_user),
+    team: Team = Depends(require_team_member),
+    session: Session = Depends(get_session),
+) -> TeamPublic:
+    _open_team(session, team)
+    _require_captain(team, user)
+    if member_id == user.id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "To take yourself off the team, use Leave team instead.")
+    membership = session.exec(
+        select(TeamMembership).where(TeamMembership.team_id == team_id, TeamMembership.user_id == member_id)
+    ).first()
+    if membership is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person isn't on this team.")
+    _remove_member(session, team, membership)
+    record(session, "team.member_removed", actor=user, entity_type="team", entity_id=team_id, removed_user_id=member_id)
+    session.commit()
+    session.refresh(team)
+    return _team_public(session, team)
+
+
+@router.patch("/api/teams/{team_id}", response_model=TeamPublic)
+def rename_team(
+    team_id: int,
+    payload: TeamRename,
+    user: User = Depends(get_current_user),
+    team: Team = Depends(require_team_member),
+    session: Session = Depends(get_session),
+) -> TeamPublic:
+    _open_team(session, team)
+    _require_captain(team, user)
+    old_name = team.name
+    team.name = payload.name
+    session.add(team)
+    record(session, "team.renamed", actor=user, entity_type="team", entity_id=team_id, old_name=old_name, name=team.name)
+    session.commit()
+    session.refresh(team)
+    return _team_public(session, team)
+
+
+@router.post("/api/teams/{team_id}/captain", response_model=TeamPublic)
+def change_captain(
+    team_id: int,
+    payload: CaptainChange,
+    user: User = Depends(get_current_user),
+    team: Team = Depends(require_team_member),
+    session: Session = Depends(get_session),
+) -> TeamPublic:
+    _open_team(session, team)
+    _require_captain(team, user)
+    if not any(m.user_id == payload.user_id for m in _members(session, team_id)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person isn't on this team.")
+    team.captain_id = payload.user_id
+    session.add(team)
+    record(session, "team.captain_changed", actor=user, entity_type="team", entity_id=team_id, captain_id=payload.user_id)
+    session.commit()
+    session.refresh(team)
+    return _team_public(session, team)
+
+
+@router.post("/api/teams/{team_id}/invite-code", response_model=TeamPublic)
+def new_invite_code(
+    team_id: int,
+    user: User = Depends(get_current_user),
+    team: Team = Depends(require_team_member),
+    session: Session = Depends(get_session),
+) -> TeamPublic:
+    """The old link stops working at once - for a link that went further than
+    intended, or one that expired."""
+    _open_team(session, team)
+    _require_captain(team, user)
+    team.invite_code = _invite_code()
+    team.invite_code_expires_at = _default_expiry()
+    session.add(team)
+    record(session, "team.invite_code_changed", actor=user, entity_type="team", entity_id=team_id)
+    session.commit()
+    session.refresh(team)
     return _team_public(session, team)

@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../com
 import { Badge, Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
-import type { Assignment, JudgeProgress } from '../types';
+import type { Assignment, JudgeEvent, JudgeProgress } from '../types';
 
 export function JudgeDashboardPage() {
   return (
@@ -144,6 +144,41 @@ function ParticipationRecords({
   );
 }
 
+/**
+ * PLAN.md 10.3: judging opens only once an event's submissions close, so a
+ * judge on an event that's still running sees when that will be, rather than
+ * an empty list and no explanation.
+ */
+function JudgingEvents() {
+  const [events, setEvents] = useState<JudgeEvent[] | null>(null);
+
+  useEffect(() => {
+    api
+      .get<JudgeEvent[]>('/api/judge/events')
+      .then(setEvents)
+      .catch(() => setEvents([]));
+  }, []);
+
+  const waiting = (events ?? []).filter((e) => !e.judging_open);
+  if (waiting.length === 0) return null;
+  return (
+    <Card title="Coming up" meta={`${waiting.length} event${waiting.length === 1 ? '' : 's'}`}>
+      <ul className="flex flex-col divide-y divide-border-subtle">
+        {waiting.map((e) => (
+          <li key={e.event_id} className="flex flex-wrap items-baseline justify-between gap-2 py-3 first:pt-0 last:pb-0">
+            <Link to={`/events/${e.slug}`} className="text-label text-ink-800 hover:text-brand-500">
+              {e.name}
+            </Link>
+            <span className="text-meta text-ink-500">
+              Judging opens {new Date(e.end_at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 function JudgeDashboard() {
   const { user } = useAuth();
   const [progress, setProgress] = useState<JudgeProgress | null>(null);
@@ -164,6 +199,8 @@ function JudgeDashboard() {
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 py-section md:px-6">
       <h1 className="text-h1 text-ink-900">Judging</h1>
+
+      <JudgingEvents />
 
       {progress === null && !error && <SkeletonRows rows={4} cols={2} />}
       {error && <ErrorState description={error} onRetry={load} />}

@@ -22,6 +22,47 @@ exist — a schema change means a fresh `docker compose down -v` in development.
 | `role` | enum | `participant` \| `judge` \| `organizer` \| `admin`. Public registration always creates `participant`; the other three roles exist only via `fixtures/users.json` seeding |
 | `avatar_url` | str, nullable | Set via the `stored_files` upload flow below; `null` until the user uploads one |
 | `created_at` | timestamptz | |
+| `session_version` | int, default 0 | Signed into every session cookie; incremented on each password change or reset, which invalidates every older cookie at once (PLAN.md Phase 9.1). Added to existing volumes at boot by `db.add_missing_columns()` |
+
+### `password_resets` (`api/app/auth/models.py`)
+
+One row per reset link, whichever way it was issued (PLAN.md Phase 9).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `user_id` | int, FK → `users.id` | The account the link resets |
+| `token_hash` | str, unique | SHA-256 hex of the token. The raw token exists only in the email, the organizer's one-time response, or the CLI's output — never in the database |
+| `channel` | enum | `email` (self-service, 30 min) \| `organizer` (hand-delivered, 60 min) \| `cli` (break-glass, 60 min) |
+| `issued_by_id` | int, FK → `users.id`, nullable | The organizer/admin who issued it; `null` for `email` and `cli` |
+| `created_at`, `expires_at` | timestamptz | Issuing a new link sets any earlier unused link's `expires_at` to now |
+| `used_at` | timestamptz, nullable | Set on redeem; a link with `used_at` set is dead. Previewing a link never sets it |
+
+### PLAN.md Phase 10 additions
+
+**New tables**
+
+| Table | Columns | Notes |
+|---|---|---|
+| `event_judges` | `event_id`, `user_id`, `added_by_id`, `added_at` | One judge on one event's panel, unique on (`event_id`, `user_id`). Assignment draws only from here (10.1). Backfilled at boot from existing assignments. |
+| `judge_conflicts` | `event_id`, `judge_id`, `submission_id`, `reason`, `created_at` | A judge's declared conflict of interest, unique on (`judge_id`, `submission_id`). Assignment treats it like a same-team conflict (10.7). |
+| `awards` | `event_id`, `prize_rank`, `submission_id`, `note`, `awarded_by_id`, `updated_at` | One prize (the label from `prize_config`) given to one submission, unique on (`event_id`, `prize_rank`). Public only once results are visible (10.6). |
+| `announcements` | `event_id`, `author_id`, `title`, `body`, `emailed_count`, `created_at`, `updated_at` | Plain text, never rendered as HTML (10.11). |
+
+**New columns** (added to existing volumes at boot by `db.add_missing_columns()`)
+
+| Column | Notes |
+|---|---|
+| `judge_invites.event_id` | The event a judge invitation is for. Null on pre-10.1 and organizer invitations. |
+| `judge_invites.grants_role` | `judge` \| `organizer` (10.10). |
+| `team_memberships.event_id` | Filled from the team by a `before_insert` listener. A unique index on (`event_id`, `user_id`) enforces one team per person per event (10.2). The index is created only once existing data has no duplicates; until then the admin Users page lists them. |
+| `teams.captain_id` | The creator, or the earliest member for pre-10.9 teams (10.9). |
+| `submissions.repo_url`, `demo_url`, `video_url` | Optional, http(s) only, at most 500 characters (10.5). |
+| `events.status` | `draft` \| `published`. Existing events are backfilled as published; new and imported events start as drafts (10.12). |
+| `events.rules` | Plain text (10.8). |
+| `users.is_active` | False blocks sign-in and ends every session (10.10). |
+
+Rubric criteria (JSON) may also carry a `description` (10.8). No schema change was needed.
 
 ### `events` (`api/app/events/models.py`)
 

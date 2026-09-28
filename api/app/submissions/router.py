@@ -17,6 +17,7 @@ from ..voting.models import Comment, Vote
 from ..voting.schemas import GalleryItem
 from ..webhooks.service import notify
 from .models import Submission, SubmissionStatus
+from ..scoring.awards import awards_by_submission
 from .schemas import SubmissionPublic, SubmissionUpdate
 
 router = APIRouter(tags=["submissions"])
@@ -50,6 +51,9 @@ def _public(session: Session, sub: Submission) -> SubmissionPublic:
         created_at=sub.created_at,
         updated_at=sub.updated_at,
         image_url=image_url_for(session, "submission", sub.id),
+        repo_url=sub.repo_url,
+        demo_url=sub.demo_url,
+        video_url=sub.video_url,
     )
 
 
@@ -133,6 +137,8 @@ def gallery(
                 Submission.description.ilike(like, escape="\\"),
             )
         )
+    # PLAN.md 10.12: nothing from a draft event is public.
+    stmt = stmt.join(Event, Event.id == Submission.event_id).where(Event.status == "published")
     rows = list(session.exec(stmt.order_by(Submission.updated_at.desc())))
     if not rows:
         return []
@@ -169,6 +175,7 @@ def gallery(
         rows.sort(key=lambda r: (-votes.get(r.id, 0), r.id))
 
     images = image_urls_for(session, "submission", [r.id for r in rows])
+    won = awards_by_submission(session, [r.id for r in rows if visible.get(r.event_id, False)])
     return [
         GalleryItem(
             id=r.id,
@@ -182,6 +189,10 @@ def gallery(
             votes=votes.get(r.id, 0) if visible.get(r.event_id, False) else None,
             voted_by_me=r.id in mine,
             image_url=images.get(r.id),
+            repo_url=r.repo_url,
+            demo_url=r.demo_url,
+            video_url=r.video_url,
+            awards=won.get(r.id, []),
         )
         for r in rows
     ]
@@ -198,6 +209,8 @@ def get_public_submission(
     if not submission or submission.status != SubmissionStatus.submitted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That submission is not in the public gallery.")
     event = session.get(Event, submission.event_id)
+    if event is not None and event.status != "published":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That submission is not in the public gallery.")
     visible = may_see_results(event, user) if event else False
 
     vote_rows = session.exec(select(Vote).where(Vote.submission_id == submission_id)).all()
@@ -214,4 +227,8 @@ def get_public_submission(
         votes=len(vote_rows) if visible else None,
         voted_by_me=any(user is not None and v.user_id == user.id for v in vote_rows),
         image_url=image_url_for(session, "submission", submission.id),
+        repo_url=submission.repo_url,
+        demo_url=submission.demo_url,
+        video_url=submission.video_url,
+        awards=awards_by_submission(session, [submission.id]).get(submission.id, []) if visible else [],
     )

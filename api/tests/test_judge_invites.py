@@ -30,7 +30,29 @@ def _login(client, session, email: str, role: Role = Role.participant) -> User:
     return user
 
 
+_event_count = 0
+
+
+def _event_id(client) -> int:
+    """A fresh event for the signed-in organizer - judge invitations belong to
+    one (PLAN.md 10.1)."""
+    global _event_count
+    _event_count += 1
+    r = client.post(
+        "/api/events",
+        json={
+            "slug": f"invite-event-{_event_count}",
+            "name": f"Invite Event {_event_count}",
+            "start_at": "2030-01-01T00:00:00Z",
+            "end_at": "2030-01-02T00:00:00Z",
+        },
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
 def _issue(client, **body) -> dict:
+    body.setdefault("event_id", _event_id(client))
     r = client.post("/api/judge-invites", json={"expires_in_days": 14, **body})
     assert r.status_code == 201, r.text
     return r.json()
@@ -50,14 +72,8 @@ def test_organizer_invites_and_a_participant_becomes_a_judge(client, session):
 
     r = client.post(f"/api/judge-invites/{invite['token']}/redeem")
     assert r.status_code == 200, r.text
-    # event_id/event_name are null here: this invitation carries no event, which is
-    # the pre-Phase-10.1 shape and still redeems (it just enrols them on no panel).
-    assert r.json() == {
-        "role": "judge",
-        "already_a_judge": False,
-        "event_id": None,
-        "event_name": None,
-    }
+    assert r.json()["role"] == "judge" and r.json()["already_a_judge"] is False
+    assert r.json()["event_id"] == invite["event_id"]
 
     assert client.get("/api/auth/me").json()["role"] == "judge"
     # ...and can now reach it, which is the whole point of the invitation.
@@ -178,7 +194,7 @@ def test_listing_shows_status_and_who_redeemed(client, session):
     client.post(f"/api/judge-invites/{invite['token']}/redeem")
 
     _login(client, session, "list-org@example.com", Role.organizer)
-    rows = client.get("/api/judge-invites").json()
+    rows = client.get(f"/api/judge-invites?event_id={invite['event_id']}").json()
     row = next(r for r in rows if r["id"] == invite["id"])
     assert row["status"] == "redeemed" and row["redeemed_by_name"] == "Invitee"
 
@@ -225,4 +241,5 @@ def test_expiry_window_is_validated(client, session):
     _login(client, session, "win-org@example.com", Role.organizer)
     assert client.post("/api/judge-invites", json={"expires_in_days": 0}).status_code == 422
     assert client.post("/api/judge-invites", json={"expires_in_days": 91}).status_code == 422
-    assert client.post("/api/judge-invites", json={"expires_in_days": 1}).status_code == 201
+    event_id = _event_id(client)
+    assert client.post("/api/judge-invites", json={"expires_in_days": 1, "event_id": event_id}).status_code == 201

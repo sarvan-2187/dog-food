@@ -656,149 +656,748 @@ because T1–T4 were already finished.
 
 ---
 
-## Phase 10 — Multi-Event Correctness
+**A note on the test suite, corrected** (added by pranavneelu06, merged 2026-09-19). The
+Definition of Done above claimed all Playwright specs pass. Fourteen had been failing since the
+auth-screen redesign, including a real accessibility defect: `AuthLayout` nested its `<header>`
+inside `<main>`, so neither auth screen exposed a `banner` landmark at all. That was fixed on
+`main`, and the fix is kept. One caveat still applies: a *second* full run without recreating
+the volume fails a handful of specs, because the suite changes the same database it reads.
+Each of those specs passes when run alone.
 
-**There is no Phase 9.** The numbering jumps because this work was scoped as "Phase 10"
-before it was written down; renumbering it to 9 afterwards would have broken every
-reference to it in commits and review notes for no gain. Nothing is missing.
+---
 
-**Why this phase exists.** Phases 0–8 built a platform that runs *an* event correctly. The
-brief is a company running 35+ events. Re-reading the built system against that sentence
-surfaced defects that only appear once more than one event exists at a time — they are not
-missing features, they are wrong answers, and they are therefore ahead of anything new in
-this phase's order.
+## Phase 9 — Account Recovery: Forgotten Passwords
 
-**Tier-neutral.** Like Phase 8, this scores under correctness and Adoptability & Operability,
-not the tier ladder. T1–T4 were already finished before it started.
+**Status: BUILT (2026-09-19).** Gate met; see the build notes below for the five places the
+build differs from the plan, and why.
 
-### 10.1 — Judges belong to an event, not to the platform — DONE
+**Build notes: where the build differs from the plan.**
+- **Email failures are logged, not audited.** A background send runs after its request's
+  transaction has closed, so writing an audit row would mean a second database session on a
+  side path, and it leaked rows between tests. The admin **Send test email** button is where
+  delivery problems surface, synchronously and in plain language.
+- **The organizer rate limit is 30 links an hour, not 10, and only issued links count.** Ten
+  was too tight for the help-desk scenario this phase exists for, and refused attempts (a
+  typo'd email, a blocked role) shouldn't use up the budget.
+- **`ALTER TABLE … ADD COLUMN IF NOT EXISTS` alone hung the test suite.** It takes an exclusive
+  lock even when the column exists, and blocked behind an open test transaction.
+  `add_missing_columns()` checks `information_schema` first and only alters when a column is
+  really missing.
+- **The change-password tests live in `test_password_reset.py`.** `tests/` isn't a package, so
+  a second file couldn't share the SMTP fixtures without moving them into `conftest.py`.
+- **"Reset by {organizer}" appears on the reset success screen only,** not on a later
+  `/profile` visit. That would need a new read endpoint for one sentence; the audit log and
+  the "your password was changed" email already cover the takeover risk it was meant for.
 
-- [x] **The defect.** `run_assignment` selected `User.role == judge` — *every* judge account
-      on the platform — and `JudgeInvite` carried no event at all. On a company running 35+
-      events concurrently, a judge invited for one hackathon was assigned submissions from
-      all the others. That is a confidentiality breach between events, not an inconvenience,
-      and it also silently broke the conflict-of-interest guarantee: the algorithm can only
-      exclude a judge from *their own team's* submission, which means nothing when the judge
-      had no business seeing that event's submissions in the first place.
-- [x] `EventJudge` (`event_id`, `judge_id`, unique together) is the event's panel. Assignment
-      reads it, ordered by id so a run stays reproducible per section 8's determinism rule.
-      An empty panel is refused with a sentence that says what to do, not a silent zero-row
-      assignment.
-- [x] `JudgeInvite.event_id` (nullable, so pre-existing invitations still redeem). Redeeming
-      an event-scoped invitation promotes the account *and* enrols it on that panel — a
-      promotion that skipped the enrolment would grant a role assignment never draws on.
-- [x] **An established judge invited to a second event is now a real redemption.** The
-      previous "already a judge → return early, don't burn the invitation" branch was correct
-      when judges were global and is wrong once they are not: it would have accepted the
-      invitation and enrolled them on nothing. The early return now applies only when they
-      are *already on that panel*, which is still the double-click case it was written for.
-- [x] `GET/POST/DELETE /api/events/{id}/judges` so an organizer can see and correct the
-      panel, plus a "Judging panel" card on the event's results page. **Adding requires an
-      account that already holds the judge role**, so this composes a panel and cannot become
-      a second route into the role — invitation stays the only door in. Removing a judge
-      deliberately leaves their existing scores alone; deleting those would silently rewrite
-      the standings, and what happens to their *unfinished* work is 10.7's reassignment flow.
-- [x] `GET /api/judge-invites?event_id=` and the event page passes it. This is what made an
-      event's Judges card list a dozen invitations belonging to other events.
-- [x] Seeded: `fixtures/events.json` gains a `judges` list, so `docker compose up` produces a
-      demo event that can actually be judged rather than one with an empty panel.
+**Verified:**
+- 253 backend tests (215 existing + 38 new).
+- 10 Playwright cases in `recovery.spec.ts`, including the full email flow run in a real
+  browser through the Mailpit override.
+- An existing pre-Phase-9 volume booted without `down -v`.
+- `docker compose config --services` still lists exactly `db` and `api`.
 
-### 10.2 — One entrant, one team, per event — DONE
+**Entry condition:** Phases 1–8 gates are green and the Phase 4 UI gap is closed. Nothing
+here touches judging, scoring, or the tier ladder.
 
-- [x] **The defect.** Joining a team only checked membership of *that* team, and creating one
-      checked nothing, so a participant could enter the same hackathon on several teams. The
-      seeded data already did it: `jordan@example.com` held both Codehawks and Quiet Ledger
-      in `dogfood-2026`, which means the shipped demo demonstrated the bug.
-- [x] Both paths — join and create — now refuse with the name of the team the person is
-      already on, so the message says what to do rather than only what went wrong.
-- [x] **Scoped per event, not per platform.** Competing in two different hackathons is normal
-      and stays allowed; a test asserts it, because the obvious over-fix is a global limit.
-- [x] Fixture corrected: Quiet Ledger is now `mara@example.com`, a new seeded participant, so
-      the solo-team case the fixture was demonstrating survives.
+**Why this phase exists.** Today a user who forgets their password has no route back in.
+There is no "Forgot password?" link, no reset endpoint, and no way to change a password
+even while signed in. The only recovery is an operator editing `password_hash` in Postgres.
+For an organization like Hackathon Raptors, which runs 35+ events with a new crowd each
+time, this is guaranteed to happen on the first Saturday morning of every event, with
+hundreds of one-weekend accounts created the night before.
 
-### 10.3 — Judging can start while projects are still editable — NOT DONE
+**The goal: recovery with no work for organizers or admins.** A user who forgets their
+password should be able to fix it alone, in under two minutes, without asking anyone.
 
-- [ ] **Still open, and disclosed rather than quietly dropped.** Neither assignment nor
-      scoring checks the event deadline, so a judge can score an entry its team can still
-      edit afterwards. Confirmed live: a judge scored *Audit Trail Explorer* while its team
-      retains edit rights until Oct 17.
-- [ ] Not fixed here because the honest fix is not a deadline `if`. It needs the explicit
-      event phase that 10.8 describes (Upcoming / Open / Judging / Results): a bare
-      `end_at` comparison would make the seeded demo event unjudgeable the moment it is
-      seeded, and would give organizers no way to open judging early for a event that
-      finished ahead of schedule. Doing it properly means doing 10.8 with it.
+**Where this scores, stated honestly.** It does not climb the tier ladder: T1–T4 say
+nothing about account recovery. It scores under **Adoptability & Operability (20%)**,
+which is judged on *"whether Hackathon Raptors could realistically run the software"*.
+Across 35+ events a year, password resets handled by hand at a help desk are a real
+running cost; automated ones cost nothing. Part of this phase (9.1) is also a real
+security fix, and it goes into `THREAT-MODEL.md`.
 
-### 10.4 — Sign-in attempt limit — DONE
+**How this fits §1 ("zero network calls at runtime").** Sending email is a network call,
+so it follows exactly the rule this project already set for outbound webhooks (Phase 7.3):
+**opt-in, and zero calls when nothing is configured.**
 
-- [x] **The defect.** `POST /api/auth/login` had no limit of any kind; a password could be
-      guessed indefinitely.
-- [x] Reuses the existing in-process token bucket rather than adding a dependency — §1's
-      no-external-service rule applies here as everywhere. The module moved from
-      `voting/ratelimit.py` to `app/ratelimit.py`, because authentication is not a voting
-      concern and reaching across sibling feature packages for it is the wrong dependency
-      direction.
-- [x] Two buckets: **per account** (6 / 5 min) against many machines on one account, and
-      **per client fingerprint** (30 / 5 min) against one machine spraying many accounts.
-- [x] **Only failed attempts are charged to the client bucket, and a clean sign-in clears the
-      account bucket.** Found by running the browser suite against it: every request in the
-      suite shares one address and user-agent, so charging *successful* sign-ins to that
-      bucket locked the suite out after twenty logins. That is not a test artefact — an
-      office or campus behind one NAT address would have been locked out the same way on a
-      busy morning. Guessing produces failures by definition, so counting only failures
-      costs nothing defensively.
-- [x] The refusal is identical whether or not the account exists, and the account bucket is
-      spent *before* the password is checked, so the limiter cannot be used to enumerate
-      accounts. Asserted by a test that compares the full response sequence for a real
-      address against an unknown one.
-- [x] Failed attempts are audit-logged as `user.login_failed`.
+- Out of the box, with no mail settings, `docker compose up` makes **zero** network calls,
+  needs no `.env`, and recovery falls back to the organizer-issued link (9.4). §1 holds
+  unchanged for the default install.
+- The organization plugs in **its own** SMTP server: its company mail relay, a Gmail or
+  Workspace account, or any provider it already uses. This is the organization's own
+  infrastructure, configured by the organization. It's not a hosted service or
+  auth-as-a-service built into HackFlow, and HackFlow bundles no email SDK. Sending uses
+  Python's standard library (`smtplib`, `email.message`), so **no new dependency** is
+  added.
+- For judges and local demos, an **optional** local mail catcher (Mailpit, 9.3) receives
+  every email on the same machine and shows it in a browser inbox. You can see the whole
+  email flow with the network physically unplugged.
+- `docker-compose.yml` stays at exactly `db` + `api`. Mailpit lives in a separate override
+  file that is never started by a plain `docker compose up`.
 
-### 10.5–10.13 — NOT STARTED
+### Options considered
 
-Scoped and agreed, not built. Listed so the gap is visible rather than implied:
+| Option | Verdict | Why |
+|---|---|---|
+| **Emailed reset link** ("magic link" to set a new password) | **Chosen (9.2)**, opt-in | Fully self-service with no organizer involvement. The link works once, expires in 30 minutes, and is stored only as a hash. |
+| Emailed temporary password | **Rejected** | It's a working password left in the inbox indefinitely. Anyone who later reads that mailbox (a shared laptop, a forwarded email, a breach) can use it until it's changed, and many people never change it. A reset link stops working after one use and 30 minutes. |
+| Passwordless sign-in by email link | **Deferred** | Worth considering once 9.2 exists, since it reuses the same tokens and mailer. It changes how everyone signs in, which is a bigger decision than recovery. |
+| Organizer-issued reset link | **Chosen as fallback (9.4)** | Keeps recovery working when no mail server is configured or an email bounces. |
+| Mail sent through a third-party email API (SendGrid, Resend, etc.) with its SDK | **Rejected** | That's a hosted-service dependency, which §11 forbids. Plain SMTP covers the same providers (most offer SMTP too) without an SDK. |
+| Security questions | **Rejected** | NIST SP 800-63B says services shouldn't use them. Answers are guessable by teammates or findable online, and one-weekend users forget them as easily as passwords. |
+| Recovery codes shown at signup | **Rejected** | One-weekend participants won't store them. |
+| Passkeys (WebAuthn) | **Deferred** | Fits §1, since verification is local, but it's a sign-in method, not recovery. It needs HTTPS anywhere except `localhost`. Add later as optional sign-in. |
+| Send the reset link out through the existing outbound webhooks | **Rejected** | Puts a live credential into Discord or Slack and their logs. Webhooks carry events, never secrets. |
 
-- [ ] **10.5** Project links (repo, live demo, video), validated, shown in the gallery, on the
-      submission page, and on the judge's scoring screen. Judges currently score four
-      criteria from one sentence and a screenshot.
-- [ ] **10.6** Winners and awards: bind each configured prize to a standing, announce on the
-      event page at reveal, name the prize on the certificate. Prizes are configured today
-      and never linked to anyone, so events end without announcing a winner.
-- [ ] **10.7** Organizer view of judging progress per judge, removing a judge who dropped out
-      and reassigning their unfinished work, and a judge-side "conflict of interest" return.
-      The data endpoint exists; no screen shows it.
-- [ ] **10.8** Event phase badge and timeline (Upcoming / Open / Judging / Results), start
-      date and "starts in", and the scorecard criteria made readable by participants. **10.3
-      depends on this.**
-- [ ] **10.9** Team management: leave, remove a member, rename, regenerate the invite link,
-      all closed after the deadline.
-- [ ] **10.10** Admin user management and organizer invitations by link.
-- [ ] **10.11** Event announcements.
-- [ ] **10.12** Draft events, visible only to organizers until published.
-- [ ] **10.13** Editing your own name on the profile page.
+### 9.1 — Sessions must be revocable (prerequisite, security fix)
 
-Deliberately excluded from the phase as scoped: email verification and email change,
-passkeys, a notification inbox, account deletion and data export, public team-finding.
+**Found while planning this phase.** The session cookie is an `itsdangerous`-signed
+`{user_id}` with a 7-day max age (`api/app/auth/session.py`). Nothing on the server can
+invalidate it. So **a password reset today would not sign out whoever holds a stolen
+session**, which defeats the point of a reset.
 
-**Definition of Done — Phase 10 gate (partial).** 10.1, 10.2 and 10.4 are done and are
-covered by 13 new endpoint tests in `api/tests/test_phase10.py`, chosen at the endpoint
-level because in all three cases the defect was that the *server* permitted something — a
-test driving only the UI would have caught none of them. Full suite green against a live
-stack: **228 API tests**, 9 unit tests, **89 Playwright specs**. `docker-compose.yml` still
-exactly `db` + `api`. 10.3 and 10.5–10.13 are open and stated as such above rather than
-left to be discovered.
+- [x] Add `session_version: int = 0` to `User`. Sign `{user_id, v}` into the cookie.
+      `get_current_user` rejects a cookie whose `v` doesn't equal the user's current
+      `session_version`. A cookie with no `v` reads as `0`, so every session signed in
+      before this deploy stays valid.
+- [x] Bump `session_version` on every password change or reset. This signs the account
+      out everywhere, including the device that made the change, which then gets a fresh
+      cookie in the same response.
+- [x] **Schema note, found live on 2026-09-19.** `db.py` only calls `create_all`, which
+      creates missing *tables* but never adds a column to an existing one. That already
+      crash-looped the API once, after `cover_image_url` was added. Add an idempotent
+      startup step next to `create_all`:
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version integer NOT NULL DEFAULT 0`
+      (and the same for `events.cover_image_url`), so upgrading an existing volume doesn't
+      require `docker compose down -v`. No migration framework: this is two statements.
+- [x] Tests: an old cookie is refused after a reset; a cookie issued before this deploy
+      still works; logout still works.
 
-**Schema note.** This phase adds the `event_judges` table and `judge_invites.event_id`. The
-app creates its schema with `SQLModel.metadata.create_all` and has no migration tool, so an
-existing database will not gain them on its own — recreate the volume
-(`docker compose down -v`) or add the column and table by hand.
+### 9.2 — Automated "Forgot password?" by email (primary path when mail is configured)
 
-**A note on the test suite, corrected.** Phase 8's section claimed all Playwright specs pass.
-Fourteen had been failing since the auth-screen redesign, including a real accessibility
-defect (`AuthLayout` nested its `<header>` inside `<main>`, so neither auth screen exposed a
-`banner` landmark at all). Fixed, and the claim above is a fresh measurement rather than a
-carried-forward one. One further caveat, unchanged from the Open Questions entry on shared
-database contention: a *second* full run without recreating the volume will fail a handful of
-specs, because the suite mutates the same database it reads. Each such spec passes alone and
-in its own file's order; the numbers above are from a fresh stack.
+**The user's flow:** on `/login`, click "Forgot password?", then enter your email, then get
+an email and click its link, then choose a new password. You're signed in. No organizer or
+admin is involved at any point.
+
+- [x] `PasswordReset` table: `user_id`, `token_hash` (SHA-256 of the token; **the raw token
+      is never stored**, unlike `JudgeInvite.token`), `channel` (`email` | `organizer` |
+      `cli`), `issued_by_id` (null for `email`), `expires_at`, `used_at`. The token is
+      `secrets.token_urlsafe(32)`. The same table and the same `/reset/:token` page serve
+      9.2, 9.4 and 9.6.
+- [x] `POST /api/auth/forgot-password` `{email}`, public. It **always returns the same
+      response**, whether or not the account exists: *"If an account exists for that
+      address, we've sent a reset link. It expires in 30 minutes."* This prevents anyone
+      from probing which emails have accounts. If the account exists, it creates a token,
+      invalidates any earlier unused one for that user, and queues the email.
+- [x] Sending runs through FastAPI `BackgroundTasks`, so the response never waits on the
+      mail server and its timing can't reveal whether the account exists. It uses
+      `smtplib` with a 10-second timeout and makes a single attempt, the same decision as
+      the webhooks in 7.3: no queue, no retries. A failure is logged and recorded in the
+      audit log as `reset_email_failed` (never shown to the requester). The user can
+      simply ask again.
+- [x] **30-minute expiry, single use.** Only `POST .../redeem` uses up a link.
+      `GET .../preview` never does, because corporate email scanners open links
+      automatically to check them, and a link consumed on open would already be dead by the
+      time the user clicks it.
+- [x] `GET /api/password-resets/{token}/preview` returns `{valid, reason}`: expired, used,
+      or unknown. `POST /api/password-resets/{token}/redeem` `{new_password}` applies the
+      existing 8-character rule, sets the hash, marks the link used, bumps
+      `session_version`, and signs the user straight in.
+- [x] **"Your password was changed" email**, sent after every reset or change (9.5), with
+      *"Wasn't you? Contact your event organizer."* This is what alerts the real owner if
+      someone else got into their mailbox or account. It carries no link and no password.
+- [x] Email content: plain text plus a simple HTML version, built with
+      `email.message.EmailMessage` (which handles header encoding, so a crafted display
+      name can't inject headers). No remote images, tracking pixels or CDN assets. It
+      contains the reset link and its expiry, never a password. The From name is
+      "HackFlow"; the From address comes from settings.
+- [x] Rate limits: 3 requests per email address per hour, and 20 per IP per hour. Going
+      over still returns the same generic response, so the limit can't be used to probe
+      accounts either.
+- [x] The reset page sends `Referrer-Policy: no-referrer`, so the token in the URL never
+      leaks to another site through the Referer header.
+- [x] **When mail isn't configured**, `/forgot-password` doesn't pretend. It shows the
+      9.4 message instead (*"Ask an organizer at the help desk or in your event's channel;
+      they can give you a reset link in under a minute."*) and asks for nothing.
+      `GET /api/auth/recovery-options` returns `{email: bool}` so the page knows which to
+      show.
+
+### 9.3 — Mail delivery setup (SMTP configuration)
+
+All settings are **optional environment variables**. With none set, email is off and
+nothing breaks. `docker-compose.yml` passes them through with empty defaults
+(`${SMTP_HOST:-}`), so an organization sets them in an optional `.env` file next to the
+compose file, and a fresh clone still needs no `.env` at all.
+
+| Variable | Example | Meaning |
+|---|---|---|
+| `SMTP_HOST` | `smtp.gmail.com` | Mail server. **Empty turns email off.** |
+| `SMTP_PORT` | `587` | Usually 587 (STARTTLS) or 465 (SSL). |
+| `SMTP_SECURITY` | `starttls` | One of `starttls`, `ssl`, or `none` (`none` is only for a local catcher). |
+| `SMTP_USERNAME` | `events@raptors.dev` | Login for the mail server, if it needs one. |
+| `SMTP_PASSWORD` | *(app password)* | Never logged, never returned by any endpoint, never written to the database. |
+| `SMTP_FROM` | `HackFlow <events@raptors.dev>` | Sender shown on the email. |
+| `APP_BASE_URL` | `https://hackflow.raptors.dev` | Used to build the absolute link in the email. Defaults to `http://localhost:8000`. |
+
+- [x] **Local demo inbox, needing no internet: `docker-compose.mail.yml`**, an override file
+      that adds a pinned `axllent/mailpit` service (SMTP on port 1025, web inbox on
+      `http://localhost:8025`) and points the API at it (`SMTP_HOST=mailpit`,
+      `SMTP_PORT=1025`, `SMTP_SECURITY=none`). Run it with
+      `docker compose -f docker-compose.yml -f docker-compose.mail.yml up`. Every reset
+      email lands in the Mailpit inbox and nothing leaves the machine. This is how judges
+      and the Playwright test see the full flow. The base `docker-compose.yml` is
+      unchanged and still starts only `db` + `api`.
+- [x] **Real delivery, documented for organizers** in `README.md` and `USER-MANUAL.md`:
+      - Gmail or Google Workspace: `smtp.gmail.com`, port 587, `starttls`, using an
+        *app password* (this requires 2-step verification on the account; the normal
+        account password won't work).
+      - Outlook or Microsoft 365: `smtp.office365.com`, port 587, `starttls`.
+      - Any other provider, or the organization's own mail server: the host, port and
+        login it gives you.
+      - Say plainly that delivery depends on the provider, that new sending addresses can
+        land in spam, and that setting up SPF and DKIM for the sending domain is the
+        provider's job, not HackFlow's.
+- [x] **Admin "Email delivery" card**, on the admin dashboard only. It shows whether email
+      is on, plus the host, port, security and from-address, **never the password**. A
+      **"Send test email"** button sends one to the signed-in admin's own address and shows
+      success, or the server's error in plain language (for example *"The mail server
+      rejected the login. For Gmail, use an app password."*). This is where an organizer
+      confirms setup worked, instead of waiting for a real user to be locked out.
+- [x] Settings are read once at startup. Changing them means restarting the `api`
+      container, which the card says. There is no settings screen that stores the SMTP
+      password in the database: a secret belongs in the environment, not in a table
+      exposed through an admin UI.
+
+### 9.4 — Organizer-issued reset links (fallback)
+
+Used when email is off, when a user's email bounces, or when someone has lost access to
+their mailbox. The organizer enters the account's email and clicks **"Create reset link"**.
+The platform shows a single-use link to copy (the same copy affordance as
+`JudgeInvitePanel`), and the organizer sends it through the event's usual channel.
+
+**Who can reset whom.** Role gating is enforced at the endpoint, never only in the UI (§1):
+
+| Issuer | Can reset | Cannot reset |
+|---|---|---|
+| organizer | participant, judge | organizer, admin: that would let one organizer take over another, or reach admin |
+| admin | participant, judge, organizer | admin: no lateral takeover; a locked-out admin uses 9.2 or 9.6 |
+| participant, judge | nobody | everyone |
+
+- [x] `POST /api/password-resets` `{email}`: organizer or admin only, and the table above
+      applies. Returns the link **once**, in this response only. 60-minute expiry. An
+      organizer looking up an email is not an enumeration leak, because they can already
+      export every email via `users.csv`.
+- [x] Audit log records both issue and redeem, including who issued. **Accepted risk,
+      stated rather than hidden:** a dishonest organizer could issue a link and use it
+      themselves. The mitigations are the audit trail, the "your password was changed"
+      email (when mail is on), and that the real user gets locked out, so they find out
+      immediately.
+- [x] Rate limit: 10 links per issuer per hour.
+- [x] Organizer UI: a **"Help someone sign in"** card on the organizer and admin dashboard:
+      an email field, then "Create reset link", then the link with a copy button and its
+      expiry shown as a countdown.
+
+### 9.5 — Change password while signed in
+
+- [x] `POST /api/auth/password` `{current_password, new_password}`, any role. It bumps
+      `session_version`, which signs out other devices, and re-issues this device's cookie.
+      When mail is on, it also sends the "your password was changed" email. A wrong current
+      password returns an inline error, never a toast.
+- [x] A "Change password" section on `/profile`, with the copy *"This signs you out on
+      every other device."*
+
+### 9.6 — Break-glass: reset any account from the server
+
+- [x] `docker compose exec api python -m app.auth.reset_link <email>` prints a reset link
+      for any account, including an admin, and writes an audit entry with
+      `channel = cli`. This covers an admin locked out while email is off. Shell access to
+      the host is the trust boundary, so this adds no new attack surface. Document it in
+      the README and the `USER-MANUAL.md` troubleshooting section.
+
+*(This replaces the earlier 9.4 idea, "self-service requests queued for organizers".
+Emailed resets make the user's request the whole process, so there's nothing left to
+queue.)*
+
+### UX checklist (PLAN.md §4.7, every new screen)
+
+- [x] `/forgot-password`, `/reset/:token`, the "Help someone sign in" card, the "Email
+      delivery" card, and the profile section each have loading, empty and error states,
+      and work at 375, 768 and 1280px, and by keyboard alone.
+- [x] A "Forgot password?" link sits under the password field on `/login`.
+- [x] Copy says "reset link", never "token". No status codes or SMTP error codes on screen.
+- [x] An expired or used link gets its own plain-language page with a "Send a new link"
+      button (or "Ask your organizer for a new one" when email is off), never a raw 404
+      or 410.
+- [x] Copy buttons announce "Link copied" to screen readers, like the judge invite panel.
+- [x] The guided tours gain one step each: for organizers, the "Help someone sign in" card;
+      for admins, the "Email delivery" card.
+
+### Tests
+
+- [x] pytest `test_password_reset.py`:
+      - Forgot-password returns an identical body and status for a known and an unknown
+        email.
+      - A mocked SMTP server receives exactly one email, containing a working link and no
+        password.
+      - Expired, used and superseded links are refused; a GET preview doesn't use up a
+        link.
+      - The token is stored only as a hash.
+      - An old session is rejected after a reset.
+      - Rate limits hold and still return the generic response.
+      - With email off, no SMTP connection is attempted. This is the §1 check.
+      - The full 9.4 role matrix, including every disallowed pair returning 403.
+      - The audit rows are written.
+- [x] pytest `test_change_password.py`: a wrong current password is refused, other sessions
+      are revoked, and the "changed" email is sent.
+- [x] pytest: the admin test-email endpoint is admin-only and never returns
+      `SMTP_PASSWORD`.
+- [x] Playwright, against the Mailpit override: a user requests a reset, the test reads the
+      email from Mailpit's local API, follows the link, sets a password, and lands signed
+      in. A second test covers the organizer-link fallback with email off.
+
+### Docs
+
+- [x] `README.md`: a short "Email (optional)" section with the settings table, the Mailpit
+      command, and a statement that with nothing set HackFlow makes zero outbound calls.
+- [x] `USER-MANUAL.md` §8 Troubleshooting: "I forgot my password" for participants,
+      organizers and admins, plus a "Setting up email" walkthrough using the test button.
+- [x] `ARCHITECTURE.md`: email alongside webhooks as the only two opt-in outbound paths.
+- [x] `THREAT-MODEL.md`: new entries for "stolen session survives a password change"
+      (fixed by 9.1), "account enumeration via forgot password" (identical responses and
+      timing), "reset link leaked or scanned" (hashed, single use, 30 minutes, GET doesn't
+      consume, no-referrer), "someone else's mailbox is compromised" (the "changed" email
+      alerts them, and the organizer can override), and "organizer takes over an account"
+      (accepted risk, audited).
+
+**Definition of Done — Phase 9 gate:** 9.1–9.6 built; the full suite green, including the
+new tests; every UX item checked; `docker-compose.yml` still exactly `db` + `api`; with no
+SMTP settings, zero runtime network calls (asserted by a test); the Mailpit override
+demonstrates the full email flow offline; and an existing pre-Phase-9 volume boots without
+`down -v`.
+
+---
+
+## Phase 10 — Platform Audit: Judging Integrity, Core Hackathon Features, Operability
+
+**Status: BUILT (2026-09-19). All 13 items.** Verified on the merged tree:
+- **348 backend tests**, including 40 in `test_phase10.py`, each opening with the audit's
+  own "Found" scenario, plus Phase 9 and 10 endpoints added to the role-isolation matrix
+  (139 cases).
+- **105 Playwright specs green, 1 skipped** (the email-only recovery spec, correct with
+  email off). This includes 7 new flows in `phase10.spec.ts`.
+- An existing pre-Phase-10 volume, including a duplicate team membership, booted without
+  `down -v`: it logged the duplicate, held back the unique index, and the admin Users page
+  lists it.
+
+**Build notes: where the build differs from the plan.**
+- **`event_phase()` is computed in the browser** (`components/EventTimeline.tsx`) from the
+  same `start_at`/`end_at`/`results_hidden_until` the server enforces, rather than returned
+  on every event. The event endpoints return the table model directly, and a derived field
+  there would have been a second source of truth for the same dates.
+- **A judge's list only shows assignments from events whose judging has opened.** This was
+  found while testing 10.3: an assignment made before the deadline gate existed would
+  otherwise offer a "Score now" the server refuses. The "Coming up" card says when the rest
+  open.
+- **Assignment re-runs now fill gaps properly.** Existing assignments count toward `k` and
+  toward judge load, which 10.7's "remove a judge, re-run" depends on. The result with
+  nothing assigned yet is unchanged (the existing determinism tests still pass).
+- **Confirmations use the browser's own `window.confirm`**, which is keyboard- and
+  screen-reader-accessible, rather than a new modal component.
+- **Tests are one file (`test_phase10.py`) with a section per item**, not one file per item.
+  Same coverage, and the SMTP/role helpers are shared.
+- **10.1, 10.2 and 10.4 were built twice** and merged. See the note above.
+
+**Two implementations, merged (2026-09-19).** pranavneelu06 built 10.1, 10.2 and 10.4
+independently on `feat/phase10` (merged to `main` as PR #2). They stated plainly that 10.3 and
+10.5–10.13 weren't done. The same three items had also been built here, as part of all 13.
+The two were merged as follows:
+- **This branch's version kept for 10.1, 10.2 and 10.4**, because it closes three gaps a
+  review of `main` found:
+  - **Existing databases.** `main` needed `docker compose down -v` to pick up
+    `judge_invites.event_id`, which deletes every event. `add_missing_columns()` upgrades in
+    place instead.
+  - **Password spraying.** `main`'s per-IP login limit was only checked after a failed
+    password, so a correct guess still got in. It's now checked before.
+  - **Account probing by timing.** `main` answered faster for unknown emails. Unknown emails
+    now run bcrypt against a dummy hash.
+  - 10.2 also gets the database-level unique index `main` left out.
+- **Kept from `main`:**
+  - the login/register `banner` landmark fix
+  - the dashboard label de-duplication
+  - `BASE_URL`-aware judge-invite specs
+  - the event-scoped `JudgeInvitePanel`
+  - the move of the rate limiter to `app/ratelimit.py`
+  - the Phase 8 correction above
+- `main`'s `JudgePanelCard` was rebuilt on this branch's `/api/events/{id}/judges`, which
+  also carries 10.7's progress counts.
+
+**Entry condition:** Phases 1–9 gates are green.
+
+**Where this came from.** A full audit on 2026-09-19, done after Phase 9 exposed "forgot
+password" as a missing basic. It had two parts:
+- **Code:** every API route, model and permission check.
+- **Visual:** the live app walked in a browser as a participant, a judge and an organizer.
+
+Four findings are **bugs that make results wrong or unfair**, not missing features, so they
+come first. Each item below cites what the audit found. **Build in order: 10.1–10.4, then
+10.5–10.9, then 10.10–10.13.**
+
+**Where this scores, stated honestly.**
+- **Tier Completion & Correctness (40%):** 10.1–10.3 and 10.7 are judging correctness, the
+  core of T2. 10.5, 10.6 and 10.8 close gaps in T1 and T3, where a hackathon's own
+  workflow (link to your project, announce winners, know what you're judged on) is half
+  there.
+- **Security:** 10.4 fixes a real hole and goes into `THREAT-MODEL.md`.
+- **Adoptability & Operability (20%):** 10.9–10.13 are what an organization running 35+
+  events a year hits in its first week.
+
+**Constraint check (§1).**
+- No new dependencies. `docker-compose.yml` stays exactly `db` + `api`.
+- Everything that sends email (10.7's reminders, 10.11's announcements) goes through
+  Phase 9's opt-in mailer, so with no `SMTP_HOST` it's hidden and nothing is sent.
+- Video links are shown as links, **never embedded**: a YouTube or Vimeo embed would load
+  third-party content into the served app.
+- Every new column on an existing table goes through `db.add_missing_columns()`, and every
+  backfill runs at boot and is idempotent, so existing volumes upgrade without
+  `down -v`.
+
+---
+
+### 10.1 — Judges belong to events (bug, critical)
+
+**Found:** assignment builds its judge pool from *every* judge account on the platform
+(`judging/router.py:199`, `select(User).where(User.role == Role.judge)`), and a
+`JudgeInvite` has no event attached (`judging/models.py:28`). In the live app,
+dogfood-2026's Judges card listed 12 invitations, none of them for that event. For an
+organization running many events, a judge invited to one hackathon gets submissions from
+all of them.
+
+- [x] New table `event_judges` (`event_id`, `user_id`, `added_at`, `added_by_id`), unique on
+      `(event_id, user_id)`. **The assignment pool is this event's judges only.**
+- [x] `judge_invites.event_id` (nullable for old rows). Invitations are created from an
+      event's page, and redeeming one adds the redeemer to that event's judges (plus the
+      existing participant-to-judge role change).
+- [x] **"Add an existing judge"** on the event's Judges card, by email, so a judge who works
+      several events isn't sent a new invitation each time. Organizer or admin only; the
+      account must already have the judge role.
+- [x] The Judges card lists only **this event's** invitations and judges.
+      `GET /api/judge-invites` takes `event_id`.
+- [x] **Backfill at boot:** every `(event_id, judge_id)` pair in existing
+      `judge_assignments` becomes an `event_judges` row, so already-assigned judging keeps
+      working. Seeded judges are attached to the seeded events in the fixtures.
+- [x] The judge dashboard groups assignments by event (the fields exist since Phase 4's
+      `event_id`/`event_name` addition).
+- [x] **Test hygiene:** the Playwright specs create their invitations against a named test
+      event, so they stop piling up in the Judges card of real events.
+
+### 10.2 — One team per participant per event (bug)
+
+**Found:** `join_team` only refuses joining *the same* team twice (`teams/router.py:57`),
+and `create_team` doesn't check anything. The seed data already contains a violation:
+`jordan@` is on both Codehawks and Quiet Ledger in dogfood-2026. One person can enter the
+same hackathon twice.
+
+- [x] `create_team` and `join_team` refuse with 409 when the user already belongs to a team
+      in that event: *"You're already on Codehawks for this event. Leave it first to join
+      another team."*
+- [x] Database-level guard: `team_memberships.event_id` (backfilled from `teams`) with a
+      unique index on `(event_id, user_id)`, so two requests at once can't both get through.
+      If an existing volume already contains duplicates, **boot doesn't crash**: it skips
+      the index, logs each duplicate, and the admin dashboard shows a warning listing them
+      until an organizer resolves them with 10.9's leave/remove.
+- [x] Fix `fixtures/teams.json` so no participant is on two teams in one event.
+
+### 10.3 — Judging opens only after submissions close (bug)
+
+**Found:** neither `run_assignment` nor score submission checks the event's `end_at`. In
+the live app a judge had already scored "Audit Trail Explorer", which its team can keep
+editing until Oct 17, so the score can describe a version that no longer exists.
+
+- [x] `POST /api/events/{id}/assignments` refuses before `end_at` with 409: *"Judging opens
+      when submissions close on 17 Oct at 18:00. Close submissions early from Event
+      settings if you need to."*
+- [x] `PUT /api/assignments/{id}/score` refuses before `end_at` too, which covers
+      assignments made before this fix.
+- [x] **"Close submissions now"** in Event settings sets `end_at` to now, behind a
+      confirmation that says what it does ("Teams will no longer be able to edit their
+      entries").
+- [x] The judge dashboard shows *"Judging opens on …"* for an event still open for
+      submissions, instead of an empty list.
+- [x] **Fixtures and specs:** seed one event that is already past its deadline with results
+      still hidden. `judging.spec.ts` and `judge-invite.spec.ts` move to it, because
+      dogfood-2026 (deadline Oct 17) can no longer be judged.
+
+### 10.4 — Limit login attempts (security)
+
+**Found:** `POST /api/auth/login` (`auth/router.py:88`) has no limiter, so passwords can be
+guessed without limit. It also returns *faster* for an unknown email, because bcrypt only
+runs for real accounts, which lets anyone probe which emails are registered.
+
+- [x] Only **failed** attempts count: 10 per account and 30 per IP per 15 minutes, reusing
+      `TokenBucketLimiter`. Going over returns 429: *"Too many attempts. Try again in about
+      N minutes, or reset your password."* The message is the same whether the account
+      exists or not.
+- [x] Unknown emails run bcrypt against a fixed dummy hash, so both paths take the same time.
+- [x] A successful login clears that account's failure count.
+- [x] Audit: log `user.login_throttled` with the IP. Don't log every failure, which would
+      flood the log.
+
+---
+
+### 10.5 — Project links on submissions
+
+**Found:** a submission is only title, description, track and screenshot. On the judge's
+scoring screen, a judge rated four weighted criteria from **one sentence** of text, with no
+code, no running demo and no video to open.
+
+- [x] `submissions.repo_url`, `demo_url`, `video_url`, all optional. Validated server-side:
+      `http`/`https` only (so no `javascript:` links), at most 500 characters.
+- [x] The editor has three fields with inline validation, autosaving like the others.
+- [x] Shown as labelled buttons (**Code**, **Live demo**, **Video**) that open in a new tab
+      with `rel="noopener noreferrer nofollow"`:
+      - on the submission detail page
+      - as small icons on gallery cards
+      - on the judge's scoring screen, which also gains the screenshot it currently lacks.
+- [x] Video is a link, never an embed (§1).
+- [x] Included in `submissions.csv` and the Phase 4 event backup.
+
+### 10.6 — Winners and awards
+
+**Found:** every event has prizes set up ("1st Place — $5,000 + mentorship",
+"Best Developer Tool — $1,000"), but nothing links a prize to a winning project. The event
+ends without ever saying who won.
+
+- [x] New `awards` table (`event_id`, `prize_rank`, `submission_id`, `note`, `awarded_by_id`),
+      unique on `(event_id, prize_rank)`.
+- [x] An **"Winners"** card on the results page lists each configured prize with a project
+      picker. Pickers are pre-suggested: overall prizes follow the normalised standings in
+      order, and a track prize suggests the top-ranked project in that track. The organizer
+      confirms or changes each one. A project can win more than one prize; the card flags
+      it when that happens.
+- [x] Awards stay **hidden until results are revealed**, using the same
+      `may_see_results` gate as the standings.
+- [x] After the reveal:
+      - the event page gets a **Winners** section
+      - winning gallery cards and submission pages get a prize badge
+      - the Phase 4 certificate names the prize
+- [x] Audit log records every award change.
+
+### 10.7 — Judging progress, reassignment, and conflicts of interest
+
+**Found:** `GET /api/events/{id}/assignments` exists, but no page uses it. The only view of
+per-judge progress is a CSV download. In the live app the standings showed 1 judge per
+project out of 3 assigned, and nothing on screen said which judges hadn't scored.
+
+- [x] A **"Judging progress"** card on the results page. It leads with the overall
+      "X of Y scores in", then one row per judge: scored/assigned and last activity.
+- [x] **Remove a judge from this event:** deletes their unscored assignments and keeps any
+      scores they already submitted. Confirmation required. Pressing **Assign judges**
+      again fills the gaps, since assignment already only fills gaps.
+- [x] **A judge can declare a conflict of interest** on the scoring screen with an optional
+      reason. This deletes that unscored assignment and records a `judge_conflicts` row
+      (`event_id`, `judge_id`, `submission_id`, `reason`) that assignment's conflict check
+      always respects, so the project is never handed back to that judge. The organizer
+      sees the declaration in the progress card.
+- [x] **Send a reminder**, shown only when email is on: emails a judge their remaining
+      count and a link to `/judge`. Limited to one per judge per hour.
+- [x] Tests cover all of it: the removed judge's scores stay, conflicts are honoured on a
+      re-run, and reminders are hidden and never sent with email off.
+
+### 10.8 — Event timeline, rules, and judging criteria everyone can see
+
+**Found:**
+- dogfood-2026 starts Oct 15, but the event page shows only a countdown to the Oct 17
+  deadline, so it reads as if it has already started.
+- Participants can't see the criteria they'll be scored on.
+- Event dates can't be changed after creation, despite README's claim that they can.
+
+- [x] A server-side `event_phase()`, returned on every event, gives one of: `upcoming`,
+      `open` (taking submissions), `judging` (deadline passed, results not out),
+      `results`.
+- [x] Every event card and event page shows a phase badge, the start and end dates, and a
+      countdown worded for the phase: "Starts in", "Submissions close in", "Judging in
+      progress", "Results are out".
+- [x] `events.rules`: plain text, rendered with line breaks and **never as HTML** (so it
+      can't carry a script). Edited in Event settings and shown on the event page.
+- [x] Rubric criteria gain an optional `description` ("Impact: who would use this, and how
+      much would it help them?"). Judges see it under each field; participants see a
+      read-only **"How projects are judged"** section with criterion names, weights and
+      descriptions (never scores). Served from a new public
+      `GET /api/events/{id}/criteria`.
+- [x] **Edit dates after creation** in Event settings. Start must come before end, and
+      moving the end date earlier than now asks for the same confirmation as 10.3's
+      "Close submissions now". Correct README's claim at the same time.
+- [x] No change to who can do what in each phase, apart from 10.3.
+
+### 10.9 — Team management
+
+**Found:** the team card offers only "Copy" for the invite link. Nobody can leave, remove a
+member, rename the team or get a fresh invite link. Invite links also expire after 30 days
+with no way to renew them.
+
+- [x] `teams.captain_id`: whoever created the team. Existing teams are backfilled with their
+      earliest member.
+- [x] **Any member can leave.**
+      - If the captain leaves, the earliest remaining member becomes captain.
+      - If the last member leaves, the team is deleted, along with any draft entry.
+      - The last member **can't** leave once the team has *submitted*. They get a plain
+        explanation instead.
+- [x] **The captain can rename the team, remove a member, hand captaincy to someone else, and
+      get a new invite link** (the old link stops working straight away). Removing a member
+      and changing the link each need a confirmation.
+- [x] Everything is blocked after the submission deadline, like all other team changes.
+- [x] Audit log entries for leave, remove, rename, captaincy change and new invite link.
+
+---
+
+### 10.10 — Admin user management and organizer invitations
+
+**Found:** there are no user-management endpoints at all. Organizer accounts can *only*
+come from `fixtures/users.json`, so a real organization can't add a new organizer without
+editing the database.
+
+- [x] An admin-only `/admin/users` page: search by name or email, filter by role, 50 per
+      page.
+- [x] **Change a user's role** between participant, judge and organizer. The admin role is
+      never granted from the UI (only the seed data or the 9.6 CLI can create admins), and
+      admins can't change their own role.
+- [x] **Deactivate or reactivate an account.** `users.is_active` is checked at login
+      (*"This account has been deactivated. Contact an admin."*), and deactivating bumps
+      `session_version`, which signs the user out immediately. Admins can't be deactivated,
+      nor can you deactivate yourself.
+- [x] **Organizer invitations**, reusing the judge-invite pattern: `judge_invites.grants_role`
+      (`judge` | `organizer`). Only admins can create organizer invitations, and they aren't
+      tied to an event. Redeeming one promotes the account to organizer. They're single
+      use, expire and can be revoked, exactly like judge invitations.
+- [x] Audit log entries for every role change, deactivation and invitation.
+
+### 10.11 — Event announcements
+
+**Found:** once an event is running, organizers have no way to tell participants anything,
+such as "the deadline has moved" or "the demo livestream starts at 5".
+
+- [x] New `announcements` table (`event_id`, `author_id`, `title`, `body`, `created_at`,
+      `emailed_count`). Plain text, at most 2,000 characters, **never rendered as HTML**.
+- [x] Organizers post from the event page. Announcements show newest first on the event
+      page, and the latest ones appear on the dashboard of every participant on a team in
+      that event.
+- [x] **"Also email everyone in this event"** checkbox, shown only when email is on. It
+      sends from a background task over **one** SMTP connection; this needs a new
+      `mailer.send_many`, so a 200-person event doesn't open 200 connections. Limited to one
+      emailed announcement per event per 10 minutes. The card reports how many were sent.
+- [x] A new webhook topic, `announcement.posted`, so events already wired to Discord or
+      Slack (Phase 7.3) post announcements there automatically.
+- [x] Organizers can edit or delete an announcement. A deleted announcement disappears from
+      the page; emails already sent obviously stay sent.
+
+### 10.12 — Draft events
+
+**Found:** an event is public the moment it's created, before its tracks, prizes, rubric or
+rules are set.
+
+- [x] `events.status` (`draft` | `published`). Existing events are backfilled as
+      `published`; events created from now on, including imported ones, **start as
+      drafts**.
+- [x] A draft is invisible to everyone except organizers and admins: left out of
+      `/api/events` and the gallery, and **404 (not 403)** by slug, so a draft's existence
+      doesn't leak. No teams can be created on a draft.
+- [x] A **Publish** button with a short checklist: dates set, at least one track, and a
+      rubric. Missing items are warnings, not blocks. **Unpublish** is allowed only while
+      the event has no teams.
+
+### 10.13 — Edit your display name
+
+**Found:** the profile page can change only the avatar.
+
+- [x] `PATCH /api/auth/me` `{name}`, with the same 2–60 character rule as sign-up, edited
+      inline on `/profile`. Names are read live wherever they appear (teams, comments,
+      judge progress), so no other data changes. Audit log entry.
+- [x] Changing the email address is **out of scope**: it needs verification of the new
+      address, which is its own flow.
+
+---
+
+### Schema changes (all through `add_missing_columns()` or `create_all`)
+
+- **New tables:** `event_judges`, `awards`, `judge_conflicts`, `announcements`.
+- **New columns on existing tables:**
+  - `judge_invites.event_id`, `judge_invites.grants_role`
+  - `team_memberships.event_id`
+  - `teams.captain_id`
+  - `submissions.repo_url`, `submissions.demo_url`, `submissions.video_url`
+  - `events.status`, `events.rules`
+  - `users.is_active`
+- **Backfills at boot, all idempotent:**
+  - `event_judges` from existing assignments
+  - `team_memberships.event_id` from each membership's team
+  - `teams.captain_id` from each team's earliest member
+  - `events.status = published` for every existing event
+- Rubric criterion `description` needs no schema change: criteria are already JSON.
+
+### UX checklist (PLAN.md §4.7, every new or changed screen)
+
+- [x] Every new card and page has loading, empty and error states, and works at 375, 768
+      and 1280px, and by keyboard alone.
+- [x] Every destructive action has a confirmation that says what will happen: removing a
+      judge, a team member or a user; leaving a team; new invite link; closing submissions;
+      unpublishing; deactivating.
+- [x] Role-aware navigation: admins get **Users**; nobody else sees admin screens, and the
+      API refuses them regardless.
+- [x] The guided tours gain steps for "Judging progress", "Winners", "Announcements" and
+      (for admins) "Users", anchored to their cards like the Phase 9 steps.
+
+### Tests
+
+- [x] pytest, one file per item, covering the "Found" case of each (the audit's exact
+      scenario must fail before the fix and pass after), plus the role matrix for every new
+      endpoint in `test_role_isolation.py`.
+- [x] Specifically:
+      - **10.1:** a judge not attached to an event is never assigned its submissions.
+      - **10.2:** a second team in the same event is refused.
+      - **10.3:** assignment and scoring are refused before the deadline.
+      - **10.4:** throttling returns the same response for known and unknown emails.
+      - **10.5:** a `javascript:` link is refused.
+      - **10.6:** winners stay hidden until the reveal.
+      - **10.12:** a draft returns 404 to a participant.
+- [x] Playwright:
+      - add a link to a submission and see it on the judge's screen
+      - declare a conflict and see it reported to the organizer
+      - assign a winner and see it appear after the reveal
+      - post an announcement
+      - leave a team
+      - publish a draft
+      - an admin promotes a user to organizer
+- [x] Every existing spec that depends on judging before the deadline or on dogfood-2026's
+      judges moves to the new past-deadline fixture event (10.3).
+
+### Docs
+
+- [x] `README.md`: correct the "edit an event's dates" claim (true once 10.8 lands), and
+      update "What's here".
+- [x] `USER-MANUAL.md`: participant sections for project links, team management and
+      announcements; judge sections for conflicts of interest and "judging opens after the
+      deadline"; organizer sections for event judges, progress, winners, drafts and
+      announcements; admin section for users and organizer invitations.
+- [x] `DATA-MODEL.md`: the four new tables and every new column.
+- [x] `JUDGING.md`: event-scoped judge pools, the deadline gate, conflicts of interest, and
+      how award suggestions are derived from the standings.
+- [x] `THREAT-MODEL.md`: new entries for cross-event judge leakage (10.1), multi-team
+      entries (10.2), judging a moving target (10.3), password guessing and email probing
+      by timing (10.4), `javascript:` links (10.5), early winner leaks (10.6), draft
+      leakage (10.12), and admin lockout or escalation (10.10).
+- [x] PLAN.md Phase 8's "89 Playwright checks, all passing" line: update to the real count
+      after this phase.
+
+**Definition of Done — Phase 10 gate:**
+- All 13 items built.
+- Each audit finding reproduced by a test that fails on the pre-Phase-10 code and passes
+  now.
+- Full suite green.
+- Every UX item checked.
+- `docker-compose.yml` still exactly `db` + `api`, and still zero runtime network calls
+  with email off.
+- An existing pre-Phase-10 volume, including one with a duplicate team membership, boots
+  without `down -v`.
 
 ---
 

@@ -1,5 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
+/** Seeded with its deadline already past, so it can be judged (PLAN.md 10.3). */
+const EVENT = 'judging-showcase-2026';
+
 /**
  * Phase 2 screens: judge dashboard, score form, rubric builder, results.
  * Runs against the seeded `docker compose` stack.
@@ -34,7 +37,10 @@ test.beforeAll(async ({ playwright, baseURL }) => {
   const ctx = await playwright.request.newContext({ baseURL });
 
   await ctx.post('/api/auth/login', { data: { email: 'alice@example.com', password: 'organizer-pass1' } });
-  await ctx.post('/api/events/1/assignments', { data: { judges_per_submission: 3 } });
+  // Judging opens only once submissions close (PLAN.md 10.3), so these specs use
+  // the seeded event whose deadline has already passed.
+  const event = await (await ctx.get(`/api/events/${EVENT}`)).json();
+  await ctx.post(`/api/events/${event.id}/assignments`, { data: { judges_per_submission: 3 } });
   await ctx.post('/api/auth/logout');
 
   // Sam scores everything so the dashboard has both scored and unscored states
@@ -75,7 +81,7 @@ test.describe('role-aware navigation for judging', () => {
 
   test('a judge reaching the organizer results page is refused', async ({ page }) => {
     await asJudge(page);
-    await page.goto('/events/dogfood-2026/results');
+    await page.goto(`/events/${EVENT}/results`);
     await expect(page.getByRole('alert')).toBeVisible();
   });
 });
@@ -83,7 +89,7 @@ test.describe('role-aware navigation for judging', () => {
 test.describe('organizer rubric builder', () => {
   test('the combined weight total across every rubric validates live', async ({ page }) => {
     await asOrganizer(page);
-    await page.goto('/events/dogfood-2026/rubric');
+    await page.goto(`/events/${EVENT}/rubric`);
     // Two seeded rubrics (Technical, Presentation) whose weights already sum to 1.0.
     await expect(page.getByText(/rubrics weight to 1.00/)).toBeVisible();
 
@@ -99,7 +105,7 @@ test.describe('organizer rubric builder', () => {
 
   test('a rubric locked by existing scores explains why', async ({ page }) => {
     await asOrganizer(page);
-    await page.goto('/events/dogfood-2026/rubric');
+    await page.goto(`/events/${EVENT}/rubric`);
     await page.getByLabel('Rubric name').first().fill('Renamed Rubric');
     await page.getByRole('button', { name: 'Save changes' }).first().click();
     // The seeded event has scores, so this must be refused with a reason.
@@ -181,7 +187,7 @@ test.describe('judge dashboard and score form', () => {
 test.describe('organizer results', () => {
   test('normalised standings render with raw mean alongside', async ({ page }) => {
     await asOrganizer(page);
-    await page.goto('/events/dogfood-2026/results');
+    await page.goto(`/events/${EVENT}/results`);
     await expect(page.getByRole('heading', { name: 'Results' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Normalised standings' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Raw mean' })).toBeVisible();
@@ -190,7 +196,7 @@ test.describe('organizer results', () => {
 
   test('a CSV export downloads and is real CSV', async ({ page }) => {
     await asOrganizer(page);
-    await page.goto('/events/dogfood-2026/results');
+    await page.goto(`/events/${EVENT}/results`);
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'Normalised results' }).click(),
@@ -201,7 +207,7 @@ test.describe('organizer results', () => {
 
   test('re-running assignment reports that nothing was left to do', async ({ page }) => {
     await asOrganizer(page);
-    await page.goto('/events/dogfood-2026/results');
+    await page.goto(`/events/${EVENT}/results`);
     await page.getByRole('button', { name: 'Assign judges' }).click();
     await expect(page.getByText(/already has its judges|Assigned \d+ new/)).toBeVisible();
   });
@@ -233,7 +239,7 @@ test.describe('Phase 2 screens at every breakpoint', () => {
     test(`${bp.name} (${bp.width}px): organizer screens do not overflow`, async ({ page }) => {
       await page.setViewportSize({ width: bp.width, height: bp.height });
       await asOrganizer(page);
-      for (const path of ['/events/dogfood-2026/rubric', '/events/dogfood-2026/results']) {
+      for (const path of [`/events/${EVENT}/rubric`, `/events/${EVENT}/results`]) {
         await page.goto(path);
         await expect(page.getByRole('banner')).toBeVisible();
         const overflow = await page.evaluate(

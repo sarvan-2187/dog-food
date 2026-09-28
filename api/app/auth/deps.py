@@ -7,23 +7,29 @@ from .models import Role, User
 from .session import SESSION_COOKIE_NAME, read_session_token
 
 
-def get_current_user(request: Request, session: Session = Depends(get_session)) -> User:
+def _user_from_cookie(request: Request, session: Session) -> "User | None":
     token = request.cookies.get(SESSION_COOKIE_NAME)
-    user_id = read_session_token(token) if token else None
-    if user_id is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in.")
+    parsed = read_session_token(token) if token else None
+    if parsed is None:
+        return None
+    user_id, version = parsed
     user = session.get(User, user_id)
+    # A version mismatch means the password changed after this cookie was
+    # issued: every older session is dead (PLAN.md Phase 9.1).
+    if user is None or user.session_version != version or not user.is_active:
+        return None
+    return user
+
+
+def get_current_user(request: Request, session: Session = Depends(get_session)) -> User:
+    user = _user_from_cookie(request, session)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in.")
     return user
 
 
 def get_current_user_optional(request: Request, session: Session = Depends(get_session)) -> "User | None":
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    user_id = read_session_token(token) if token else None
-    if user_id is None:
-        return None
-    return session.get(User, user_id)
+    return _user_from_cookie(request, session)
 
 
 def require_role(*roles: Role):

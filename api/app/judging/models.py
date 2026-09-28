@@ -33,14 +33,10 @@ class JudgeInvite(SQLModel, table=True):
     is an invitation issued by an organizer or admin, single-use and expiring, with both
     conditions checked server-side rather than by hiding a link (PLAN.md section 8.0).
 
-    Scoped to an event since Phase 10.1. The `judge` *role* is still global - it is a
-    property of the account - but an invitation now says which event the person was
-    brought in to judge, and redeeming it enrols them on that event's panel
-    (`EventJudge`). Before this, assignment drew from every judge account on the
-    platform, so a judge invited for one hackathon was handed submissions from all the
-    others; on a company running 35+ events that is a confidentiality breach, not an
-    inconvenience. `event_id` stays nullable so invitations issued before this change
-    still redeem - they simply enrol the person on nothing.
+    Judge invitations belong to an event (PLAN.md Phase 10.1): redeeming one adds the
+    judge to that event's pool, and only that pool is ever assigned its submissions.
+    `event_id` is null only on invitations created before 10.1, and on organizer
+    invitations (`grants_role == "organizer"`, Phase 10.10), which are platform-wide.
     """
 
     __tablename__ = "judge_invites"
@@ -52,30 +48,45 @@ class JudgeInvite(SQLModel, table=True):
     # signing up with a different address than the one they were emailed at.
     invited_email: str = ""
     note: str = ""
-    event_id: Optional[int] = Field(default=None, foreign_key="events.id", index=True)
     created_by_id: int = Field(foreign_key="users.id", index=True)
     expires_at: datetime = Field(default_factory=_default_invite_expiry, sa_column=_ts_column())
     redeemed_at: Optional[datetime] = Field(default=None, sa_column=_nullable_ts_column())
     redeemed_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+    event_id: Optional[int] = Field(default=None, foreign_key="events.id", index=True)
+    # "judge" | "organizer". A plain string, not the Role enum, so it can be added to
+    # an existing table with one idempotent ALTER (app.db.add_missing_columns).
+    grants_role: str = Field(default="judge")
 
 
 class EventJudge(SQLModel, table=True):
-    """Which judges sit on which event's panel (Phase 10.1).
-
-    Assignment selects from this table rather than from "every account whose role is
-    judge". One row per judge per event; the unique constraint makes enrolling twice a
-    no-op at the database level rather than something every caller has to remember.
-    """
+    """A judge's membership of one event's pool (PLAN.md Phase 10.1). Assignment
+    draws only from these rows, so a judge brought in for one hackathon is never
+    handed another's submissions."""
 
     __tablename__ = "event_judges"
-    __table_args__ = (UniqueConstraint("event_id", "judge_id", name="uq_event_judge"),)
+    __table_args__ = (UniqueConstraint("event_id", "user_id", name="uq_event_judge"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_id: int = Field(foreign_key="events.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    added_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    added_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+
+
+class JudgeConflict(SQLModel, table=True):
+    """A judge's declared conflict of interest with one submission (PLAN.md
+    Phase 10.7). Assignment treats it exactly like a same-team conflict, so the
+    submission is never handed back to that judge on a re-run."""
+
+    __tablename__ = "judge_conflicts"
+    __table_args__ = (UniqueConstraint("judge_id", "submission_id", name="uq_judge_conflict"),)
 
     id: Optional[int] = Field(default=None, primary_key=True)
     event_id: int = Field(foreign_key="events.id", index=True)
     judge_id: int = Field(foreign_key="users.id", index=True)
-    # Who added them, for the audit trail. Null when the row came from fixtures.
-    added_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    submission_id: int = Field(foreign_key="submissions.id", index=True)
+    reason: str = ""
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
 
 

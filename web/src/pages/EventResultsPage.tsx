@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { JudgeInvitePanel } from '../components/JudgeInvitePanel';
 import { JudgePanelCard } from '../components/JudgePanelCard';
+import { WinnersEditor } from '../components/EventSections';
 import { RequireRole } from '../components/auth/guards';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Button, Card } from '../components/ui';
@@ -207,6 +208,7 @@ function EventResults() {
         <>
           <JudgePanelCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
           <JudgeInvitePanel eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
+          <WinnersEditor eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
         </>
       )}
 

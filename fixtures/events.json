@@ -31,7 +31,7 @@
     "voting_enabled": true,
     "results_hidden_until": "2026-10-17T20:00:00",
     "cover_image_url": "/images/covers/cover-devtools.jpg",
-    "judges": [
+    "judge_emails": [
       "sam@example.com",
       "mina@example.com",
       "omar@example.com",
@@ -70,13 +70,12 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": "2026-09-27T20:00:00",
-    "cover_image_url": "/images/covers/cover-ai-agents.jpg",
-    "judges": []
+    "cover_image_url": "/images/covers/cover-ai-agents.jpg"
   },
   {
     "slug": "climate-hack-2026",
     "name": "ClimateHack: Grid Edition",
-    "description": "Build tooling for the energy transition \u2014 demand forecasting, grid balancing, emissions accounting. Real utility datasets provided under NDA.",
+    "description": "Build tooling for the energy transition — demand forecasting, grid balancing, emissions accounting. Real utility datasets provided under NDA.",
     "start_at": "2026-10-02T10:00:00",
     "end_at": "2026-10-04T17:00:00",
     "tracks": [
@@ -101,8 +100,7 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-climate.jpg",
-    "judges": []
+    "cover_image_url": "/images/covers/cover-climate.jpg"
   },
   {
     "slug": "fintech-rails-2026",
@@ -132,8 +130,7 @@
     "created_by": "alice@example.com",
     "voting_enabled": false,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-fintech.jpg",
-    "judges": []
+    "cover_image_url": "/images/covers/cover-fintech.jpg"
   },
   {
     "slug": "women-in-tech-buildathon-2026",
@@ -163,12 +160,11 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-women-in-tech.jpg",
-    "judges": []
+    "cover_image_url": "/images/covers/cover-women-in-tech.jpg"
   },
   {
     "slug": "campus-48-spring-2026",
-    "name": "Campus 48 \u2014 Spring Invitational",
+    "name": "Campus 48 — Spring Invitational",
     "description": "Twelve universities, one weekend, no theme. The only rule is that you start from an empty repository on Friday night.",
     "start_at": "2026-04-10T18:00:00",
     "end_at": "2026-04-12T18:00:00",
@@ -193,13 +189,12 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-campus-48h.jpg",
-    "judges": []
+    "cover_image_url": "/images/covers/cover-campus-48h.jpg"
   },
   {
     "slug": "quantum-tooling-jam-2026",
     "name": "Quantum Tooling Jam",
-    "description": "Simulators, circuit visualisers and error-mitigation tooling. Beginner track included \u2014 no prior quantum experience assumed.",
+    "description": "Simulators, circuit visualisers and error-mitigation tooling. Beginner track included — no prior quantum experience assumed.",
     "start_at": "2026-06-19T09:00:00",
     "end_at": "2026-06-21T17:00:00",
     "tracks": [
@@ -224,8 +219,7 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-quantum.jpg",
-    "judges": []
+    "cover_image_url": "/images/covers/cover-quantum.jpg"
   },
   {
     "slug": "open-source-maintainers-jam-2026",
@@ -254,7 +248,46 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-open-track.jpg",
-    "judges": []
+    "cover_image_url": "/images/covers/cover-open-track.jpg"
+  },
+  {
+    "slug": "judging-showcase-2026",
+    "name": "Raptor Judging Showcase",
+    "description": "Submissions are in and the judges are at work. Results go live once every score is counted.",
+    "start_at": "2026-08-28T09:00:00",
+    "end_at": "2026-08-30T18:00:00",
+    "tracks": [
+      "Developer Tools",
+      "Productivity",
+      "Open Category"
+    ],
+    "prize_config": {
+      "prizes": [
+        {
+          "rank": "1st Place",
+          "reward": "$3,000"
+        },
+        {
+          "rank": "2nd Place",
+          "reward": "$1,500"
+        },
+        {
+          "rank": "Best Developer Tool",
+          "reward": "$750"
+        }
+      ]
+    },
+    "max_team_size": 4,
+    "created_by": "alice@example.com",
+    "voting_enabled": true,
+    "results_hidden_until": "2026-12-31T18:00:00",
+    "cover_image_url": "/images/covers/cover-devtools.jpg",
+    "rules": "Teams of up to 4.\nEverything you submit must be built during the event.\nJudges score what was submitted by the deadline.",
+    "judge_emails": [
+      "sam@example.com",
+      "mina@example.com",
+      "omar@example.com",
+      "dana@example.com"
+    ]
   }
 ]

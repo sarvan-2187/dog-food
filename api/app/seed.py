@@ -80,6 +80,7 @@ def _seed_events(session: Session, email_to_id: dict[str, int]) -> dict[str, int
             max_team_size=row.get("max_team_size", 4),
             cover_image_url=row.get("cover_image_url"),
             voting_enabled=row.get("voting_enabled", False),
+            rules=row.get("rules", ""),
             results_hidden_until=(
                 _fixture_dt(row["results_hidden_until"]) if row.get("results_hidden_until") else None
             ),
@@ -88,31 +89,7 @@ def _seed_events(session: Session, email_to_id: dict[str, int]) -> dict[str, int
         session.add(event)
         session.flush()
         slug_to_id[row["slug"]] = event.id
-    _seed_event_judges(session, email_to_id, slug_to_id)
     return slug_to_id
-
-
-def _seed_event_judges(session: Session, email_to_id: dict[str, int], slug_to_id: dict[str, int]) -> None:
-    """Phase 10.1: assignment draws from an event's panel, so the seeded demo event
-    needs one or `docker compose up` produces an event nobody can judge."""
-    from .judging.models import EventJudge
-
-    for row in load_fixture("events.json"):
-        event_id = slug_to_id.get(row["slug"])
-        if event_id is None:
-            continue
-        for email in row.get("judges", []):
-            judge_id = email_to_id.get(email)
-            if judge_id is None:
-                continue
-            existing = session.exec(
-                select(EventJudge).where(
-                    EventJudge.event_id == event_id, EventJudge.judge_id == judge_id
-                )
-            ).first()
-            if not existing:
-                session.add(EventJudge(event_id=event_id, judge_id=judge_id))
-    session.flush()
 
 
 def _seed_teams(session: Session, email_to_id: dict[str, int], slug_to_id: dict[str, int]) -> dict[str, int]:
@@ -125,10 +102,13 @@ def _seed_teams(session: Session, email_to_id: dict[str, int], slug_to_id: dict[
         if existing:
             name_to_id[row["name"]] = existing.id
             continue
-        team = Team(name=row["name"], event_id=event_id)
+        members = row.get("member_emails", [])
+        # Seeding runs after the boot-time backfills, so the captain is set here
+        # rather than left for the next boot (PLAN.md 10.9).
+        team = Team(name=row["name"], event_id=event_id, captain_id=email_to_id[members[0]] if members else None)
         session.add(team)
         session.flush()
-        for email in row.get("member_emails", []):
+        for email in members:
             session.add(TeamMembership(team_id=team.id, user_id=email_to_id[email]))
         name_to_id[row["name"]] = team.id
     return name_to_id
@@ -150,6 +130,9 @@ def _seed_submissions(session: Session, slug_to_id: dict[str, int], name_to_id: 
             title=row.get("title", ""),
             description=row.get("description", ""),
             track=row.get("track", ""),
+            repo_url=row.get("repo_url", ""),
+            demo_url=row.get("demo_url", ""),
+            video_url=row.get("video_url", ""),
             status=SubmissionStatus(row.get("status", "draft")),
         )
         session.add(submission)
@@ -190,6 +173,21 @@ def _seed_rubrics(session: Session, slug_to_id: dict[str, int]) -> None:
         session.add(Rubric(event_id=event_id, name=row["name"], criteria=row["criteria"]))
 
 
+def _seed_event_judges(session: Session, email_to_id: dict[str, int], slug_to_id: dict[str, int]) -> None:
+    """PLAN.md 10.1: judges belong to events. Keyed on (event, judge), so re-runs
+    add nothing."""
+    from .judging.models import EventJudge
+
+    for row in load_fixture("events.json"):
+        event_id = slug_to_id[row["slug"]]
+        for email in row.get("judge_emails", []):
+            user_id = email_to_id[email]
+            if not session.exec(
+                select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.user_id == user_id)
+            ).first():
+                session.add(EventJudge(event_id=event_id, user_id=user_id))
+
+
 def run_seed() -> None:
     with Session(engine) as session:
         email_to_id = _seed_users(session)
@@ -197,6 +195,7 @@ def run_seed() -> None:
         name_to_id = _seed_teams(session, email_to_id, slug_to_id)
         _seed_submissions(session, slug_to_id, name_to_id)
         _seed_rubrics(session, slug_to_id)
+        _seed_event_judges(session, email_to_id, slug_to_id)
         session.commit()
     log.info("seeding complete")
 

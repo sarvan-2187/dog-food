@@ -52,12 +52,23 @@ def assign_judges(
     judges: Sequence[_HasId],
     team_memberships: Sequence[_Membership],
     k: int = DEFAULT_JUDGES_PER_SUBMISSION,
+    *,
+    existing: Iterable[tuple[int, int]] = (),
+    extra_conflicts: Iterable[tuple[int, int]] = (),
 ) -> list[JudgeAssignment]:
-    """Assign up to `k` non-conflicted judges to each submission.
+    """Assign up to `k` non-conflicted judges to each submission, returning only
+    the NEW assignments.
 
-    Step 2: iterate submissions round-robin; for each, take the `k` eligible
-    judges with the fewest assignments so far, breaking ties by judge id
-    ascending so the result is reproducible.
+    Step 2: iterate submissions round-robin; for each, take the eligible judges
+    with the fewest assignments so far, breaking ties by judge id ascending so
+    the result is reproducible.
+
+    `existing` is the (submission_id, judge_id) pairs already in place: they
+    count towards a submission's `k` and towards each judge's load, so a re-run
+    after a judge is removed only fills the gap (PLAN.md Phase 10.7) instead of
+    stacking a fresh k judges on top. `extra_conflicts` is (judge_id,
+    submission_id) pairs a judge has declared, treated exactly like a same-team
+    conflict. With both empty this is the original algorithm, unchanged.
 
     Fewer than `k` judges are assigned when conflicts leave too few eligible --
     that is reported honestly rather than papered over by relaxing a conflict.
@@ -65,17 +76,26 @@ def assign_judges(
     if k <= 0:
         return []
 
-    conflicts = build_conflict_set(submissions, team_memberships)
+    conflicts = build_conflict_set(submissions, team_memberships) | set(extra_conflicts)
     load: dict[int, int] = {judge.id: 0 for judge in judges}
     judge_ids = sorted(load)
+    already: dict[int, set[int]] = {}
+    for submission_id, judge_id in existing:
+        already.setdefault(submission_id, set()).add(judge_id)
+        if judge_id in load:
+            load[judge_id] += 1
 
     assignments: list[JudgeAssignment] = []
     for submission in sorted(submissions, key=lambda s: s.id):
-        eligible = [j for j in judge_ids if (j, submission.id) not in conflicts]
+        have = already.get(submission.id, set())
+        needed = k - len(have)
+        if needed <= 0:
+            continue
+        eligible = [j for j in judge_ids if (j, submission.id) not in conflicts and j not in have]
         # Fewest assignments first, then judge id -- both keys are total, so the
         # ordering is fully determined and the run is reproducible.
         eligible.sort(key=lambda j: (load[j], j))
-        for judge_id in eligible[:k]:
+        for judge_id in eligible[:needed]:
             assignments.append(
                 JudgeAssignment(
                     event_id=submission.event_id,

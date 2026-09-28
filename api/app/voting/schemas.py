@@ -44,6 +44,12 @@ class GalleryItem(BaseModel):
     votes: Optional[int] = None
     voted_by_me: bool = False
     image_url: Optional[str] = None
+    repo_url: str = ""
+    demo_url: str = ""
+    video_url: str = ""
+    # Prize labels this project won (PLAN.md 10.6) - empty until results are
+    # visible to the viewer, withheld in the response like vote counts.
+    awards: list[str] = []
 
 
 class PublicResultRow(BaseModel):

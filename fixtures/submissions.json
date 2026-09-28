@@ -33,5 +33,36 @@
     "description": "Still being written - stays out of the gallery and out of judging until submitted.",
     "track": "Open Category",
     "status": "draft"
+  },
+  {
+    "team_name": "Signal Hawks",
+    "event_slug": "judging-showcase-2026",
+    "title": "Pager Triage",
+    "track": "Developer Tools",
+    "status": "submitted",
+    "image": "audit-trail-explorer.png",
+    "description": "Groups related alerts into one incident so the on-call engineer sees the cause, not forty symptoms.",
+    "repo_url": "https://github.com/example/pager-triage",
+    "demo_url": "https://pager-triage.example.com"
+  },
+  {
+    "team_name": "Lantern",
+    "event_slug": "judging-showcase-2026",
+    "title": "Meeting Lantern",
+    "track": "Productivity",
+    "status": "submitted",
+    "image": "standup-digest.png",
+    "description": "Turns a meeting recording into decisions and owners, posted to the right channel.",
+    "video_url": "https://www.youtube.com/watch?v=example"
+  },
+  {
+    "team_name": "Merge Queue",
+    "event_slug": "judging-showcase-2026",
+    "title": "Green Main",
+    "track": "Developer Tools",
+    "status": "submitted",
+    "image": "flake-finder.png",
+    "description": "A merge queue that bisects failing batches automatically, so one bad PR never blocks the rest.",
+    "repo_url": "https://github.com/example/green-main"
   }
 ]

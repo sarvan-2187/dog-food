@@ -10,7 +10,9 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
 
-def render_certificate(*, event_name: str, team_name: str, submission_title: str, rank: int | None) -> bytes:
+def render_certificate(
+    *, event_name: str, team_name: str, submission_title: str, rank: int | None, prizes: list[str] | None = None
+) -> bytes:
     buffer = io.BytesIO()
     width, height = landscape(letter)
     pdf = canvas.Canvas(buffer, pagesize=landscape(letter))
@@ -34,6 +36,10 @@ def render_certificate(*, event_name: str, team_name: str, submission_title: str
         pdf.setFont("Helvetica-Bold", 15)
         pdf.drawCentredString(width / 2, height - 4.5 * inch, f"Final rank: #{rank}")
 
+    if prizes:  # PLAN.md 10.6 - the award itself, not just the rank
+        pdf.setFont("Helvetica-Bold", 17)
+        pdf.drawCentredString(width / 2, height - 5.1 * inch, "Winner: " + ", ".join(prizes))
+
     pdf.setFont("Helvetica-Oblique", 10)
     pdf.drawCentredString(width / 2, 0.9 * inch, "Issued by HackFlow")
 
@@ -48,6 +54,7 @@ if __name__ == "__main__":
         team_name="Flake Finders",
         submission_title="Flake Finder",
         rank=2,
+        prizes=["2nd Place"],
     )
     assert pdf_bytes.startswith(b"%PDF-")
     assert len(pdf_bytes) > 500

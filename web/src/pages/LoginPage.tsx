@@ -60,6 +60,11 @@ export function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        <p className="-mt-2 text-right text-meta">
+          <Link to="/forgot-password" className="text-ink-700 underline underline-offset-2 hover:text-ink-900">
+            Forgot password?
+          </Link>
+        </p>
         {error && (
           <p role="alert" className="text-meta text-danger-fg">
             {error}

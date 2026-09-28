@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { RequireRole } from '../components/auth/guards';
 import { ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { ProjectLinks } from '../components/EventSections';
 import type { Criterion, Score, ScoringSheet } from '../types';
 
 export function ScorePage() {
@@ -128,11 +129,18 @@ function ScoreForm() {
       </p>
 
       <Card title={sheet.submission_title} meta={sheet.rubrics.map((r) => r.rubric_name).join(' + ')}>
-        {sheet.submission_description && (
-          <p className="mb-6 whitespace-pre-wrap border-b border-border-subtle pb-4 text-body text-ink-600">
-            {sheet.submission_description}
-          </p>
-        )}
+        {/* PLAN.md 10.5: what the judge is actually scoring - not just a paragraph. */}
+        <div className="mb-6 flex flex-col gap-4 border-b border-border-subtle pb-4">
+          {sheet.submission_image_url && (
+            <div className="max-h-80 overflow-hidden rounded-md bg-surface-100">
+              <img src={sheet.submission_image_url} alt={`Screenshot of ${sheet.submission_title}`} className="w-full object-cover" />
+            </div>
+          )}
+          {sheet.submission_description && (
+            <p className="whitespace-pre-wrap text-body text-ink-600">{sheet.submission_description}</p>
+          )}
+          <ProjectLinks repo={sheet.repo_url} demo={sheet.demo_url} video={sheet.video_url} />
+        </div>
 
         <form className="flex flex-col gap-6" onSubmit={onSubmit} noValidate>
           {sheet.rubrics.map((group) => (
@@ -153,6 +161,7 @@ function ScoreForm() {
                         weight {(c.weight * 100).toFixed(0)}% &middot; out of {c.max_score}
                       </span>
                     </div>
+                    {c.description && <p className="text-meta text-ink-600">{c.description}</p>}
                     <input
                       id={`c-${c.key}`}
                       type="number"
@@ -225,9 +234,78 @@ function ScoreForm() {
         </form>
       </Card>
 
+      {savedTotal === null && (
+        <ConflictDeclaration assignmentId={sheet.assignment_id} onError={(message) => setToast({ message, ok: false })} />
+      )}
+
       <ToastRegion>
         {toast && <Toast status={toast.ok ? 'success' : 'danger'} message={toast.message} onDismiss={() => setToast(null)} />}
       </ToastRegion>
+    </div>
+  );
+}
+
+/**
+ * PLAN.md 10.7: a judge steps back from a project they can't judge fairly.
+ * The project is released for someone else and never handed back to them.
+ * Only offered before they've scored it.
+ */
+function ConflictDeclaration({ assignmentId, onError }: { assignmentId: number; onError: (message: string) => void }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function declare() {
+    if (!window.confirm("Step back from this project? It will go to another judge, and it won't be assigned to you again.")) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/assignments/${assignmentId}/conflict`, { reason });
+      navigate('/judge');
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : 'Could not record the conflict.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-lg border border-border-subtle p-card-sm">
+      {!open ? (
+        <button
+          type="button"
+          className="text-meta text-ink-600 underline underline-offset-2 hover:text-ink-900"
+          onClick={() => setOpen(true)}
+        >
+          I have a conflict of interest with this project
+        </button>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-body text-ink-700">
+            If you know the team, helped build it, or can't judge it fairly for any reason, step back. The organizer sees
+            your note.
+          </p>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-label text-ink-800">
+              Reason <span className="text-ink-500">(optional)</span>
+            </span>
+            <input
+              value={reason}
+              maxLength={300}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="I mentored this team"
+              className="h-10 rounded-md border border-border bg-surface-0 px-3 text-body text-ink-800 focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="danger" loading={busy} loadingLabel="Stepping back..." onClick={declare}>
+              Step back from this project
+            </Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
