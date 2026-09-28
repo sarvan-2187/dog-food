@@ -40,6 +40,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
+      # Global limit per client (api/app/request_limit.py). 0 switches it off.
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-200}
     ports:
       - "8000:8000"
     volumes:

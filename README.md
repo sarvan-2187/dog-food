@@ -520,7 +520,10 @@ docker compose exec api pytest tests/ -v
 # Frontend unit tests
 cd web && npm ci && npm test
 
-# Browser end-to-end tests (needs the stack up)
+# Browser end-to-end tests (needs the stack up). Every client is limited to
+# 200 requests a minute; a parallel Playwright run from one machine can exceed
+# that, so start the stack with the global limit off for it:
+#   RATE_LIMIT_PER_MINUTE=0 docker compose up -d
 cd web && npx playwright install --with-deps chromium
 npx playwright test
 
