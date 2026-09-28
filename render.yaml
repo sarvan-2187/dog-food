@@ -19,6 +19,10 @@ services:
           property: connectionString
       - key: SESSION_SECRET
         generateValue: true
+      # Render's edge proxy is the only way in, so trust its X-Forwarded-For:
+      # per-client rate limits then key on the real visitor, not the proxy.
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
       # Set in the dashboard after first deploy, e.g. https://hackflow.onrender.com
       - key: APP_BASE_URL
         sync: false

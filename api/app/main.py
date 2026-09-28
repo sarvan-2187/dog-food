@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 mimetypes.add_type("font/woff2", ".woff2")
 
 from .db import create_db_and_tables
+from .protection import ProtectionMiddleware, SecurityHeadersMiddleware
 from .seed import run_seed
 
 # Import every model module before create_db_and_tables() so SQLModel.metadata
@@ -87,6 +88,12 @@ app = FastAPI(
     license_info={"name": "MIT"},
     lifespan=lifespan,
 )
+
+
+# Outermost last: security headers wrap everything, including the cheap
+# 413/503/504 refusals ProtectionMiddleware sends without reaching a route.
+app.add_middleware(ProtectionMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.middleware("http")
