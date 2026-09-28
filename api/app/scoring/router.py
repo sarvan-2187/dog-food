@@ -147,6 +147,29 @@ def get_my_score(
     return ScorePublic(**score.model_dump())
 
 
+@router.get("/api/judges/{judge_ref}/scores", response_model=list[ScorePublic])
+def judge_scores(
+    judge_ref: str,
+    user: User = Depends(require_role(Role.judge, *ORGANIZER)),
+    session: Session = Depends(get_session),
+) -> list[ScorePublic]:
+    """Every score one judge has given. `judge_ref` is "me" or a user id. A judge
+    may read only their own; asking for a peer's is refused and audited, so an
+    organizer can see who went looking. Organizers may read any judge's."""
+    if judge_ref == "me":
+        judge_id = user.id
+    elif judge_ref.isdigit():
+        judge_id = int(judge_ref)
+    else:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Judge not found.")
+    if user.role == Role.judge and judge_id != user.id:
+        record(session, "score.peer_read_refused", actor=user, entity_type="user", entity_id=judge_id)
+        session.commit()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Judges can only read their own scores.")
+    scores = session.exec(select(Score).where(Score.judge_id == judge_id).order_by(Score.id))
+    return [ScorePublic(**s.model_dump()) for s in scores]
+
+
 # --------------------------------------------------------------------------
 # Results -- organizer/admin only
 # --------------------------------------------------------------------------

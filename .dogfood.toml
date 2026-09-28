@@ -1,0 +1,26 @@
+# .dogfood.toml - where the DOGFOOD acceptance checker finds things.
+# Run: python run.py .dogfood.toml > acceptance-report.txt
+# `docker compose up` prints these same values at boot; ids assume a fresh volume
+# (docker compose down -v).
+
+[portal]
+base_url = "http://localhost:8000"
+
+[tiers]
+claimed = ["T1", "T2"]
+pitch = "HackFlow: a self-hosted hackathon portal with weighted rubrics, z-score normalised judging and backend-enforced role isolation."
+
+[auth]
+# Fixed demo sessions from DEMO_SESSION_TOKENS in docker-compose.yml.
+organizer   = "Cookie: session=demo-org-7f2a"
+judge_a     = "Cookie: session=demo-jdg-a-91bc"
+judge_b     = "Cookie: session=demo-jdg-b-44de"
+participant = "Cookie: session=demo-prt-2e88"
+
+[routes]
+gallery      = "/api/gallery"
+submit       = "/api/teams/8/submission/submit"
+judge_scores = "/api/judges/me/scores"
+# judge_a's scores; judge_b must be refused.
+peer_scores  = "/api/judges/14/scores"
+csv_export   = "/api/events/10/export/scores.csv"
