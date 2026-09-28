@@ -23,7 +23,7 @@ from .deps import get_current_user
 from .models import ResetChannel, Role, User, UserPublic, find_user_by_email
 from .recovery import issue_reset, queue_changed_email, reset_email, validate_new_password
 from .security import hash_password, verify_password
-from .session import SESSION_COOKIE_NAME, SESSION_MAX_AGE, SESSION_SECRET, create_session_token
+from .session import COOKIE_SECURE, SESSION_COOKIE_NAME, SESSION_MAX_AGE, SESSION_SECRET, create_session_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -70,6 +70,7 @@ def set_session_cookie(response: Response, user: User) -> None:
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=COOKIE_SECURE,
     )
 
 
@@ -159,7 +160,7 @@ def login(
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(response: Response) -> None:
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    response.delete_cookie(SESSION_COOKIE_NAME, httponly=True, samesite="lax", secure=COOKIE_SECURE)
 
 
 @router.get("/me", response_model=UserPublic)

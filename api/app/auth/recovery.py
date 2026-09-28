@@ -41,6 +41,10 @@ MAY_RESET: dict[Role, frozenset[Role]] = {
 def validate_new_password(v: str) -> str:
     if len(v) < 8:
         raise ValueError("Password must be at least 8 characters.")
+    # bcrypt reads only the first 72 bytes and silently ignores the rest, so a
+    # longer password would be weaker than it looks: say so instead.
+    if len(v.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 bytes (about 72 characters).")
     return v
 
 
