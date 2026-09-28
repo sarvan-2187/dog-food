@@ -30,11 +30,10 @@ The conflict rule in the next section is easy to misread as implying otherwise. 
 safeguard for the legitimate overlap case — a mentor who also entered a side project, a
 judge who joined a team late — not a hint that judges are drawn from the participant pool.
 
-**Known gap: there is no judge-invitation flow.** Judge accounts currently exist only via
-`fixtures/users.json` at boot, so on a live instance an organizer cannot add a judge
-without editing a fixture and recreating the database. Every judging path that does exist
-is correctly gated and tested; this is a missing capability, not a defect, and it is
-tracked in `PLAN.md`'s Open Questions with a scope sketch.
+**How judges join.** Through a single-use, expiring invitation that an organizer issues
+for one event (`api/app/judging/invites.py`). Redeeming it adds the judge to that event's
+panel only. Judges can't sign themselves up: self-service judge signup would let anyone
+give themselves access to every score.
 
 ## Assignment algorithm
 
@@ -111,8 +110,53 @@ Edge cases, each with a dedicated unit test in `api/tests/test_scoring.py`:
 - A judge with only one assignment → `sigma_j == 0`, guarded the same way as any
   zero-variance judge: their `z` contributes 0, not a division error.
 - A submission scored by only one judge → still produces a valid `z_bar_i`.
-- The full fixture dataset (4 judges, varying harshness) → raw mean and normalized
-  ranking can genuinely disagree, which is the point of normalizing at all.
+- A dataset of judges with different harshness → the raw-mean ranking and the
+  normalized ranking genuinely disagree, which is the point of normalizing at all.
+
+### Worked on the official DOGFOOD fixtures
+
+The fixture event (`sample-hack-2026`) has 40 submissions, 30 judges and 123 scores,
+with 2 to 6 judges per project. Its criteria are `functionality`, `quality` and
+`innovation`, on a 1–5 scale and weighted equally. The table is the unedited
+`GET /api/events/10/export/results.csv` from a fresh `docker compose up`. *Raw rank*
+orders the same rows by plain raw mean. *Move* is raw rank minus normalized rank, so a
+positive number means normalizing moved the project up.
+
+| Normalized rank | Raw rank | Move | Project | Judges | Raw mean | z̄ | Display |
+|---|---|---|---|---|---|---|---|
+| 1 | 2 | +1 | Iron Switch | 3 | 4.33 | +1.232 | 62.3 |
+| 2 | 7 | +5 | Slow Trail | 3 | 4.00 | +0.918 | 59.2 |
+| 3 | 1 | −2 | Salt Ledger | 4 | 4.33 | +0.867 | 58.7 |
+| 4 | 5 | +1 | Salt Loom | 4 | 4.08 | +0.768 | 57.7 |
+| 5 | 6 | +1 | Salt Kiln | 3 | 4.00 | +0.688 | 56.9 |
+| 6 | 4 | −2 | Dry Relay | 3 | 4.11 | +0.609 | 56.1 |
+| 7 | 3 | −4 | Still Beacon | 2 | 4.17 | +0.595 | 56.0 |
+| 8 | 19 | +11 | Paper Anchor | 2 | 3.50 | +0.324 | 53.2 |
+| 9 | 26 | +17 | Glass Signal | 3 | 3.44 | +0.288 | 52.9 |
+| 10 | 31 | +21 | Dry Harbour | 6 | 3.33 | +0.263 | 52.6 |
+
+Only 2 of the 40 projects keep their raw rank. Every project in the top ten moves, and
+the largest move is 21 places. Two of the fixture's deliberate awkward cases explain the
+biggest moves:
+
+- **Small Relay drops from 13th to 30th.** It was scored by `jdg_07`, the judge who gave
+  every project 4/4/4, and by `jdg_29`. A judge who gives everything the same score has
+  σ = 0, so their 4.0 carries no information about *this* project and contributes z = 0,
+  not a +4. `jdg_29`'s 3.33 is below that judge's own average (about 3.5), so the
+  project's z̄ is negative (−0.238), even though its raw mean of 3.67 looks
+  above average.
+- **Dry Harbour rises from 31st to 10th.** Its raw mean is pulled down by `jdg_01`'s
+  2/2/2, but that is the only project `jdg_01` scored. With one score, a judge's σ is 0,
+  and nothing shows whether 2.0 is harsh or just that judge's normal. So it counts as
+  z = 0, and the other five judges, each measured against their own average, place it
+  above average. Dry Harbour is also the fixture's duplicate submission (`prj_07` and
+  `prj_41`). Merging the two gives it 6 judges (README).
+
+**The trade-off.** A judge's scores only count for something once that judge has scored
+more than one project. That is deliberate: without a spread there is no scale to
+normalize against. It is also the cost of this method. An organizer who wants every
+judge to count should assign at least two projects each. The assignment run's
+`judges_per_submission` makes that the normal case.
 
 ## Role isolation
 

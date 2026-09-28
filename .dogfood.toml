@@ -7,7 +7,7 @@
 base_url = "http://localhost:8000"
 
 [tiers]
-claimed = ["T1", "T2"]
+claimed = ["T1", "T2", "T3"]  # T3 is judged by hand; run.py only checks T1 and T2
 pitch = "HackFlow: a self-hosted hackathon portal with weighted rubrics, z-score normalised judging and backend-enforced role isolation."
 
 [auth]

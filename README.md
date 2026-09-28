@@ -209,6 +209,19 @@ Role-based access control is enforced at the endpoint level throughout — `requ
 is written once (`api/app/auth/deps.py`) and imported everywhere; there is no role check
 that lives only in the frontend.
 
+## Known limits
+
+- **No embeddable gallery widget.** Submission links open in a new tab and are never
+  embedded, by design, so T4 is not claimed.
+- **No eligibility review step.** An organizer can't mark a submission ineligible or
+  disqualify it. Every submitted entry goes to judge assignment.
+- **Community voting can be gamed with multiple accounts.** Voting needs a signed-in
+  account and is rate-limited, but anyone can register, so one person with several email
+  addresses can vote several times. See `THREAT-MODEL.md` entry 25.
+- **No judging deadline.** Judges see the projects assigned to them but no due date.
+  Organizers follow up by hand from the progress view, with reminder emails when email is
+  on.
+
 ## Status
 
 473 tests passing across three suites, run live against this exact stack:
@@ -229,9 +242,10 @@ specs can time out; each passes on its own, and `--workers=1` or a fresh volume 
 (see PLAN.md's Open Questions).
 
 `acceptance-report.txt` is the unedited output of the official DOGFOOD checker
-(`run.py`): 7 of 7 checks pass, and T1 and T2 are claimed and verified. The checker has no
-checks for T3 or T4, so those are not claimed in `.dogfood.toml`. What is built for them
-is listed above and tested by the suites here. The earlier self-issued report, written
+(`run.py`): 7 of 7 checks pass, and T1 and T2 are verified. T3 is claimed too. The
+organisers judge T3 and T4 by hand because `run.py` has no checks for them, so the
+report's "claimed but not verified: T3" line is expected. T4 is not claimed, because the
+embeddable gallery widget is missing (see Known limits). The earlier self-issued report, written
 before the checker was published, is kept at `docs/self-test-report.txt`.
 
 ## Documentation
