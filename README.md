@@ -101,6 +101,39 @@ docker compose down -v
 docker compose up --build
 ```
 
+## Deploy it — live in minutes
+
+HackFlow is one Docker image plus Postgres. No Node, Python, or database to install on the
+host, no build step to run by hand, no migrations, no seed script. Anywhere that runs Docker
+runs HackFlow.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/sarvan-2187/dog-food)
+
+| Where | Cost (approx.) | Time to live | Keeps uploads & signing key | How |
+|---|---|---|---|---|
+| **Render** (free) | Free, no card | ~10 min | No: reset on restart | Click the button above, or **New → Blueprint** on this repo. `render.yaml` creates the site and database. |
+| **Any VPS** (Hetzner, DigitalOcean, Vultr, Hostinger) | ~₹350–500 / $4–6 a month | ~5 min | Yes | Commands below |
+| **Google Cloud / AWS / Azure VM** | Free-trial credit | ~5 min | Yes | Commands below |
+| **Oracle Cloud Always Free** (ARM) | Free | ~5 min | Yes | Commands below. Images build for ARM as-is. |
+| **Your own laptop + Cloudflare Tunnel** | Free, no account | ~2 min | Yes | `docker compose up`, then `cloudflared tunnel --url http://localhost:8000`. The link lives only while the laptop is on. |
+
+**On any server with Docker:**
+
+```bash
+git clone https://github.com/sarvan-2187/dog-food.git && cd dog-food
+docker compose up -d --build
+```
+
+The site answers on port 8000. For a public deployment, first:
+
+- **Delete the `DEMO_SESSION_TOKENS` line** in `docker-compose.yml`. It grants fixed, passwordless sessions for the acceptance checker.
+- Set a real `SESSION_SECRET` and change the Postgres password.
+- Set `APP_BASE_URL` to your public address, and put HTTPS in front (Caddy or Cloudflare).
+- Change the seeded account passwords.
+
+**Pick a region near your users.** For the DOGFOOD judging panel, which is mostly US-based
+with the rest in Europe, US East (Virginia / New York) gives the best latency overall.
+
 ## Email (optional) — self-service password resets
 
 Out of the box HackFlow sends no email and makes **zero** outbound network calls. Anyone who
