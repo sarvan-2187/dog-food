@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { JudgeInvitePanel } from '../components/JudgeInvitePanel';
+import { JudgePanelCard } from '../components/JudgePanelCard';
 import { RequireRole } from '../components/auth/guards';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Button, Card } from '../components/ui';
@@ -200,7 +201,14 @@ function EventResults() {
         </div>
       </Card>
 
-      <JudgeInvitePanel onToast={(message, ok) => setToast({ message, ok })} />
+      {/* Both are per-event since Phase 10.1, so they wait for the event to load
+          rather than rendering against an id that isn't known yet. */}
+      {event && (
+        <>
+          <JudgePanelCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
+          <JudgeInvitePanel eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
+        </>
+      )}
 
       <Card title="Exports" meta="CSV">
         <div className="flex flex-wrap gap-2">

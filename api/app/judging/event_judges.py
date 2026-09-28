@@ -22,7 +22,7 @@ from ..events.models import Event
 from ..scoring.models import Score
 from ..submissions.models import Submission
 from ..timeutil import utcnow
-from ..voting.ratelimit import judge_reminder_limiter
+from ..ratelimit import judge_reminder_limiter
 from .models import EventJudge, JudgeAssignment, JudgeConflict
 
 router = APIRouter(tags=["event-judges"])

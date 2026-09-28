@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 from ..audit.log import record
 from ..db import get_session
 from ..storage.lookup import image_url_for
-from ..voting.ratelimit import forgot_email_limiter, forgot_ip_limiter, login_account_limiter, login_ip_limiter
+from ..ratelimit import forgot_email_limiter, forgot_ip_limiter, login_account_limiter, login_ip_limiter
 from . import mailer
 from .deps import get_current_user
 from .models import ResetChannel, Role, User, UserPublic

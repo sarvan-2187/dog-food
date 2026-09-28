@@ -21,7 +21,7 @@ from ..auth import mailer
 from ..db import get_session
 from ..teams.models import Team, TeamMembership
 from ..timeutil import utcnow
-from ..voting.ratelimit import announcement_email_limiter
+from ..ratelimit import announcement_email_limiter
 from ..webhooks.service import notify
 from .models import Announcement, Event
 

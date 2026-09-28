@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
 
+// A context made with browser.newContext() does not inherit the `use` block,
+// so it needs the base URL passed explicitly. Read it from the environment the
+// same way playwright.config.ts does - hardcoding :8000 here made these specs
+// fail against any stack not on the default port.
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:8000';
+
 /** Judge invitation — the only route into the `judge` role. */
 
 async function login(page: Page, email: string, password: string) {
@@ -75,7 +81,7 @@ test.describe('redeeming an invitation', () => {
     const email = `newjudge-${Date.now()}@example.com`;
     const path = await issueInvite(page, email);
 
-    const ctx = await browser.newContext({ baseURL: 'http://localhost:8000' });
+    const ctx = await browser.newContext({ baseURL: BASE_URL });
     const invitee = await ctx.newPage();
     await register(invitee, email, 'New Judge');
     // Role-aware nav: no Judging link before accepting.
@@ -102,7 +108,7 @@ test.describe('redeeming an invitation', () => {
   test('a second person cannot reuse the same link', async ({ page, browser }) => {
     const path = await issueInvite(page, `first-${Date.now()}@example.com`);
 
-    const ctxA = await browser.newContext({ baseURL: 'http://localhost:8000' });
+    const ctxA = await browser.newContext({ baseURL: BASE_URL });
     const first = await ctxA.newPage();
     await register(first, `usedby-${Date.now()}@example.com`, 'First Accepter');
     await first.goto(path);
@@ -110,7 +116,7 @@ test.describe('redeeming an invitation', () => {
     await expect(first.getByText("You're a judge now")).toBeVisible();
     await ctxA.close();
 
-    const ctxB = await browser.newContext({ baseURL: 'http://localhost:8000' });
+    const ctxB = await browser.newContext({ baseURL: BASE_URL });
     const second = await ctxB.newPage();
     await register(second, `second-${Date.now()}@example.com`, 'Second Accepter');
     await second.goto(path);
@@ -122,7 +128,7 @@ test.describe('redeeming an invitation', () => {
   test('a signed-out visitor is sent through auth and back, not refused', async ({ page, browser }) => {
     const path = await issueInvite(page, `signedout-${Date.now()}@example.com`);
 
-    const ctx = await browser.newContext({ baseURL: 'http://localhost:8000' });
+    const ctx = await browser.newContext({ baseURL: BASE_URL });
     const visitor = await ctx.newPage();
     await visitor.goto(path);
     await expect(visitor.getByText("You've been invited to judge")).toBeVisible();
@@ -144,7 +150,7 @@ test.describe('redeeming an invitation', () => {
   });
 
   test('a dead token explains itself instead of erroring', async ({ page, browser }) => {
-    const ctx = await browser.newContext({ baseURL: 'http://localhost:8000' });
+    const ctx = await browser.newContext({ baseURL: BASE_URL });
     const visitor = await ctx.newPage();
     await visitor.goto('/judge-invite/definitely-not-a-real-token');
     await expect(visitor.getByText('This invitation is no longer valid')).toBeVisible();

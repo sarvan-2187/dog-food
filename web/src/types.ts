@@ -250,7 +250,10 @@ export interface JudgeInvitePreview {
 export interface JudgeInviteRedeemResult {
   role: Role;
   already_a_judge: boolean;
+  event_id: number | null;
+  event_name: string | null;
 }
+
 
 /** Mirrors api/app/audit/router.py's AuditEntry (GET /api/audit, organizer+admin). */
 export interface AuditEntry {

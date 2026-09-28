@@ -119,6 +119,18 @@ def _user(session, email: str, role: Role) -> User:
     return user
 
 
+def _panel(session, event, *users) -> None:
+    """Put judges on this event's panel.
+
+    Since Phase 10.1 assignment draws from the panel rather than from every judge
+    account, so creating a judge is no longer enough to make them assignable -- they
+    have to be enrolled on the event too, exactly as an organizer would.
+    """
+    for user in users:
+        session.add(EventJudge(event_id=event.id, user_id=user.id))
+    session.commit()
+
+
 def _login_as(client, session, email: str, role: Role) -> User:
     """Register through the API so the session cookie is set, then set the role."""
     client.post("/api/auth/register", json={"email": email, "password": "supersecret1", "name": "Tester"})
@@ -232,8 +244,7 @@ def test_assignment_run_is_idempotent(client, session):
     event = _event(session, "assign-idem")
     p1 = _user(session, "assign-p1@example.com", Role.participant)
     _submitted(session, event, "Team A", "Alpha", [p1])
-    for i in range(3):
-        _user(session, f"assign-judge{i}@example.com", Role.judge)
+    _panel(session, event, *[_user(session, f"assign-judge{i}@example.com", Role.judge) for i in range(3)])
 
     _login_as(client, session, "assign-org@example.com", Role.organizer)
     client.post(f"/api/events/{event.id}/rubrics", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
@@ -270,7 +281,7 @@ def test_assignment_reports_coverage_shortfall(client, session):
     event = _event(session, "assign-short")
     p1 = _user(session, "short-p@example.com", Role.participant)
     _submitted(session, event, "Team S", "Short", [p1])
-    _user(session, "short-judge@example.com", Role.judge)  # only one judge
+    _panel(session, event, _user(session, "short-judge@example.com", Role.judge))  # only one judge
     _login_as(client, session, "short-org@example.com", Role.organizer)
     client.post(f"/api/events/{event.id}/rubrics", json={"name": "Test Rubric", "criteria": VALID_CRITERIA})
 
@@ -286,6 +297,7 @@ def test_rubric_cannot_change_once_scoring_has_started(client, session):
     p1 = _user(session, "locked-p@example.com", Role.participant)
     _submitted(session, event, "Team L", "Locked", [p1])
     judge = _login_as(client, session, "locked-judge@example.com", Role.judge)
+    _panel(session, event, judge)
 
     client.post("/api/auth/logout")
     _login_as(client, session, "locked-org@example.com", Role.organizer)
