@@ -40,6 +40,10 @@ class Event(SQLModel, table=True):
     # gates who may see vote counts and standings, enforced in the response
     # itself rather than by hiding a control in the UI.
     voting_enabled: bool = Field(default=False)
+    # Who may vote while voting_enabled: "authenticated" (an account), "email"
+    # (a guest who confirmed an emailed link) or "open" (anyone with the link).
+    # See voting/voter.py and THREAT-MODEL.md for what each one does and does not stop.
+    voting_access: str = Field(default="authenticated")
     results_hidden_until: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )

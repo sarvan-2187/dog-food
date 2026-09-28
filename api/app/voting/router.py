@@ -2,11 +2,13 @@
 import hashlib
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..audit.log import record
-from ..auth import Role, User, get_current_user, get_current_user_optional
+from ..auth import Role, User, get_current_user, get_current_user_optional, mailer
 from ..db import get_session
 from ..events.models import Event
 from ..events.visibility import may_see_results, results_are_public
@@ -15,8 +17,17 @@ from ..teams.models import Team
 from ..timeutil import utcnow
 from ..webhooks.service import notify
 from .models import Comment, Vote
-from ..ratelimit import comment_limiter, vote_limiter
+from ..ratelimit import comment_limiter, vote_limiter, voter_email_limiter
 from .schemas import CommentPublic, CommentWrite, PublicResultRow, VoteResult
+from .voter import (
+    EMAIL_LINK_MAX_AGE,
+    email_key,
+    email_link_token,
+    read_email_link_token,
+    read_voter_key,
+    resolve_voter,
+    set_voter_cookie,
+)
 
 router = APIRouter(tags=["voting"])
 
@@ -70,19 +81,23 @@ def cast_vote(
     submission_id: int,
     request: Request,
     response: Response,
-    user: User = Depends(get_current_user),
+    user: "User | None" = Depends(get_current_user_optional),
     session: Session = Depends(get_session),
 ) -> VoteResult:
     submission, event = _votable_submission(session, submission_id)
     if not event.voting_enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "Community voting is not open for this event.")
-    _rate_limit(vote_limiter, f"vote:{user.id}", "voting")
-
+    user, voter_key = resolve_voter(event, request, response, user, mint=True)
     fingerprint = _client_fingerprint(request)
+    # Guests are limited per client, not per cookie: clearing cookies mints a
+    # new open-link voter but does not buy a fresh budget.
+    _rate_limit(vote_limiter, f"vote:{user.id}" if user else f"vote:fp:{fingerprint}", "voting")
+
     vote = Vote(
         event_id=event.id,
         submission_id=submission_id,
-        user_id=user.id,
+        user_id=user.id if user else None,
+        voter_key=voter_key,
         fingerprint_hash=fingerprint,
     )
     session.add(vote)
@@ -94,16 +109,16 @@ def cast_vote(
         session.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "You have already voted for this submission.")
 
-    # Soft signal: several accounts voting from one client. Flagged for an
-    # organizer, never used to block (PLAN.md Phase 3).
+    # Soft signal: several voters (accounts or guests) voting from one client.
+    # Flagged for an organizer, never used to block (PLAN.md Phase 3).
     others = session.exec(
         select(Vote).where(
             Vote.event_id == event.id,
             Vote.fingerprint_hash == fingerprint,
-            Vote.user_id != user.id,
+            Vote.voter_key != voter_key,
         )
     ).all()
-    distinct_users = {v.user_id for v in others}
+    distinct_users = {v.voter_key for v in others}
     if distinct_users:
         record(
             session,
@@ -115,7 +130,14 @@ def cast_vote(
             other_user_count=len(distinct_users),
         )
 
-    record(session, "vote.cast", actor=user, entity_type="submission", entity_id=submission_id)
+    record(
+        session,
+        "vote.cast",
+        actor=user,
+        entity_type="submission",
+        entity_id=submission_id,
+        voter="account" if user else voter_key.split(":", 1)[0],
+    )
     session.commit()
 
     visible = may_see_results(event, user)
@@ -129,15 +151,17 @@ def cast_vote(
 @router.delete("/api/submissions/{submission_id}/vote", response_model=VoteResult)
 def withdraw_vote(
     submission_id: int,
-    user: User = Depends(get_current_user),
+    request: Request,
+    response: Response,
+    user: "User | None" = Depends(get_current_user_optional),
     session: Session = Depends(get_session),
 ) -> VoteResult:
     submission, event = _votable_submission(session, submission_id)
     if not event.voting_enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "Community voting is not open for this event.")
-    vote = session.exec(
-        select(Vote).where(Vote.submission_id == submission_id, Vote.user_id == user.id)
-    ).first()
+    user, voter_key = resolve_voter(event, request, response, user, mint=False)
+    mine = Vote.user_id == user.id if user else Vote.voter_key == voter_key
+    vote = session.exec(select(Vote).where(Vote.submission_id == submission_id, mine)).first()
     if not vote:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "You have not voted for this submission.")
     session.delete(vote)
@@ -150,6 +174,68 @@ def withdraw_vote(
         voted=False,
         votes=_count_votes(session, submission_id) if visible else None,
     )
+
+
+# --------------------------------------------------------------------------
+# Guest voters (Event.voting_access "email" / "open")
+# --------------------------------------------------------------------------
+
+class VoterEmailRequest(BaseModel):
+    email: EmailStr
+
+
+@router.get("/api/voter/me")
+def voter_me(request: Request) -> dict:
+    """Which kind of guest voter this browser is, if any: "email", "anon" or
+    null. Carries no address - the cookie only holds a hash."""
+    key = read_voter_key(request)
+    return {"voter": key.split(":", 1)[0] if key else None}
+
+
+@router.post("/api/events/{event_id}/voter-email", status_code=status.HTTP_202_ACCEPTED)
+def request_voter_email(
+    event_id: int,
+    payload: VoterEmailRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> dict:
+    event = session.get(Event, event_id)
+    if not event or event.status != "published":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
+    if event.voting_access != "email" or not event.voting_enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This event does not use email-confirmed voting.")
+    if not mailer.CONFIG.enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Email is not set up on this HackFlow, so no link can be sent.")
+    email = payload.email.strip().lower()
+    _rate_limit(voter_email_limiter, f"voter-email:{_client_fingerprint(request)}", "email link")
+    _rate_limit(voter_email_limiter, f"voter-email:{email}", "email link")
+    link = f"{mailer.APP_BASE_URL}/api/voter-email/confirm?token={email_link_token(event.id, email)}"
+    minutes = EMAIL_LINK_MAX_AGE // 60
+    background_tasks.add_task(
+        mailer.send_quietly,
+        email,
+        f"Confirm your vote for {event.name}",
+        f"Open this link within {minutes} minutes to vote in {event.name}:\n\n{link}\n\n"
+        "If you did not ask for it, ignore this email.",
+    )
+    record(session, "voter.email_link_sent", entity_type="event", entity_id=event.id, voter_key=email_key(email))
+    session.commit()
+    return {"detail": f"Check your inbox - the link works for {minutes} minutes."}
+
+
+@router.get("/api/voter-email/confirm")
+def confirm_voter_email(token: str, session: Session = Depends(get_session)) -> RedirectResponse:
+    """The emailed link. Sets the guest voter cookie and lands on the event's
+    gallery. Not single-use: a mail scanner prefetching it grants nothing the
+    recipient did not already have."""
+    parsed = read_email_link_token(token)
+    event = session.get(Event, parsed[0]) if parsed else None
+    if parsed is None or event is None:
+        return RedirectResponse("/gallery?voter=expired", status.HTTP_303_SEE_OTHER)
+    redirect = RedirectResponse(f"/events/{event.slug}/gallery", status.HTTP_303_SEE_OTHER)
+    set_voter_cookie(redirect, email_key(parsed[1]))
+    return redirect
 
 
 # --------------------------------------------------------------------------

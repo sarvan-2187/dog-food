@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ProjectLinks } from '../components/EventSections';
 import { Link, useParams } from 'react-router-dom';
 import { ResultsHiddenNotice } from '../components/ResultsHiddenNotice';
-import { VoteButton } from '../components/VoteButton';
+import { EmailVoteGate, VoteControl, canVote, useVoter } from '../components/VoteButton';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Card, Input, SimpleSelect } from '../components/ui';
 import { EventStatusBadge } from './EventsPage';
@@ -31,6 +31,7 @@ const ORDERS: { value: Order; label: string }[] = [
 export function GalleryPage() {
   const { slug } = useParams();
   const { user } = useAuth();
+  const voter = useVoter();
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [order, setOrder] = useState<Order>('recent');
@@ -148,6 +149,12 @@ export function GalleryPage() {
         </div>
       )}
 
+      {scopedEvent?.voting_enabled && scopedEvent.voting_access === 'email' && !canVote(scopedEvent, !!user, voter) && (
+        <div className="mb-6">
+          <EmailVoteGate eventId={scopedEvent.id} onToast={(message, ok) => setToast({ message, ok })} />
+        </div>
+      )}
+
       {items === null && !error && <SkeletonRows rows={5} cols={3} />}
       {error && <ErrorState description={error} onRetry={() => setRetryToken((v) => v + 1)} />}
 
@@ -176,22 +183,17 @@ export function GalleryPage() {
                       ? 'Add the first comment'
                       : `${s.comment_count} comment${s.comment_count === 1 ? '' : 's'}`}
                   </Link>
-                  {user ? (
-                    <VoteButton
-                      submissionId={s.id}
-                      voted={s.voted_by_me}
-                      votes={s.votes}
-                      votingEnabled={scopedEvent?.voting_enabled ?? false}
-                      onChange={applyVote}
-                      onError={(message) => setToast({ message, ok: false })}
-                    />
-                  ) : (
-                    scopedEvent?.voting_enabled && (
-                      <Link to={`/login?next=/events/${slug}/gallery`} className="text-meta text-brand-500">
-                        Log in to vote
-                      </Link>
-                    )
-                  )}
+                  <VoteControl
+                    event={scopedEvent}
+                    signedIn={!!user}
+                    voter={voter}
+                    loginNext={`/events/${slug}/gallery`}
+                    submissionId={s.id}
+                    voted={s.voted_by_me}
+                    votes={s.votes}
+                    onChange={applyVote}
+                    onError={(message) => setToast({ message, ok: false })}
+                  />
                 </div>
               }
             >

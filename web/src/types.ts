@@ -35,6 +35,8 @@ export interface EventRecord {
   created_by_id: number;
   created_at: string;
   voting_enabled: boolean;
+  /** Who may vote: an account, a guest who confirmed an emailed link, or anyone with the link. */
+  voting_access: 'authenticated' | 'email' | 'open';
   /** null means results were never hidden. */
   results_hidden_until: string | null;
   /** Organizer-supplied cover art; null falls back to a bundled photo (lib/event-cover.ts). */

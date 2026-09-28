@@ -420,3 +420,140 @@ def test_the_audit_log_has_no_write_path(client, session):
         assert r.status_code in (404, 405), f"{method.upper()} /api/audit -> {r.status_code}"
     assert client.delete("/api/audit").status_code in (404, 405)
     assert client.delete("/api/audit/1").status_code in (404, 405)
+
+
+# --- voting access: open link / email-confirmed / authenticated (DOGFOOD T3) --
+
+def _access_event(session, slug: str, access: str) -> Event:
+    event = _event(session, slug)
+    event.voting_access = access
+    session.add(event)
+    session.commit()
+    return event
+
+
+def _mail(monkeypatch, enabled: bool) -> list:
+    from app.auth import mailer
+
+    sent: list = []
+    monkeypatch.setattr(mailer, "CONFIG", mailer.MailConfig("smtp.test" if enabled else "", 587, "starttls", "", "", "x <x@y>"))
+    monkeypatch.setattr(mailer, "send_quietly", lambda to, subject, text, html=None: sent.append((to, text)))
+    return sent
+
+
+def test_authenticated_mode_refuses_guests_even_with_a_voter_cookie(client, session):
+    open_event = _access_event(session, "acc-open-first", "open")
+    open_sub = _submission(session, open_event, "Open Team", "Open Entry")
+    assert client.post(f"/api/submissions/{open_sub.id}/vote").status_code == 200  # now holds an anon cookie
+
+    event = _event(session, "acc-auth")
+    sub = _submission(session, event, "Auth Team", "Auth Entry")
+    r = client.post(f"/api/submissions/{sub.id}/vote")
+    assert r.status_code == 401
+    assert r.json()["detail"] == "Log in to vote."
+
+
+def test_open_link_guest_votes_once_sees_it_and_can_withdraw(client, session):
+    event = _access_event(session, "acc-open", "open")
+    sub = _submission(session, event, "Open Team 2", "Open Entry 2")
+
+    first = client.post(f"/api/submissions/{sub.id}/vote")
+    assert first.status_code == 200, first.text
+    assert "voter" in client.cookies
+    assert client.post(f"/api/submissions/{sub.id}/vote").status_code == 409, "same cookie, same voter"
+
+    mine = client.get(f"/api/gallery?event_id={event.id}").json()
+    assert mine[0]["voted_by_me"] is True
+    assert client.get(f"/api/submissions/{sub.id}").json()["voted_by_me"] is True
+    assert client.get("/api/voter/me").json() == {"voter": "anon"}
+
+    assert client.delete(f"/api/submissions/{sub.id}/vote").status_code == 200
+    vote_rows = session.exec(select(Vote).where(Vote.submission_id == sub.id)).all()
+    assert vote_rows == []
+
+
+def test_open_link_guests_share_the_per_client_rate_limit(client, session):
+    """Clearing cookies mints a new open-link voter, but not a new budget."""
+    event = _access_event(session, "acc-open-rl", "open")
+    subs = [_submission(session, event, f"RL Team {i}", f"RL {i}") for i in range(21)]
+    codes = []
+    for s in subs:
+        client.cookies.clear()
+        codes.append(client.post(f"/api/submissions/{s.id}/vote").status_code)
+    assert codes[:20] == [200] * 20
+    assert codes[20] == 429
+
+
+def test_email_mode_needs_a_confirmed_address(client, session, monkeypatch):
+    sent = _mail(monkeypatch, enabled=True)
+    event = _access_event(session, "acc-email", "email")
+    sub = _submission(session, event, "Email Team", "Email Entry")
+
+    r = client.post(f"/api/submissions/{sub.id}/vote")
+    assert r.status_code == 401
+    assert "Confirm your email" in r.json()["detail"]
+
+    assert client.post(f"/api/events/{event.id}/voter-email", json={"email": "Guest@Example.com"}).status_code == 202
+    assert len(sent) == 1 and sent[0][0] == "guest@example.com"
+    link = next(w for w in sent[0][1].split() if "/api/voter-email/confirm" in w)
+    path = link.split("localhost:8000", 1)[1]
+
+    landed = client.get(path, follow_redirects=False)
+    assert landed.status_code == 303
+    assert landed.headers["location"] == f"/events/{event.slug}/gallery"
+    assert client.post(f"/api/submissions/{sub.id}/vote").status_code == 200
+    assert client.get("/api/voter/me").json() == {"voter": "email"}
+
+
+def test_an_address_cannot_vote_as_a_guest_and_again_signed_in(client, session, monkeypatch):
+    sent = _mail(monkeypatch, enabled=True)
+    event = _access_event(session, "acc-email-dup", "email")
+    sub = _submission(session, event, "Dup Email Team", "Dup Email Entry")
+
+    client.post(f"/api/events/{event.id}/voter-email", json={"email": "twice@example.com"})
+    link = next(w for w in sent[0][1].split() if "/api/voter-email/confirm" in w)
+    client.get(link.split("localhost:8000", 1)[1], follow_redirects=False)
+    assert client.post(f"/api/submissions/{sub.id}/vote").status_code == 200
+
+    _login(client, session, "twice@example.com")
+    r = client.post(f"/api/submissions/{sub.id}/vote")
+    assert r.status_code == 409, "one address, one vote, whichever door it came through"
+
+
+def test_a_tampered_or_open_mode_cookie_does_not_pass_the_email_gate(client, session, monkeypatch):
+    _mail(monkeypatch, enabled=True)
+    open_event = _access_event(session, "acc-gate-open", "open")
+    open_sub = _submission(session, open_event, "Gate Open", "Gate Open Entry")
+    client.post(f"/api/submissions/{open_sub.id}/vote")  # anon cookie
+
+    event = _access_event(session, "acc-gate-email", "email")
+    sub = _submission(session, event, "Gate Email", "Gate Email Entry")
+    assert client.post(f"/api/submissions/{sub.id}/vote").status_code == 401
+
+    client.cookies.set("voter", "email:forged")
+    assert client.post(f"/api/submissions/{sub.id}/vote").status_code == 401
+    bad = client.get("/api/voter-email/confirm?token=nonsense", follow_redirects=False)
+    assert bad.status_code == 303 and "expired" in bad.headers["location"]
+
+
+def test_email_mode_cannot_be_chosen_while_email_is_off(client, session, monkeypatch):
+    _mail(monkeypatch, enabled=False)
+    event = _event(session, "acc-setting")
+    _login(client, session, "acc-setting-org@example.com", Role.organizer)
+
+    r = client.patch(f"/api/events/{event.id}", json={"voting_access": "email"})
+    assert r.status_code == 409
+    assert "email set up" in r.json()["detail"]
+    ok = client.patch(f"/api/events/{event.id}", json={"voting_access": "open"})
+    assert ok.status_code == 200 and ok.json()["voting_access"] == "open"
+    assert client.patch(f"/api/events/{event.id}", json={"voting_access": "everyone"}).status_code == 422
+
+
+def test_guest_votes_are_audited_without_an_actor(client, session):
+    event = _access_event(session, "acc-audit", "open")
+    sub = _submission(session, event, "Audit Guest", "Audit Guest Entry")
+    client.post(f"/api/submissions/{sub.id}/vote")
+    entry = session.exec(
+        select(AuditLog).where(AuditLog.action == "vote.cast", AuditLog.entity_id == sub.id)
+    ).first()
+    assert entry is not None and entry.actor_id is None

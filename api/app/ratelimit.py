@@ -96,6 +96,8 @@ class TokenBucketLimiter:
 # enough that a script hammering the endpoints does.
 vote_limiter = TokenBucketLimiter(capacity=20, per_seconds=60.0)
 comment_limiter = TokenBucketLimiter(capacity=10, per_seconds=60.0)
+# Email-confirmed voting links, per client and per address, per hour.
+voter_email_limiter = TokenBucketLimiter(capacity=5, per_seconds=3600.0)
 
 # Password recovery (PLAN.md Phase 9). Per hour: tight per address so nobody
 # can flood one inbox, looser per IP because a venue shares one address.
@@ -117,6 +119,7 @@ def reset_all() -> None:
     for limiter in (
         vote_limiter,
         comment_limiter,
+        voter_email_limiter,
         forgot_email_limiter,
         forgot_ip_limiter,
         reset_issue_limiter,

@@ -181,7 +181,8 @@ prints a one-time reset link for any account.
   and locked once scoring starts; per-judge z-score normalization so one harsh judge
   doesn't distort the ranking. See `JUDGING.md`.
 - **Public gallery & voting** — scoped per hackathon (pick an event, then see its gallery),
-  one vote per person, rate-limited, with results held back until a configured reveal time
+  one vote per person, with the organizer choosing who votes (signed-in accounts, anyone who
+  confirms an email, or anyone with the link), rate-limited, with results held back until a configured reveal time
   so early counts can't sway the vote — enforced in the API response itself, not just
   hidden in the UI.
 - **Uploaded images** — submission screenshots and profile avatars, stored on local disk
@@ -224,11 +225,11 @@ that lives only in the frontend.
 
 ## Status
 
-473 tests passing across three suites, run live against this exact stack:
+481 tests passing across three suites, run live against this exact stack:
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 355 passed |
+| Backend | `docker compose exec api pytest tests/ -v` | 363 passed |
 | Frontend unit | `cd web && npm test` | 9 passed |
 | Browser E2E | `cd web && npx playwright test` | 109 passed, 1 skipped |
 

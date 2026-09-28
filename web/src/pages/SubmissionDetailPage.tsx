@@ -4,7 +4,7 @@ import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CertificateButton } from '../components/CertificateButton';
 import { ResultsHiddenNotice } from '../components/ResultsHiddenNotice';
-import { VoteButton } from '../components/VoteButton';
+import { EmailVoteGate, VoteControl, canVote, useVoter } from '../components/VoteButton';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
@@ -19,6 +19,7 @@ interface PendingComment extends CommentRecord {
 export function SubmissionDetailPage() {
   const { submissionId = '' } = useParams();
   const { user } = useAuth();
+  const voter = useVoter();
   const [item, setItem] = useState<GalleryItem | null>(null);
   const [event, setEvent] = useState<EventRecord | null>(null);
   const [comments, setComments] = useState<PendingComment[] | null>(null);
@@ -158,26 +159,22 @@ export function SubmissionDetailPage() {
           <ProjectLinks repo={item.repo_url} demo={item.demo_url} video={item.video_url} />
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-3">
-          {user ? (
-            <VoteButton
-              submissionId={item.id}
-              voted={item.voted_by_me}
-              votes={item.votes}
-              votingEnabled={event?.voting_enabled ?? false}
-              onChange={applyVote}
-              onError={(message) => setToast({ message, ok: false })}
-            />
-          ) : (
-            event?.voting_enabled && (
-              <Link to={`/login?next=/submissions/${item.id}`}>
-                <Button variant="secondary" size="sm">
-                  Log in to vote
-                </Button>
-              </Link>
-            )
-          )}
+          <VoteControl
+            event={event}
+            signedIn={!!user}
+            voter={voter}
+            loginNext={`/submissions/${item.id}`}
+            submissionId={item.id}
+            voted={item.voted_by_me}
+            votes={item.votes}
+            onChange={applyVote}
+            onError={(message) => setToast({ message, ok: false })}
+          />
           {item.votes === null && event?.voting_enabled && (
             <Badge status="info">Counts hidden until voting closes</Badge>
+          )}
+          {event?.voting_enabled && event.voting_access === 'email' && !canVote(event, !!user, voter) && (
+            <EmailVoteGate eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
           )}
           {/* Organizers hand certificates out; a team member gets theirs from
               their own submission page, where membership is already known. */}

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, field_validator
 
@@ -84,6 +84,7 @@ class EventImportPayload(BaseModel):
     tracks: List[str] = []
     prize_config: Dict[str, Any] = {}
     voting_enabled: bool = False
+    voting_access: Literal["authenticated", "email", "open"] = "authenticated"
     results_hidden_until: Optional[str] = None
     rules: str = ""
     rubrics: List[RubricImport] = []
