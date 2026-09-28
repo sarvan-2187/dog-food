@@ -80,11 +80,11 @@ are from raptors.dev.
 
 # Certificate designs
 
-Seven certificate backgrounds were designed by Team CodeHawk in [Canva](https://www.canva.com)
-on 27 September 2026, exported at 2200 × 1700 and saved as JPEG in
-`api/app/scoring/certificate_templates/`. HackFlow draws each team's text over them on its own
-server; nothing calls Canva at runtime. The thumbnails in `web/public/images/certificates/`
-are HackFlow's own renders of sample certificates on those backgrounds.
+Seven certificate backgrounds were designed by Team CodeHawk on 27 September 2026, exported
+at 2200 × 1700 and saved as JPEG in `api/app/scoring/certificate_templates/`. HackFlow draws
+each team's text over them on its own server; nothing calls an external service at runtime.
+The thumbnails in `web/public/images/certificates/` are HackFlow's own renders of sample
+certificates on those backgrounds.
 
 | Design | File |
 |---|---|
@@ -96,11 +96,10 @@ are HackFlow's own renders of sample certificates on those backgrounds.
 | Royal blue | `royal.jpg` |
 | Retro pixel | `pixel.jpg` |
 
-They may contain Canva stock elements, so they are used under
-[Canva's Content License](https://www.canva.com/policies/content-license-agreement/) and are
-**not** covered by this repository's MIT licence. Certificates made from them are fine to issue.
-Redistributing the background files on their own is not, so remove that folder (the "Classic"
-design needs no file) if you fork HackFlow as a template for others.
+The background files are **not** covered by this repository's MIT licence. Certificates made
+from them are fine to issue. Redistributing the background files on their own is not, so
+remove that folder (the "Classic" design needs no file) if you fork HackFlow as a template for
+others.
 
 # Software
 
