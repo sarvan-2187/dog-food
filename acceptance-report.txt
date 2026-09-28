@@ -298,3 +298,69 @@ test fix, not new backend/frontend feature work): 181 backend + 9 Vitest +
 81 Playwright (up from 75 - judge-invite.spec.ts's three tests were already
 present but had not been included in the prior count) = 271, all passing
 serially.
+
+-----------------------------------------------------------------------------
+ADDENDUM 3 — JudgeR rebrand, hero rebuild, and Phase 4 (T4) backend build
+-----------------------------------------------------------------------------
+REBRAND
+
+The project was renamed end-to-end from "Dogfood 2026" to "JudgeR — Judge
+Raptors": new logo mark and favicon (web/public/logo-mark.svg,
+favicon.svg), a Logo component wired into the NavBar and landing-page
+footer, FastAPI's own title (visible in /openapi.json), page <title>,
+web/package.json's name, the seeded event's display name
+("JudgeR Hackathon 2026" — the underlying slug was deliberately left
+unchanged, since it's referenced by several fixtures/specs and renaming it
+would have been unrelated churn), and every doc title (README, PLAN,
+DESIGN_SYSTEM, ARCHITECTURE, DATA-MODEL). Infra-only identifiers (the
+Postgres user/db name "dogfood", the session-cookie salt) were deliberately
+left alone — those are internal credentials, not user-facing branding, and
+renaming them risks breaking an existing dev volume for no visible benefit.
+
+HERO REBUILD
+
+The landing hero was rebuilt to RiskSentinel X's centered composition
+(centered eyebrow/headline/subhead/CTA, then a bordered box with three
+columns divided by vertical hairlines) using real pixel colors sampled live
+from raptors.dev's own hero background asset (bg-light.png, via curl +
+PIL): peach #FDEAD9, purple #DFC0F1, mint #B8EEDA, blue #C3D7F6, yellow
+#F8E3BA. Colour lives only in this one decorative blob layer; every text
+and button color stays on the existing monochrome ink/cream scale — no new
+token was added.
+
+NAV/HERO SEAM
+
+The header's own background was made transparent and a mobile hamburger
+menu was added (the pill nav was overflowing into a horizontally-scrolling
+strip below 768px). The gradient mesh was then extended to bleed under the
+transparent header (via a negative top margin on the hero section, with
+matching extra top padding so the headline's page position doesn't shift)
+instead of stopping dead at the header's box edge. First attempt let the
+blob layer itself escape the section with `overflow-hidden` removed
+entirely, which passed visually but caused a real 133px horizontal
+overflow at 375px (the blobs' fixed pixel widths, not just their blur,
+extend past a narrow viewport) — caught by breakpoints.spec.ts, fixed by
+growing the section's own box instead of un-clipping it, re-verified at
+0px overflow at all three breakpoints.
+
+PHASE 4 (T4) — BACKEND BUILT, NO FRONTEND UI YET
+
+Un-frozen on explicit request. Built and tested (see api/tests/test_phase4.py,
+11 new cases): certificate PDF generation (reportlab, server-side, no
+external service), signed judge participation records (Ed25519 via
+`cryptography`, key persisted to a docker volume so signatures survive a
+rebuild, verifiable offline against GET /api/public-key), and bulk event
+JSON export/import (scoped to config + rubric + teams + submissions —
+assignments/scores are deliberately not round-tripped, see PLAN.md). The
+REST/OpenAPI completeness audit found no gap. The embeddable gallery
+widget, API First, and Pairwise Mode were cut, matching PLAN.md's own
+stated priority order. THREAT-MODEL.md was written for the bonus challenge.
+Disclosed honestly in PLAN.md: none of T4's new endpoints have frontend UI
+yet — they are real, tested, working API surface, reachable by an API
+client, but not yet wired into web/.
+
+Counts: backend 181 -> 192 (+11 Phase 4 tests), Vitest unchanged at 9,
+Playwright unchanged at 81 (Phase 4 is backend-only; the hero/nav change
+is covered by the existing breakpoints.spec.ts / landing-motion.spec.ts
+suites, re-run and green after the fix). Total 271 -> 282, all passing
+serially against a freshly reset (`docker compose down -v`) volume.
