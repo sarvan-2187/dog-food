@@ -295,3 +295,136 @@ def test_limit_can_be_switched_off(client, monkeypatch):
     for _ in range(250):
         assert client.get("/healthz").status_code == 200
     assert client.get("/api/gallery").status_code != 429
+
+
+# --- slow-loris: header timeout in the production server (app/serve.py) ----
+
+def _serve_tiny(monkeypatch, header_timeout: float):
+    import socket
+    import threading
+    import time
+
+    import uvicorn
+
+    from app import serve
+
+    monkeypatch.setattr(serve, "HEADER_TIMEOUT_SECONDS", header_timeout)
+
+    async def tiny(scope, receive, send):
+        if scope["type"] != "http":
+            return
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-length", b"2")]})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(serve.config(app=tiny, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(100):
+        if server.started:
+            break
+        time.sleep(0.05)
+    return server, port
+
+
+def _closed_within(sock, seconds: float) -> bool:
+    import socket
+
+    sock.settimeout(seconds)
+    try:
+        while True:
+            if sock.recv(4096) == b"":
+                return True
+    except (socket.timeout, TimeoutError):
+        return False
+    except OSError:
+        return True
+
+
+def test_idle_connection_without_a_request_is_closed(monkeypatch):
+    import socket
+
+    server, port = _serve_tiny(monkeypatch, 0.5)
+    try:
+        with socket.create_connection(("127.0.0.1", port)) as sock:
+            assert _closed_within(sock, 5)
+    finally:
+        server.should_exit = True
+
+
+def test_trickled_headers_are_cut_off(monkeypatch):
+    import socket
+    import time
+
+    server, port = _serve_tiny(monkeypatch, 0.5)
+    try:
+        with socket.create_connection(("127.0.0.1", port)) as sock:
+            sock.sendall(b"GET / HTTP/1.1\r\nHost: x\r\n")
+            closed = False
+            for i in range(40):
+                try:
+                    sock.sendall(b"X-%d: y\r\n" % i)
+                except OSError:
+                    closed = True
+                    break
+                time.sleep(0.05)
+            assert closed or _closed_within(sock, 3)
+    finally:
+        server.should_exit = True
+
+
+def test_a_normal_request_is_served_and_keep_alive_still_works(monkeypatch):
+    import socket
+
+    server, port = _serve_tiny(monkeypatch, 0.5)
+    try:
+        with socket.create_connection(("127.0.0.1", port)) as sock:
+            sock.settimeout(5)
+            for _ in range(2):
+                sock.sendall(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+                data = b""
+                while not data.endswith(b"ok"):
+                    data += sock.recv(4096)
+                assert data.startswith(b"HTTP/1.1 200")
+    finally:
+        server.should_exit = True
+
+
+def test_chunked_oversized_json_to_a_real_route_is_413(client, monkeypatch):
+    """FastAPI turns an aborted body read into a 400; the client should see why."""
+    monkeypatch.setattr("app.protection.MAX_JSON_BODY_BYTES", 1024)
+
+    def chunks():
+        for _ in range(10):
+            yield b" " * 512
+
+    r = client.post("/api/auth/login", content=chunks(), headers={"content-type": "application/json"})
+    assert r.status_code == 413
+
+
+def test_static_files_are_cacheable(tmp_path, monkeypatch):
+    """Rebuilds the app against a tiny static dir and checks cache headers."""
+    import importlib
+
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "index-abc123.js").write_text("x")
+    (tmp_path / "fonts").mkdir()
+    (tmp_path / "fonts" / "a.woff2").write_bytes(b"x")
+    (tmp_path / "index.html").write_text("<!doctype html>")
+    monkeypatch.setenv("STATIC_DIR", str(tmp_path))
+    import app.main as main_mod
+
+    try:
+        fresh = importlib.reload(main_mod)
+        from fastapi.testclient import TestClient
+
+        c = TestClient(fresh.app)
+        assert "immutable" in c.get("/assets/index-abc123.js").headers["cache-control"]
+        assert "max-age=86400" in c.get("/fonts/a.woff2").headers["cache-control"]
+        assert c.get("/gallery").headers["cache-control"] == "no-cache"
+        assert "cache-control" not in c.get("/healthz").headers
+    finally:
+        monkeypatch.delenv("STATIC_DIR")
+        importlib.reload(main_mod)

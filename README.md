@@ -482,13 +482,13 @@ that lives only in the frontend.
 
 ## Status
 
-559 tests passing across three suites, run live against this exact stack:
+715 tests passing across three suites (2026-09-28, [docs/audit/ACCEPTANCE-REPORT.md](docs/audit/ACCEPTANCE-REPORT.md)):
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 428 passed |
+| Backend | `docker compose exec api pytest tests/ -v` | 584 passed |
 | Frontend unit | `cd web && npm test` | 10 passed |
-| Browser E2E | `cd web && npx playwright test` | 121 passed, 1 skipped |
+| Browser E2E | `cd web && npx playwright test` (stack started with `RATE_LIMIT_PER_MINUTE=0`) | 121 passed, 1 skipped |
 
 The skipped spec is the emailed password-reset flow. It needs the local test inbox, so
 it runs only when the stack is started with `docker-compose.mail.yml` (see "Email"
