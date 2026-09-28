@@ -142,24 +142,31 @@ The fixture event (`sample-hack-2026`) has 40 submissions, 30 judges and 123 sco
 with 2 to 6 judges per project. Its criteria are `functionality`, `quality` and
 `innovation`, on a 1–5 scale and weighted equally. The table is the unedited
 `GET /api/events/10/export/results.csv` from a fresh `docker compose up`. *Raw rank*
-orders the same rows by plain raw mean. *Move* is raw rank minus normalized rank, so a
-positive number means normalizing moved the project up.
+orders the same rows by plain raw mean; equal raw means share a rank (`=`), the best one
+of the tie. *Move* is raw rank minus normalized rank, so a positive number means
+normalizing moved the project up. `api/tests/test_normalization_properties.py` recomputes
+this table from `fixtures.json` with an independent implementation of the formula and
+checks the live `/results` endpoint against it; `docs/audit/NORMALIZATION-ANALYSIS.md`
+has the full 40 rows.
 
 | Normalized rank | Raw rank | Move | Project | Judges | Raw mean | z̄ | Display |
 |---|---|---|---|---|---|---|---|
-| 1 | 2 | +1 | Iron Switch | 3 | 4.33 | +1.232 | 62.3 |
-| 2 | 7 | +5 | Slow Trail | 3 | 4.00 | +0.918 | 59.2 |
-| 3 | 1 | −2 | Salt Ledger | 4 | 4.33 | +0.867 | 58.7 |
+| 1 | =1 | 0 | Iron Switch | 3 | 4.33 | +1.232 | 62.3 |
+| 2 | =6 | +4 | Slow Trail | 3 | 4.00 | +0.918 | 59.2 |
+| 3 | =1 | −2 | Salt Ledger | 4 | 4.33 | +0.867 | 58.7 |
 | 4 | 5 | +1 | Salt Loom | 4 | 4.08 | +0.768 | 57.7 |
-| 5 | 6 | +1 | Salt Kiln | 3 | 4.00 | +0.688 | 56.9 |
+| 5 | =6 | +1 | Salt Kiln | 3 | 4.00 | +0.688 | 56.9 |
 | 6 | 4 | −2 | Dry Relay | 3 | 4.11 | +0.609 | 56.1 |
 | 7 | 3 | −4 | Still Beacon | 2 | 4.17 | +0.595 | 56.0 |
-| 8 | 19 | +11 | Paper Anchor | 2 | 3.50 | +0.324 | 53.2 |
-| 9 | 26 | +17 | Glass Signal | 3 | 3.44 | +0.288 | 52.9 |
-| 10 | 31 | +21 | Dry Harbour | 6 | 3.33 | +0.263 | 52.6 |
+| 8 | =19 | +11 | Paper Anchor | 2 | 3.50 | +0.324 | 53.2 |
+| 9 | =24 | +15 | Glass Signal | 3 | 3.44 | +0.288 | 52.9 |
+| 10 | =31 | +21 | Dry Harbour | 6 | 3.33 | +0.263 | 52.6 |
 
-Only 2 of the 40 projects keep their raw rank. Every project in the top ten moves, and
-the largest move is 21 places. Two of the fixture's deliberate awkward cases explain the
+Only 5 of the 40 projects keep their raw rank, 9 of the top ten move, and the largest
+move is 21 places. (An earlier version of this table showed Iron Switch and Salt Ledger
+at raw ranks 2 and 1: they are tied at 4.33. The seeded weights were rounded to
+0.3333/0.3333/0.3334, which split genuine ties by a ten-thousandth. The seeder now uses
+exact thirds.) Two of the fixture's deliberate awkward cases explain the
 biggest moves:
 
 - **Small Relay drops from 13th to 30th.** It was scored by `jdg_07`, the judge who gave
