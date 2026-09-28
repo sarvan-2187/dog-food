@@ -56,6 +56,7 @@ from app.db import (  # noqa: E402
     add_missing_columns,
     add_vote_voter_index,
     engine,
+    protect_audit_log,
     widen_stored_file_key,
 )
 from app.auth import models as _auth_models  # noqa: E402,F401
@@ -75,6 +76,7 @@ add_missing_columns()
 add_guarded_indexes()
 widen_stored_file_key()
 add_vote_voter_index()
+protect_audit_log()
 
 
 def _truncate_all() -> None:
