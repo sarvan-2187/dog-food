@@ -289,13 +289,27 @@ tracking), `2px 12px` padding, tint + text from §2.5 or §2.6, always with a te
 
 ### 7.6 Navigation
 
-- Top bar: `64px`, `surface-0`, `1px border-subtle` bottom, sticky. Wordmark left, links centre-left
-  at `label` / `ink-700`, actions right (`ghost` "Log in" + `primary` CTA).
-- Active link: `ink-900` + `2px brand-500` underline.
+**Current pattern (Phase 5, per an explicit reference screenshot — a pill-tab bar, not the
+wordmark-plus-hamburger this section described in an earlier revision):**
+
+- A centred, `rounded-full` bar in `ink-700` sitting on `surface-200`, `p-1.5` padding, at every
+  breakpoint (`web/src/components/layout/NavBar.tsx`). Contents: a circular home icon first, then
+  one tab per link.
+- The active tab (matched by route, via `NavLink`) is a `surface-0` bg / `ink-900` text pill inside
+  the dark bar; inactive tabs are `surface-0/90` text, `label` type, uppercase.
 - Role-aware: links the current role can't use are **absent**, not disabled (`PLAN.md` §4.4).
-- Sidebar (dashboards): `220px`, `surface-100` bg, `eyebrow` section label in `ink-400`, items at
-  `label`; active item = `surface-0` bg + `brand-500` left border + `ink-900` text.
-- Below `md`: top bar collapses to a hamburger sheet; sidebar becomes a horizontal scroll strip.
+  Logged out, `Log in` and `Sign up` appear as ordinary trailing tabs; logged in, a single
+  `Profile` tab replaces them.
+- **No post-login account controls in the header at all** — role badge, name, log out live on
+  `/profile` instead, reached via that tab. The header is otherwise identical whether signed in
+  or not, matching the reference exactly.
+- Below `lg`: the bar's own row scrolls horizontally (`overflow-x-auto`) rather than wrapping or
+  collapsing into a sheet — there are rarely more than 5-6 tabs, so this stays usable at 375px
+  without a page-level scrollbar.
+
+Superseded: the wordmark/hamburger/full-screen-overlay pattern earlier in Phase 5 (itself a live
+self-check of raptors.dev's actual collapsed nav) is no longer what's built. Both were real,
+deliberate iterations — logged in `PLAN.md`'s Open Questions rather than silently overwritten.
 
 ### 7.7 Feedback states (build once in `web/src/components/feedback/`)
 

@@ -13,6 +13,17 @@ async function login(page: Page, email: string, password: string) {
 const asVoter = (page: Page) => login(page, 'kai@example.com', 'participant-pass3');
 const asOrganizer = (page: Page) => login(page, 'alice@example.com', 'organizer-pass1');
 
+/**
+ * The "Order" control is a Radix Select (a button + listbox), not a native
+ * <select> - .selectOption() only works on the latter. Real keyboard/roving
+ * focus accessibility was the point of switching to Radix, so drive it the
+ * way a user actually would: open the trigger, click the option by its label.
+ */
+async function selectOrder(page: Page, label: string) {
+  await page.getByLabel('Order').click();
+  await page.getByRole('option', { name: label }).click();
+}
+
 test.describe('results hiding', () => {
   test('the gallery explains why counts are hidden, not just that they are', async ({ page }) => {
     await asVoter(page);
@@ -31,7 +42,7 @@ test.describe('results hiding', () => {
   test('sorting by votes is refused while results are hidden, in plain language', async ({ page }) => {
     await asVoter(page);
     await page.goto('/gallery');
-    await page.getByLabel('Order').selectOption('votes');
+    await selectOrder(page, 'Most votes');
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(page.getByRole('alert')).not.toContainText('425');
   });
@@ -126,7 +137,7 @@ test.describe('shuffled ordering', () => {
         page.waitForResponse(
           (r) => r.url().includes('/api/gallery') && r.url().includes('order=random') && r.ok(),
         ),
-        page.getByLabel('Order').selectOption('random'),
+        selectOrder(page, 'Shuffled'),
       ]);
       const expected: string[] = (await response.json()).map((row: { title: string }) => row.title);
       // Wait for the DOM to actually reflect that response before reading it.

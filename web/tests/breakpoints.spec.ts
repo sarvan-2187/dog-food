@@ -23,13 +23,12 @@ async function login(page, email: string, password: string) {
 }
 
 /**
- * The header (rebuilt to match raptors.dev's real one) hides nav links behind
- * a circular hamburger button at every width - open it before checking a
- * link is present.
+ * No-op: the header (rebuilt as a persistent pill nav) shows every link
+ * inline at every width now - nothing to open. Kept so call sites below
+ * don't all need editing.
  */
-async function openMenu(page) {
-  await page.getByRole('button', { name: 'Open menu' }).click();
-  await expect(page.getByRole('dialog', { name: 'Site menu' })).toBeVisible();
+async function openMenu(_page) {
+  // intentionally empty
 }
 
 for (const bp of BREAKPOINTS) {

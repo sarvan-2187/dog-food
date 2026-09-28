@@ -20,12 +20,11 @@ async function register(page: Page, email: string, name: string) {
 }
 
 /**
- * The header hides nav links behind a hamburger at every width (it matches
- * raptors.dev's real one) — open it before asserting a link is or is not there.
+ * No-op: the header (rebuilt as a persistent pill nav) shows every link
+ * inline at every width now - nothing to open.
  */
-async function openMenu(page: Page) {
-  await page.getByRole('button', { name: 'Open menu' }).click();
-  await expect(page.getByRole('dialog', { name: 'Site menu' })).toBeVisible();
+async function openMenu(_page: Page) {
+  // intentionally empty
 }
 
 const asOrganizer = (page: Page) => login(page, 'alice@example.com', 'organizer-pass1');

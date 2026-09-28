@@ -44,21 +44,25 @@ Result: 2 test files, 9 tests, all passed (~1.7s)
 SUITE 3 — Browser end-to-end (Playwright, real Chromium, against the live
           docker compose stack exactly as a judge would use it)
 -----------------------------------------------------------------------------
-Command: cd web && npx playwright test
+Command: cd web && npx playwright test --workers=1
 
-Result: 75 passed (37.2s)
+Result: 81 passed (1.1m serially; the default parallel run intermittently
+fails 1-2 tests that compare gallery contents across two reads, from
+pre-existing contention on the shared dev database across parallel workers —
+see the Open Questions note on this. Not new to this round.)
 
 Coverage by file: breakpoints.spec.ts (mobile/tablet/desktop overflow —
-including "/", the landing page, added this session — role-aware nav,
-keyboard-only login), judging.spec.ts (Phase 2 role gating, rubric builder,
-score form, CSV export, Phase 2 screens at all three breakpoints,
-keyboard-only scoring), voting.spec.ts (Phase 3 results hiding, voting,
-comments, rate limiting, Phase 3 screens at all three breakpoints,
-keyboard-only voting/commenting), lifecycle.spec.ts (full participant
-lifecycle: sign up -> team -> invite -> autosave -> submit -> gallery).
+including "/", the landing page — role-aware nav, keyboard-only login),
+judging.spec.ts (Phase 2 role gating, rubric builder, score form, CSV export,
+Phase 2 screens at all three breakpoints, keyboard-only scoring),
+judge-invite.spec.ts (judge invitation flow), voting.spec.ts (Phase 3 results
+hiding, voting, comments, rate limiting, Phase 3 screens at all three
+breakpoints, keyboard-only voting/commenting), lifecycle.spec.ts (full
+participant lifecycle: sign up -> team -> invite -> autosave -> submit ->
+gallery).
 
 -----------------------------------------------------------------------------
-TOTAL: 265 / 265 passed across all three suites.
+TOTAL: 271 / 271 passed across all three suites (serial Playwright run).
 -----------------------------------------------------------------------------
 
 -----------------------------------------------------------------------------
@@ -256,3 +260,41 @@ that rule; the whole package.json was un-caretted, including devDependencies
 added earlier in the build that had the same problem.
 
 Counts: backend 160 -> 181, Playwright 64 -> 75, total 233 -> 265.
+
+-----------------------------------------------------------------------------
+HEADER REBUILD #2, PROFILE PAGE, AND A DORMANT TEST/COMPONENT MISMATCH
+-----------------------------------------------------------------------------
+The header was rebuilt again, on request, to match a different exact
+reference screenshot: a persistent, centred, rounded pill-tab bar (dark
+`ink-700` bg) with a home icon and text tabs, the active one shown as a
+light pill inside the dark bar - not the wordmark+hamburger this document
+described in the previous round. Post-login account controls (role badge,
+name, log out) moved entirely off the header into a new /profile page; the
+header is now identical whether signed in or not, with "Profile" appearing
+as one more tab once authenticated.
+
+Rebuilding it broke every test that assumed a menu needed opening first (six
+files). All were updated to interact with the now-always-visible tabs
+directly. While doing the full-suite rerun this surfaced a second, unrelated,
+pre-existing issue: web/src/components/ui/Select.tsx had been rebuilt on
+Radix primitives (a real accessibility upgrade - roving focus, type-ahead,
+correct ARIA over a native <select>), but voting.spec.ts's two order-sorting
+tests still called .selectOption(), which only works on a native element.
+Not a header regression - a dormant gap the rerun exposed. Fixed by driving
+the control the way a person actually would: open the trigger, click the
+option.
+
+Also investigated: a report that the landing page's Framer Motion / GSAP
+animations "aren't working." No console errors; prefers-reduced-motion reads
+false in the test browser; the GSAP ScrollTrigger-driven decision-trail rows
+were confirmed live to actually transition from opacity 0 to opacity 1 on
+scroll, not merely appear. The pipeline is real and functioning. If nothing
+visibly animates for a person, the most likely cause is their own OS/browser
+having "reduce motion" enabled - correctly and intentionally respected by
+useReducedMotion() - not a defect in this code.
+
+Counts unchanged in substance (this was UI restructuring plus one dormant
+test fix, not new backend/frontend feature work): 181 backend + 9 Vitest +
+81 Playwright (up from 75 - judge-invite.spec.ts's three tests were already
+present but had not been included in the prior count) = 271, all passing
+serially.

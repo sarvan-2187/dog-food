@@ -13,6 +13,7 @@ import { JudgeInvitePage } from './pages/JudgeInvitePage';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { RegisterPage } from './pages/RegisterPage';
 import { RubricBuilderPage } from './pages/RubricBuilderPage';
 import { ScorePage } from './pages/ScorePage';
@@ -41,6 +42,14 @@ export default function App() {
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/submissions/:submissionId" element={<SubmissionDetailPage />} />
             <Route path="/join/:code" element={<JoinTeamPage />} />
+            <Route
+              path="/profile"
+              element={
+                <RequireAuth>
+                  <ProfilePage />
+                </RequireAuth>
+              }
+            />
             <Route
               path="/teams/mine"
               element={
