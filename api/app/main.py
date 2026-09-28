@@ -47,6 +47,7 @@ from .voting.router import router as voting_router
 from .audit.router import router as audit_router
 from .storage.router import router as storage_router
 from .webhooks.router import router as webhooks_router
+from .auth.api_keys import router as api_keys_router
 from .embed import router as embed_router
 
 logging.basicConfig(level=logging.INFO)
@@ -61,7 +62,30 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="HackFlow", description="A HackRaptors hackathon judging platform.", lifespan=lifespan)
+API_DESCRIPTION = """
+**HackFlow by Hackathon Raptors**: the hackathon operations platform, API first.
+Every action in the web app is an endpoint here.
+
+**Authentication**
+
+- *Browser*: the `session` cookie set by `POST /api/auth/login`.
+- *Integrations*: an API key, sent as `Authorization: Bearer hf_...`. Organizers and admins
+  create keys on the **Integrations** page (`POST /api/api-keys`). A key acts as its owner,
+  with exactly the owner's role, and can be revoked at any time.
+
+**Events out**: organizers subscribe an event to signed webhooks (`submission.submitted`,
+`assignments.run`, `score.submitted`, `event.results_revealed`, `announcement.posted`).
+Payloads are signed with Ed25519; verify against `GET /api/public-key`.
+"""
+
+app = FastAPI(
+    title="HackFlow API",
+    description=API_DESCRIPTION,
+    version="1.0",
+    contact={"name": "Hackathon Raptors", "url": "https://www.raptors.dev", "email": "hello@raptors.dev"},
+    license_info={"name": "MIT"},
+    lifespan=lifespan,
+)
 
 
 @app.middleware("http")
@@ -100,6 +124,7 @@ app.include_router(voting_router)
 app.include_router(audit_router)
 app.include_router(storage_router)
 app.include_router(webhooks_router)
+app.include_router(api_keys_router)
 app.include_router(embed_router)
 
 if (STATIC_DIR / "index.html").exists():

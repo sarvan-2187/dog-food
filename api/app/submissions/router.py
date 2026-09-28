@@ -1,4 +1,5 @@
 import random
+from collections import Counter
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import or_
@@ -13,7 +14,7 @@ from ..events.models import Event
 from ..events.visibility import may_see_results
 from ..storage.lookup import image_url_for, image_urls_for
 from ..teams.deps import require_team_member
-from ..teams.models import Team
+from ..teams.models import Team, TeamMembership
 from ..timeutil import utcnow
 from ..voting.models import Comment, Vote
 from ..voting.schemas import GalleryItem
@@ -68,23 +69,56 @@ def list_eligibility(
     _: User = Depends(require_role(Role.organizer, Role.admin)),
     session: Session = Depends(get_session),
 ) -> list[EligibilityRow]:
-    """Every submitted entry, disqualified ones first, so the organizer can rule on
-    each and undo a ruling from the same list."""
+    """Every submitted entry with automatic eligibility flags, disqualified ones
+    first and flagged ones next, so the organizer can rule on each and undo a
+    ruling from the same list. Flags only inform: nothing is disqualified
+    automatically, because every check here has legitimate exceptions."""
+    event = session.get(Event, event_id)
+    if not event:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
     subs = session.exec(
         select(Submission).where(Submission.event_id == event_id, Submission.status == SubmissionStatus.submitted)
     ).all()
     teams = {t.id: t.name for t in session.exec(select(Team).where(Team.event_id == event_id))}
-    subs = sorted(subs, key=lambda s: (s.disqualified_at is None, (s.title or "").lower(), s.id))
-    return [
+    members = Counter(
+        m.team_id for m in session.exec(select(TeamMembership).where(TeamMembership.team_id.in_(list(teams) or [0])))
+    )
+    repos = Counter(_repo_key(s.repo_url) for s in subs if s.repo_url.strip())
+    rows = [
         EligibilityRow(
             submission_id=s.id,
             title=s.title or "Untitled submission",
             team_name=teams.get(s.team_id, ""),
             disqualified_at=s.disqualified_at,
             disqualified_reason=s.disqualified_reason,
+            flags=eligibility_flags(s, event, members[s.team_id], repos),
         )
         for s in subs
     ]
+    return sorted(rows, key=lambda r: (r.disqualified_at is None, not r.flags, r.title.lower(), r.submission_id))
+
+
+MIN_DESCRIPTION = 40
+
+
+def _repo_key(url: str) -> str:
+    return url.strip().lower().rstrip("/").removesuffix(".git")
+
+
+def eligibility_flags(sub: Submission, event: Event, member_count: int, repos: Counter) -> list[str]:
+    """Plain-language reasons an organizer may want to look twice at an entry."""
+    flags = []
+    if not sub.repo_url.strip():
+        flags.append("No code repository link.")
+    elif repos[_repo_key(sub.repo_url)] > 1:
+        flags.append("Same repository as another entry in this event.")
+    if len((sub.description or "").strip()) < MIN_DESCRIPTION:
+        flags.append(f"Description is under {MIN_DESCRIPTION} characters.")
+    if event.tracks and not sub.track:
+        flags.append("No track chosen.")
+    if member_count > event.max_team_size:
+        flags.append(f"Team has {member_count} members; the limit is {event.max_team_size}.")
+    return flags
 
 
 @router.post("/api/submissions/{submission_id}/eligibility", response_model=SubmissionPublic)

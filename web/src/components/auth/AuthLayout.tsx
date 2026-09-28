@@ -73,8 +73,11 @@ export function AuthLayout({
         <header className="px-6 pt-8 md:px-10">
           <Link to="/" aria-label="HackFlow home" className="inline-flex items-center gap-2.5 text-ink-900">
             <RaptorMark className="h-6 w-12" />
-            <span className="text-h3 tracking-tight">
-              Hack<span className="font-serif italic">Flow</span>
+            <span className="flex flex-col leading-none">
+              <span className="text-h3 tracking-tight">
+                Hack<span className="font-serif italic">Flow</span>
+              </span>
+              <span className="mt-1 text-meta text-ink-500">by Hackathon Raptors</span>
             </span>
           </Link>
         </header>
