@@ -121,3 +121,48 @@ test.describe('keyboard-only navigation', () => {
     expect(seen.length, 'nothing on the events page was focusable').toBeGreaterThan(0);
   });
 });
+
+/**
+ * Cards in a row must be equal height, so their footer actions ("Explore
+ * feature", the gallery's vote button) sit on one baseline.
+ *
+ * Heights are compared per visual ROW, grouped by top offset — comparing a whole
+ * grid at once fails on a wrapped last row that is legitimately shorter, which
+ * is what made an earlier version of this check report a defect that wasn't one.
+ */
+async function raggedRows(page, selector: string): Promise<number[][]> {
+  return page.evaluate((sel) => {
+    const byRow = new Map<number, number[]>();
+    for (const el of Array.from(document.querySelectorAll(sel))) {
+      const r = el.getBoundingClientRect();
+      if (r.height < 20) continue;
+      const key = Math.round((r.top + window.scrollY) / 12);
+      if (!byRow.has(key)) byRow.set(key, []);
+      byRow.get(key)!.push(Math.round(r.height));
+    }
+    return [...byRow.values()].filter((v) => v.length > 1 && Math.max(...v) - Math.min(...v) > 1);
+  }, selector);
+}
+
+test.describe('cards in a row are equal height', () => {
+  for (const bp of BREAKPOINTS) {
+    test(`${bp.name} (${bp.width}px)`, async ({ page }) => {
+      await page.setViewportSize({ width: bp.width, height: bp.height });
+
+      await page.goto('/');
+      // Scroll so every scroll-revealed card has its final height.
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(800);
+
+      // The capability row is `flex`, where an explicit height on the item would
+      // defeat the stretch — the exact bug this guards.
+      expect(await raggedRows(page, 'a.w-64'), 'landing capability cards').toEqual([]);
+      expect(await raggedRows(page, 'div.grid.md\\:grid-cols-3 > div'), 'landing hero claims').toEqual([]);
+
+      await page.goto('/gallery');
+      await expect(page.getByRole('heading', { name: 'Gallery' })).toBeVisible();
+      expect(await raggedRows(page, 'div.grid > section'), 'gallery cards').toEqual([]);
+      expect(await raggedRows(page, 'div.grid > section > footer'), 'gallery card footers').toEqual([]);
+    });
+  }
+});
