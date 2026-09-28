@@ -5,7 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function login(page: Page, email: string, password: string) {
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel(/^Password/).fill(password);
   await page.locator('form').getByRole('button', { name: 'Log in' }).click();
   await expect(page).not.toHaveURL(/\/login$/);
 }
@@ -14,7 +14,7 @@ async function register(page: Page, email: string, name: string) {
   await page.goto('/register');
   await page.getByLabel('Name').fill(name);
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('supersecret1');
+  await page.getByLabel(/^Password/).fill('supersecret1');
   await page.locator('form').getByRole('button', { name: 'Sign up' }).click();
   await expect(page).not.toHaveURL(/\/register$/);
 }

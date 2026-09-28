@@ -263,9 +263,13 @@ def _to_public(session: Session, assignments: list[JudgeAssignment]) -> list[Ass
         s.assignment_id
         for s in session.exec(select(Score).where(Score.assignment_id.in_([a.id for a in assignments])))
     }
+    events: dict[int, Event | None] = {}
     rows: list[AssignmentPublic] = []
     for assignment in assignments:
         submission = session.get(Submission, assignment.submission_id)
+        if assignment.event_id not in events:
+            events[assignment.event_id] = session.get(Event, assignment.event_id)
+        event = events[assignment.event_id]
         rows.append(
             AssignmentPublic(
                 id=assignment.id,
@@ -273,6 +277,8 @@ def _to_public(session: Session, assignments: list[JudgeAssignment]) -> list[Ass
                 judge_id=assignment.judge_id,
                 submission_title=(submission.title if submission else "") or "Untitled submission",
                 scored=assignment.id in scored,
+                event_id=assignment.event_id,
+                event_name=event.name if event else "",
             )
         )
     rows.sort(key=lambda r: (r.scored, r.submission_id))

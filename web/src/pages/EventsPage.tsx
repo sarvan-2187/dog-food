@@ -5,12 +5,14 @@ import { useAuth } from '../lib/auth-context';
 import { eventCover } from '../lib/event-cover';
 import type { EventRecord } from '../types';
 import { Badge, Button, Card } from '../components/ui';
-import { EmptyState, ErrorState, SkeletonRows } from '../components/feedback';
+import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
+import { EventImportPanel } from '../components/EventImportPanel';
 
 export function EventsPage() {
   const { user } = useAuth();
   const [events, setEvents] = useState<EventRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
   const canCreate = user?.role === 'organizer' || user?.role === 'admin';
 
   function load() {
@@ -52,6 +54,12 @@ export function EventsPage() {
           </Link>
         )}
       </div>
+
+      {canCreate && (
+        <div className="mb-6">
+          <EventImportPanel onToast={(message, ok) => setToast({ message, ok })} />
+        </div>
+      )}
 
       {events === null && !error && <SkeletonRows rows={4} cols={3} />}
       {error && <ErrorState description={error} onRetry={load} />}
@@ -108,6 +116,12 @@ export function EventsPage() {
           ))}
         </div>
       )}
+
+      <ToastRegion>
+        {toast && (
+          <Toast status={toast.ok ? 'success' : 'danger'} message={toast.message} onDismiss={() => setToast(null)} />
+        )}
+      </ToastRegion>
     </div>
   );
 }
