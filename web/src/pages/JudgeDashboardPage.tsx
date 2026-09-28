@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RequireRole } from '../components/auth/guards';
-import { EmptyState, ErrorState, SkeletonRows } from '../components/feedback';
+import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import { Badge, Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { useAuth } from '../lib/auth-context';
 import type { Assignment, JudgeProgress } from '../types';
 
 export function JudgeDashboardPage() {
@@ -73,9 +74,81 @@ function AssignmentRow({ assignment }: { assignment: Assignment }) {
   );
 }
 
+/**
+ * Signed participation records (PLAN.md Phase 4 T4): proof a judge did the
+ * work, verifiable against the published key without trusting this server
+ * again. One per event, because that is what the record is scoped to.
+ *
+ * The server refuses a record for an event with no assignments, so the list is
+ * built from the judge's own assignments - there is never a button here that
+ * is going to 404.
+ */
+function ParticipationRecords({
+  assignments,
+  judgeId,
+  onToast,
+}: {
+  assignments: Assignment[];
+  judgeId: number;
+  onToast: (message: string, ok: boolean) => void;
+}) {
+  const [busy, setBusy] = useState<number | null>(null);
+
+  const events = Array.from(
+    new Map(assignments.map((a) => [a.event_id, a.event_name])).entries(),
+  ).map(([id, name]) => ({ id, name }));
+
+  async function download(eventId: number, eventName: string) {
+    setBusy(eventId);
+    try {
+      await api.download(
+        `/api/events/${eventId}/judges/${judgeId}/participation-record`,
+        `participation-record-event-${eventId}.json`,
+      );
+      onToast(`Signed record for ${eventName} downloaded.`, true);
+    } catch (err) {
+      onToast(err instanceof ApiError ? err.message : 'Could not download your record. Please try again.', false);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card title="Participation record" meta="Signed">
+      <div className="flex flex-col gap-4">
+        <p className="text-body text-ink-600">
+          A signed statement of how much judging you did on an event - assigned and scored counts, and when it was
+          issued. Anyone can check it against HackFlow's published key at{' '}
+          <a className="text-brand-500" href="/api/public-key">
+            /api/public-key
+          </a>{' '}
+          without having to take this server's word for it a second time.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {events.map((e) => (
+            <Button
+              key={e.id}
+              variant="secondary"
+              size="sm"
+              loading={busy === e.id}
+              loadingLabel="Signing..."
+              disabled={busy !== null && busy !== e.id}
+              onClick={() => download(e.id, e.name)}
+            >
+              {e.name || `Event #${e.id}`}
+            </Button>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function JudgeDashboard() {
+  const { user } = useAuth();
   const [progress, setProgress] = useState<JudgeProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -125,8 +198,22 @@ function JudgeDashboard() {
               </ul>
             </Card>
           )}
+
+          {user && (
+            <ParticipationRecords
+              assignments={[...progress.pending, ...progress.done]}
+              judgeId={user.id}
+              onToast={(message, ok) => setToast({ message, ok })}
+            />
+          )}
         </>
       )}
+
+      <ToastRegion>
+        {toast && (
+          <Toast status={toast.ok ? 'success' : 'danger'} message={toast.message} onDismiss={() => setToast(null)} />
+        )}
+      </ToastRegion>
     </div>
   );
 }

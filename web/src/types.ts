@@ -95,6 +95,8 @@ export interface Assignment {
   judge_id: number;
   submission_title: string;
   scored: boolean;
+  event_id: number;
+  event_name: string;
 }
 
 export interface JudgeProgress {
@@ -238,4 +240,22 @@ export interface AuditEntry {
   entity_id: number | null;
   detail: Record<string, unknown>;
   created_at: string;
+}
+
+/** Shape of GET /api/events/{id}/export.json - the bulk event backup. */
+export interface EventBackup {
+  event: {
+    slug: string;
+    name: string;
+    description: string;
+    start_at: string;
+    end_at: string;
+    tracks: string[];
+    prize_config: Record<string, unknown>;
+    voting_enabled: boolean;
+    results_hidden_until: string | null;
+  };
+  rubrics: { name: string; criteria: unknown[] }[];
+  teams: { name: string }[];
+  submissions: { team_name: string; title: string; description: string; track: string; status: string }[];
 }
