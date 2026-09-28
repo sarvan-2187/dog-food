@@ -1,4 +1,4 @@
-# Dogfood 2026
+# JudgeR — Judge Raptors
 
 A self-contained hackathon operations platform: event creation, team formation, submission
 drafting, judge assignment, weighted-and-normalized scoring, and public voting with

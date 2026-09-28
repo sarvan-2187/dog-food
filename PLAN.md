@@ -1,4 +1,4 @@
-# PLAN.md — Dogfood 2026 Build Plan (Claude Code Execution Spec)
+# PLAN.md — JudgeR Build Plan (Claude Code Execution Spec)
 
 **Team:** CodeHawk
 
@@ -301,27 +301,27 @@ and a shared client fingerprint is recorded in the audit log **without** blockin
 
 ---
 
-## Phase 4 — Stretch (T4) and bonus challenges — **FROZEN for this submission**
+## Phase 4 — Stretch (T4) and bonus challenges
 
-**Status: frozen, not attempted.** Phases 1–3 gates are green, so PLAN.md's own entry condition for this phase was met — but the decision was made to spend the remaining time on Phase 5's audit, documentation, and freeze work instead of stretch features. Reasoning: a smaller, thoroughly-audited T1–T3 submission demos and scores better than an unaudited T1–T4 one, and Phase 0/1's audit already showed that unaudited "done" work hides real defects (15 of them, in barely two phases). None of the items below were started; they are kept here, unstruck, in case there is confirmed slack after Phase 5 closes.
+**Status: un-frozen and built (backend), post-Phase-5 rebrand session.** The earlier freeze note below is kept for the record rather than deleted, but the user explicitly directed this phase to proceed after the JudgeR rebrand and hero rebuild. Scope was built API-first; see the honest gap called out at the bottom before treating this as fully done.
+
+~~**Original freeze note (superseded):** frozen, not attempted. Phases 1–3 gates are green, so PLAN.md's own entry condition for this phase was met — but the decision was made to spend the remaining time on Phase 5's audit, documentation, and freeze work instead of stretch features. Reasoning: a smaller, thoroughly-audited T1–T3 submission demos and scores better than an unaudited T1–T4 one, and Phase 0/1's audit already showed that unaudited "done" work hides real defects (15 of them, in barely two phases).~~
 
 ### T4 functional checklist
-- [ ] REST API/OpenAPI completeness audit: confirm every UI action has a documented endpoint (check invite-link redemption and any other click-triggered-DB-write paths specifically)
-- [ ] Certificate/record generation (server-side HTML-to-PDF or a PDF-generation library — no external service)
-- [ ] Bulk import/export (full event JSON export/import)
-- [ ] Signed judge participation records (local ed25519 keypair via `cryptography`, entirely offline)
-- [ ] Embeddable gallery widget (lowest priority — cut first if time runs short)
+- [x] REST API/OpenAPI completeness audit: cross-checked every backend route against every frontend `api.*()` call site live. No gap found — every click-triggered write (including invite-link redemption) already has a documented endpoint.
+- [x] Certificate/record generation — `GET /api/submissions/{id}/certificate.pdf`, rendered server-side with `reportlab` (pinned, pure-Python, no external service). Gated by the same `may_see_results` visibility rule as public results, plus a team-membership check.
+- [x] Bulk import/export — `GET /api/events/{id}/export.json` / `POST /api/events/import`, organizer/admin only. Deliberately scoped to event config + rubric + teams + submissions; assignments/scores are NOT round-tripped (see `api/app/scoring/router.py`'s docstring — re-creating scores against necessarily-different judge accounts would misrepresent who actually judged what).
+- [x] Signed judge participation records — `GET /api/events/{id}/judges/{judge_id}/participation-record`, Ed25519 via `cryptography` (pinned), key persisted to a `keys_data` docker volume so signatures outlive a container rebuild. Verifiable offline via `GET /api/public-key` and `app.crypto.verify_record` — see `api/tests/test_phase4.py` for a live tamper-detection test.
+- [ ] Embeddable gallery widget — **cut, per this checklist's own stated priority** ("lowest priority — cut first if time runs short"). Not started.
 
-### Bonus challenges, in this order
-- [ ] Normalization Proof: present the raw-vs-normalized ranking table on fixture data
-- [ ] Threat Model write-up: pair each attack with the mitigation already built in Phases 2–3
-- [ ] API First: only after the OpenAPI completeness audit above passes
-- [ ] Pairwise Mode / Bradley-Terry: only with 10+ hours of confirmed slack and a validated worked example
+### Bonus challenges
+- [x] Normalization Proof — already existed and wasn't noticed until this pass: `GET /api/events/{id}/export/results.csv` has shown raw_mean alongside z_bar/display since Phase 2/4 (its own docstring already says "PLAN.md Phase 4 bonus"). No new code needed; documented here instead of rebuilt.
+- [x] Threat Model write-up — `THREAT-MODEL.md`, 11 attacks paired with the mitigation already built and the file that enforces it.
+- [ ] API First — not attempted. The OpenAPI completeness audit passed, but this item's own scope (a fully spec-first workflow) wasn't defined narrowly enough to build in the time available; left honestly unchecked rather than claimed from the audit passing alone.
+- [ ] Pairwise Mode / Bradley-Terry — not attempted, per its own gate ("only with 10+ hours of confirmed slack"), which this session does not have.
 
 ### UX checklist (if any T4 work touches the UI)
-- [ ] Certificate download/generation shows a clear loading + success state
-- [ ] Bulk import/export shows progress and a clear success/failure summary, not a silent file drop
-- [ ] Any new screen still meets the full Section 4 bar — T4 is not an excuse to skip loading/empty/error states
+- [ ] **Gap, disclosed rather than hidden: none of T4's new endpoints have frontend UI yet.** Certificates, bulk export/import, and participation records are all real, tested, working API endpoints — reachable with `curl`/an API client and covered by `api/tests/test_phase4.py` — but there is no button, page, or download link wired up in `web/`. Loading/success/error states therefore don't apply yet because there is no UI surface for them to apply to. This is the honest state, not a claim of completion beyond the backend.
 
 ---
 

@@ -1,0 +1,9 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="JudgeR mark">
+  <!-- Three claw strokes: JudgeR's mark, evoking Hackathon Raptors' talon without
+       copying any of raptors.dev's actual assets - drawn fresh, in our own ink
+       token, at three different lengths so it reads as a claw rather than
+       three parallel lines. -->
+  <path d="M7 5 L12 27" stroke="#1F2426" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M16 3 L20 27" stroke="#1F2426" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M24 6 L26 22" stroke="#1F2426" stroke-width="3.4" stroke-linecap="round"/>
+</svg>

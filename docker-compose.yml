@@ -23,8 +23,11 @@ services:
       SESSION_SECRET: dev-only-not-a-real-secret
       FIXTURES_DIR: /app/fixtures
       STATIC_DIR: /app/static
+      KEYS_DIR: /app/keys
     ports:
       - "8000:8000"
+    volumes:
+      - keys_data:/app/keys
     depends_on:
       db:
         condition: service_healthy
@@ -37,3 +40,4 @@ services:
 
 volumes:
   db_data:
+  keys_data:

@@ -3,7 +3,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Button, Card, MetricTile } from '../components/ui';
+import { Badge, Button, Card, Logo, MetricTile } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import type { EventRecord, Submission } from '../types';
@@ -141,30 +141,48 @@ export function LandingPage() {
 
   return (
     <div className="flex flex-col">
-      {/* 2. Hero */}
-      <section className="relative overflow-hidden border-b border-border-subtle bg-brand-25 px-4 py-hero md:px-6">
-        <div
-          ref={glowRef}
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-32 -top-32 h-96 w-96 rounded-full bg-brand-500/20 blur-3xl"
-        />
+      {/* 2. Hero — RiskSentinel's centered composition, our ink/cream palette,
+          and raptors.dev's real hero-background mesh (sampled live from
+          their bg-light.png: peach FDEAD9, purple DFC0F1, mint B8EEDA,
+          blue C3D7F6, yellow F8E3BA). Colour lives only in this decorative
+          blob layer; text and buttons stay on the monochrome ink scale. */}
+      {/* -mt-20/pt-[176px] grow the section's own box 80px further up (roughly
+          the sticky NavBar's rendered height) so the gradient mesh bleeds
+          seamlessly behind the transparent header instead of stopping dead
+          at a hard line where the header's box used to show flat
+          surface-200. pt is padded by that same 80px so the headline's
+          actual page position doesn't shift. overflow-hidden stays on the
+          section (not just the blob layer) so it still clips the blobs'
+          fixed pixel widths at narrow viewports -- letting them escape the
+          section caused real horizontal overflow at 375px, not just visual
+          blur bleed. */}
+      <section className="relative -mt-20 overflow-hidden bg-surface-200 px-4 pb-hero pt-[176px] md:px-6">
+        <div ref={glowRef} aria-hidden="true" className="pointer-events-none absolute inset-0">
+          <div className="absolute left-[8%] top-[8%] h-72 w-72 rounded-full bg-[#FDEAD9] opacity-80 blur-3xl" />
+          <div className="absolute left-[24%] top-[32%] h-64 w-64 rounded-full bg-[#F8E3BA] opacity-70 blur-3xl" />
+          <div className="absolute left-[50%] top-[2%] h-80 w-80 rounded-full bg-[#DFC0F1] opacity-80 blur-3xl" />
+          <div className="absolute left-[28%] top-[48%] h-64 w-64 rounded-full bg-[#B8EEDA] opacity-70 blur-3xl" />
+          <div className="absolute left-[54%] top-[38%] h-72 w-72 rounded-full bg-[#C3D7F6] opacity-70 blur-3xl" />
+        </div>
         <motion.div
-          className="relative mx-auto max-w-[1200px]"
+          className="relative mx-auto max-w-[760px] text-center"
           initial={reduceMotion ? undefined : 'hidden'}
           animate="visible"
           variants={stagger(0.1)}
         >
-          <motion.p variants={fadeUp} className="text-eyebrow uppercase text-brand-700">
+          <motion.p variants={fadeUp} className="text-eyebrow uppercase text-ink-500">
             Judging, without the spreadsheet
           </motion.p>
-          <motion.h1 variants={fadeUp} className="mt-4 max-w-prose text-display text-ink-900">
-            From submission to <span className="font-serif italic text-ink-900">verdict.</span> One workspace.
+          <motion.h1 variants={fadeUp} className="mt-4 text-display text-ink-900">
+            From submission to <span className="font-serif italic text-ink-900">verdict.</span>
+            <br />
+            One workspace.
           </motion.h1>
-          <motion.p variants={fadeUp} className="mt-4 max-w-prose text-body-lg text-ink-600">
+          <motion.p variants={fadeUp} className="mx-auto mt-4 max-w-prose text-body-lg text-ink-600">
             Teams submit. Judges score against a locked rubric. Normalization cancels out who grades hard.
             Results reveal on a schedule everyone agreed to in advance.
           </motion.p>
-          <motion.div variants={fadeUp} className="mt-6 flex flex-wrap items-center gap-3">
+          <motion.div variants={fadeUp} className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
               <Link to={primaryTo}>
                 <Button variant="primary">{primaryLabel}</Button>
@@ -178,18 +196,14 @@ export function LandingPage() {
           </motion.div>
 
           <motion.div
-            variants={stagger(0.08)}
-            className="mt-12 grid gap-6 border-t border-border-subtle pt-8 md:grid-cols-3"
+            variants={fadeUp}
+            className="relative mx-auto mt-12 max-w-2xl overflow-hidden rounded-xl border border-border-default bg-surface-0/70 backdrop-blur-sm"
           >
-            <motion.div variants={fadeUp} className="h-full">
+            <div className="grid divide-y divide-border-subtle md:grid-cols-3 md:divide-x md:divide-y-0">
               <ClaimItem term="Deterministic" description="The same inputs always produce the same judge assignment." />
-            </motion.div>
-            <motion.div variants={fadeUp} className="h-full">
               <ClaimItem term="Conflict-aware" description="A judge is never assigned a submission from their own team." />
-            </motion.div>
-            <motion.div variants={fadeUp} className="h-full">
               <ClaimItem term="Policy-controlled" description="Results stay hidden until the reveal time the event set." />
-            </motion.div>
+            </div>
           </motion.div>
           <motion.p variants={fadeUp} className="mt-6 text-meta text-ink-500">
             Built for organizers, judges, and the teams building.
@@ -427,7 +441,7 @@ export function LandingPage() {
       <footer className="px-4 py-8 md:px-6">
         <div className="mx-auto flex max-w-[1200px] flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-h3 text-ink-900">Dogfood 2026</p>
+            <Logo />
             <p className="text-meta text-ink-500">Hackathon judging, accountable by design.</p>
           </div>
           <nav className="flex gap-4 text-label text-ink-700">
@@ -445,10 +459,8 @@ export function LandingPage() {
 }
 
 function ClaimItem({ term, description }: { term: string; description: string }) {
-  // h-full so the md:border-l divider runs the full height of the tallest claim
-  // instead of stopping at its own text.
   return (
-    <div className="h-full border-t border-border-subtle pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0 first:md:border-l-0 first:md:pl-0">
+    <div className="p-6 text-center">
       <p className="text-label font-semibold text-ink-900">{term}</p>
       <p className="mt-1 text-body text-ink-600">{description}</p>
     </div>

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
+from .. import crypto
 from ..audit.log import record
 from ..auth import Role, User, get_current_user, require_role
 from ..db import get_session
@@ -262,3 +263,54 @@ def scoring_sheet(
         my_comment=mine.comment if mine else "",
         my_raw_total=mine.raw_total if mine else None,
     )
+
+
+# --------------------------------------------------------------------------
+# Signed judge participation records (PLAN.md Phase 4 T4) -- proof a judge
+# took part in an event, verifiable offline against the published public key
+# without trusting this server again.
+# --------------------------------------------------------------------------
+
+@router.get("/api/public-key")
+def public_key() -> dict:
+    return {"algorithm": "ed25519", "public_key": crypto.public_key_b64}
+
+
+@router.get("/api/events/{event_id}/judges/{judge_id}/participation-record")
+def participation_record(
+    event_id: int,
+    judge_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """The judge themself, or an organizer/admin, may request this -- never
+    another judge (it would leak how much another judge actually did)."""
+    if user.id != judge_id and user.role not in (Role.organizer, Role.admin):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You may only request your own participation record.")
+    event = _event_or_404(session, event_id)
+    judge = session.get(User, judge_id)
+    if not judge or judge.role != Role.judge:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No judge with that id on this event.")
+
+    assignments = list(
+        session.exec(
+            select(JudgeAssignment).where(JudgeAssignment.event_id == event_id, JudgeAssignment.judge_id == judge_id)
+        )
+    )
+    if not assignments:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This judge has no assignments on this event.")
+    scored = len(
+        session.exec(
+            select(Score).where(Score.assignment_id.in_([a.id for a in assignments]))
+        ).all()
+    )
+    payload = {
+        "event_id": event_id,
+        "event_name": event.name,
+        "judge_id": judge_id,
+        "judge_name": judge.name,
+        "submissions_assigned": len(assignments),
+        "submissions_scored": scored,
+        "issued_at": utcnow().isoformat(),
+    }
+    return crypto.sign_record(payload)

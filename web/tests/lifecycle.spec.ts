@@ -33,7 +33,7 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   // forces a full page reload that races AuthProvider's cookie-based session
   // restore against the render, dropping the just-registered session.
   await page.getByRole('link', { name: 'Events' }).click();
-  await page.getByText('Dogfood Hackathon 2026').click();
+  await page.getByText('JudgeR Hackathon 2026').click();
   // The deadline is on screen before anything is typed (PLAN.md 4.1).
   await expect(page.getByText(/remaining|Deadline passed/)).toBeVisible();
 
