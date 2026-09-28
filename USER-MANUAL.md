@@ -47,6 +47,33 @@ Wait until it stops printing new lines, then open **http://localhost:8000** in y
 The site sets itself up and fills itself with sample data on first start — there is nothing
 else to configure.
 
+### Putting it online (optional)
+
+To give people a web address instead of `localhost`, the project includes a ready-made setup
+for [Render](https://render.com), which has a free plan and needs no credit card.
+
+1. Put the project in your own GitHub repository.
+2. On Render, sign in with GitHub, choose **New → Blueprint**, pick the repository, and
+   choose **Apply**. Render reads `render.yaml` and creates the site and its database. The
+   first build takes 5–10 minutes.
+3. When it is live, open the site's **Environment** tab and set `APP_BASE_URL` to its
+   address (for example `https://hackflow-xxxx.onrender.com`).
+4. Optional: the free plan puts the site to sleep after 15 minutes without visitors, and
+   the next visit waits about a minute. A free monitor such as
+   [UptimeRobot](https://uptimerobot.com) that opens `/healthz` every 5 minutes keeps it
+   awake.
+
+Know the free plan's limits before relying on it:
+
+- **Uploaded images and the signing key are erased whenever the site restarts.**
+  Certificates and judge records signed before a restart will stop verifying.
+- **The free database expires after about 30 days.**
+- **The sample accounts below work on the public site**, so anyone can sign in as the
+  sample organizer. Fine for a demo; change those passwords before a real event.
+
+For a real event, run `docker compose up` on a server of your own instead, where nothing is
+erased.
+
 ### Logging in
 
 ![The login screen](docs/screenshots/manual/01-login.png)
@@ -361,7 +388,9 @@ Anyone with access to the server can run:
 docker compose exec api python -m app.auth.reset_link you@example.com
 ```
 
-It prints a one-time reset link for that account.
+It prints a one-time reset link for that account. On Render, run
+`python -m app.auth.reset_link you@example.com` from the service's **Shell** tab instead
+(the Shell tab needs a paid plan).
 
 **I want to change my password.**
 **Profile → Change password.** This signs you out on every other device.
