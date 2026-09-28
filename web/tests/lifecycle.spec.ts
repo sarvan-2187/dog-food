@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { tourSuppressed } from './tour-state';
 
 /**
  * The single end-to-end lifecycle walk required by PLAN.md section 9. It doubles
@@ -20,7 +21,7 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   await page.goto('/register');
   await page.getByLabel('Name').fill('Lifecycle Founder');
   await page.getByLabel('Email').fill(founder);
-  await page.getByLabel('Password').fill('supersecret1');
+  await page.getByLabel(/^Password/).fill('supersecret1');
   await page.locator('form').getByRole('button', { name: 'Sign up' }).click();
   // A real positive signal, not just "not on /login" - that would also pass
   // if registration failed and the page simply stayed on /register. "Profile"
@@ -77,15 +78,19 @@ test('participant lifecycle: sign up, form a team, draft, submit, appear in the 
   await expect(page.getByText('No matches')).toBeVisible();
 
   // --- a teammate redeems the invite and lands on an explicit success screen
-  // A separate context, so the teammate has their own session cookie. baseURL is
-  // passed through explicitly because browser.newContext() does not inherit the
-  // `use` block's options.
-  const mateContext = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
+  // A separate context, so the teammate has their own session cookie. baseURL and
+  // storageState are passed through explicitly because browser.newContext() does
+  // not inherit the `use` block's options — without the latter this context would
+  // be the one place in the suite that still races the guided tour's auto-start.
+  const mateContext = await browser.newContext({
+    baseURL: testInfo.project.use.baseURL,
+    storageState: tourSuppressed(testInfo.project.use.baseURL as string),
+  });
   const mate = await mateContext.newPage();
   await mate.goto('/register');
   await mate.getByLabel('Name').fill('Lifecycle Mate');
   await mate.getByLabel('Email').fill(teammate);
-  await mate.getByLabel('Password').fill('supersecret1');
+  await mate.getByLabel(/^Password/).fill('supersecret1');
   await mate.locator('form').getByRole('button', { name: 'Sign up' }).click();
   // Wait for the session to exist before redeeming, or the invite POST races the
   // sign-up and arrives unauthenticated. A real positive signal, not just
