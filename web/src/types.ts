@@ -172,3 +172,31 @@ export interface PublicResultRow {
   team_name: string;
   votes: number;
 }
+
+
+// --- Judge invitation (T2 "judge invitation and assignment") ---------------
+
+export type JudgeInviteStatus = 'open' | 'redeemed' | 'expired';
+
+export interface JudgeInvite {
+  id: number;
+  token: string;
+  invited_email: string;
+  note: string;
+  expires_at: string;
+  redeemed_at: string | null;
+  redeemed_by_name: string | null;
+  status: JudgeInviteStatus;
+}
+
+/** Deliberately carries no invitee identity — see the backend's InvitePreview. */
+export interface JudgeInvitePreview {
+  valid: boolean;
+  reason: string;
+  expires_at: string | null;
+}
+
+export interface JudgeInviteRedeemResult {
+  role: Role;
+  already_a_judge: boolean;
+}

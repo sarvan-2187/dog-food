@@ -4,7 +4,7 @@
 
 > **Audience:** this file is written for an AI coding agent (Claude Code) executing this build, not for a human reading for context. It is the execution-ready companion to `dogfood-2026-implementation-plan-colorful.pdf`, which holds the full strategic rationale, trade-off discussion, and formulas. This file exists so you don't have to re-derive decisions — it tells you exactly what to build, in what order, with what files, and what "done" means at each gate. If you need the *why* behind a decision here, the PDF has it; don't re-litigate it, just build.
 >
-> This plan is organized as **six sequential phases (Phase 0 → Phase 5)**. Each phase has a functional checklist *and* a user-experience checklist — treat both as part of the same Definition of Done. A phase that passes the acceptance suite but ships confusing, unresponsive, or unstyled screens is not done; UX is not a separate pass bolted on later, it's a gate criterion at every phase.
+> This plan is organized as **seven sequential phases (Phase 0 → Phase 6)**. Each phase has a functional checklist *and* a user-experience checklist — treat both as part of the same Definition of Done. A phase that passes the acceptance suite but ships confusing, unresponsive, or unstyled screens is not done; UX is not a separate pass bolted on later, it's a gate criterion at every phase.
 
 ## 0. How to use this file
 
@@ -38,7 +38,7 @@
 ├── ARCHITECTURE.md
 ├── DATA-MODEL.md
 ├── JUDGING.md
-├── acceptance-report.txt      # generated near the end, not hand-written
+├── acceptance-report.txt      # the published suite's real output, re-run and re-committed every time — see §9
 ├── PLAN.md                    # this file
 ├── DESIGN_SYSTEM.md           # supplied by the user — do not create a placeholder; wait for it
 ├── reference_design.pdf       # supplied by the user — do not create a placeholder; wait for it
@@ -61,7 +61,8 @@
 │   │   ├── judging/           # assignment algorithm, rubrics, progress
 │   │   ├── scoring/           # normalization pipeline, CSV export
 │   │   ├── voting/            # votes, comments, rate limiting, duplicate detection
-│   │   └── audit/             # append-only log writer + query helpers
+│   │   ├── audit/             # append-only log writer + query helpers
+│   │   └── storage/           # StorageService interface + LocalStorage — see Phase 6
 │   └── tests/
 │       ├── test_auth.py
 │       ├── test_events.py
@@ -70,7 +71,8 @@
 │       ├── test_judging.py
 │       ├── test_scoring.py
 │       ├── test_voting.py
-│       └── test_role_isolation.py   # the cross-cutting 403 matrix — see Phase 2
+│       ├── test_role_isolation.py   # the cross-cutting 403 matrix — see Phase 2
+│       └── test_storage.py          # see Phase 6
 └── web/
     ├── Dockerfile              # multi-stage: build with node, discard node in final api image
     ├── package.json
@@ -150,6 +152,7 @@ A phase is not done until, for every screen it introduces: loading/empty/error s
 | Containerization | Docker Compose, 2 services at runtime: `db`, `api` (api serves the built SPA as static files — no separate `web` runtime container) |
 | Testing | pytest + `pytest-asyncio` + `httpx` (backend), Vitest (frontend unit), one Playwright end-to-end lifecycle test |
 | CSV export | Python `csv` stdlib only |
+| File storage | Local filesystem via a Docker named volume, behind a `StorageService` interface — see Phase 6. No S3-compatible service, no CDN |
 
 Pin every dependency to an exact version in `api/pyproject.toml` (or `requirements.txt`) and `web/package.json`. Before first use of any package, confirm it installs with no network reach beyond the allowed package registries.
 
@@ -218,7 +221,7 @@ assignment that belongs to it. Community voting is a **separate** mechanism buil
 Phase 3 and must never feed the judging pipeline; peer review is not in scope at all.
 
 ### Functional checklist
-- [ ] **Judge invitation** — organizer-issued invitation that brings a judge account onto the platform (`judge` is the one role with no self-service path, by design, and currently no path at all except fixture seeding). **This was missing from this checklist and is a genuine scope gap — see Open Questions.** T2's first clause is "judge *invitation* and assignment"; only assignment was ever built
+- [x] **Judge invitation** — organizer-issued, single-use, expiring invitation (`api/app/judging/invites.py`, `JudgeInvite`). `judge` remains the one role with no self-service path; the invite panel on the organizer's results page is now the only route into it. Redemption promotes the signed-in account, is refused for organizers/admins rather than silently demoting them, and is audit-logged. Found by reconciling this plan against the brief, where it had been silently omitted from this checklist
 - [x] `Rubric` model + CRUD (organizer only) — validate criteria weights sum to 1.0 on save, reject otherwise (`RubricWrite.weights_sum_to_one`; the error names the actual total). One rubric per event — see Open Questions
 - [x] `JudgeAssignment` model + the assignment algorithm (Section 8) — `api/app/judging/assignment.py`, pure and DB-free, called by the handler. Shortfall is reported via `coverage_report()` rather than relaxing a conflict
 - [x] `Score` model + score submission endpoint, restricted to the assigned judge for that specific assignment only (`require_role(judge)` **plus** an ownership check — role alone is not enough)
@@ -240,20 +243,15 @@ Phase 3 and must never feed the judging pipeline; peer review is not in scope at
 
 **Definition of Done — Phase 2 gate:** acceptance suite reports all T2 checks green, `test_role_isolation.py` has at least one negative-role test per mutating endpoint, and the Phase 2 UX checklist is fully checked. Do not start Phase 3 otherwise.
 
-**Gate status:** everything built is green and verified, but the gate is **not** fully met:
-T2's "judge invitation" clause was never built, and re-reading the brief against this plan
-is what surfaced it (see Open Questions). Judge accounts currently exist only via
-`fixtures/users.json`, so a real organizer running a real event has no way to add a judge.
-Nothing already built is wrong — this is a missing capability, not a defect — but the
-checklist above should not be read as a clean T2 sweep.
-
-Verification standing for what *is* built:
+**Gate status:** green apart from the unpublished acceptance suite. The one clause that was
+missing — "judge invitation" — has since been built (see the checklist above and Open
+Questions); every T2 clause is now implemented and tested.
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 124 passed |
+| Backend | `docker compose exec api pytest tests/ -v` | 181 passed |
 | Frontend unit | `cd web && npm test` | 9 passed |
-| Browser E2E | `cd web && npx playwright test` | 45 passed |
+| Browser E2E | `cd web && npx playwright test` | 71 passed |
 
 Verified live against the seeded stack on a clean `docker compose up -d --build`: assignment produced 9 pairs
 across 3 submissions with **zero** conflicts (Dana, who is both a judge and a Pipeline Pals member, was never
@@ -365,7 +363,7 @@ For every screen introduced in any phase:
 
 ### 5.5 — Acceptance suite: run it, or formally document why not
 
-- [x] No acceptance suite has been published. `acceptance-report.txt` generated fresh from a real, live run of all three suites on a clean volume: **160 backend + 9 Vitest + 64 Playwright = 233/233 passing** (re-run after the judging role-model reconciliation added two separation tests; previously 231). Header states plainly that it is self-issued. `README.md`'s tier/status claims are written against these exact numbers.
+- [x] No acceptance suite has been published. `acceptance-report.txt` generated fresh from a real, live run of all three suites on a clean volume: **181 backend + 9 Vitest + 75 Playwright = 265/265 passing** (re-run after judge invitation, the shadcn Select swap and the landing-motion guards; previously 233). Header states plainly that it is self-issued. `README.md`'s tier/status claims are written against these exact numbers.
 
 ### 5.6 — Demo video
 
@@ -379,9 +377,61 @@ For every screen introduced in any phase:
 - [x] `JUDGING.md` — assignment algorithm, normalization math, role isolation (including the ownership checks beyond role alone), rubric-locking, results-visibility, and duplicate-vote/rate-limit design, collected from Section 8 and the Open Questions decisions already made.
 - [x] `LICENSE` — MIT, in place.
 - [ ] Repo made public — **not done; needs the repo owner's decision**, not an agent's. `git status` shows an existing `origin/main` remote; making it public is a one-line GitHub setting but is exactly the kind of outward-facing, hard-to-reverse-in-spirit action this build asks to be confirmed explicitly rather than assumed.
-- [x] Final full suite run after the documentation pass: 160/160 backend green on a clean volume, confirming neither the docs pass nor the judging role-model reconciliation disturbed anything.
+- [x] Final full suite run after the documentation pass: 181/181 backend green on a clean volume, confirming neither the docs pass, the judging role-model reconciliation, nor the judge-invitation and UI work disturbed anything.
 
 **Definition of Done — Phase 5 / submission gate:** acceptance report committed and real (done); all four docs complete and cross-checked against it (done); demo video recorded (not done — needs a human); repo public (not done — needs the owner's decision); license in place (done); every Open Question either resolved or explicitly and knowingly carried into submission (done — see the running log below). Phase 5 is substantially complete; the two remaining items are both things this session cannot do on its own.
+
+---
+
+## Phase 6 — Uploaded Assets & Object Storage
+
+**Entry condition:** Phases 1–3's functional/UX gates are green (Phase 5's two outstanding items —
+demo video, repo-public — are human-only decisions and don't block this). This phase is additive
+scope beyond the T1–T4 tier ladder: the brief never names screenshots/avatars as a tier requirement,
+but the public gallery (T1) reads as a real gallery, not a list of text cards, and Adoptability &
+Operability (20% of the grade) rewards exactly this kind of "actually usable by an organizer"
+completeness. Not tier-gated, not required for any tier claim in `README.md`.
+
+**Architecture decision (settled, do not re-litigate mid-phase):** local filesystem storage behind
+a small `StorageService` interface, with exactly one implementation (`LocalStorage`) shipped. No
+MinIO, no S3-compatible client, no CDN, anywhere in this phase. This follows directly from §1's
+constraints — no cloud account, no external API, zero network calls at runtime, must work with the
+network off — and from `docker-compose.yml`'s existing 2-service shape (`db`, `api`), which this
+phase must not grow. A cloud object store (S3/R2/Cloudinary) fails §1 outright: it cannot serve an
+image with the network off. Self-hosted S3-compatible storage (MinIO) *would* technically satisfy
+§1, but adds a third stateful service, its own credentials, and its own backup/restore story for no
+benefit at this scale — a single-origin gallery serving a few hundred images to one event's
+participants over 72 hours has no cache-fanout problem for a second service to solve. Request flow:
+
+```
+Browser → Backend (FastAPI, the same process already serving the SPA)
+             → reads bytes from local disk (Docker-volume-backed directory)
+             → streams response with Content-Type + Cache-Control
+```
+
+The `S3CompatibleStorage` side of the interface is documented as the production upgrade path (see
+`ARCHITECTURE.md`) and is never implemented or tested in this phase — building and debugging a second
+backend nobody asked for is exactly the kind of unfinished-feature scope §11 and the brief's own
+"one challenge done properly beats four unfinished features" guidance warn against.
+
+### Functional checklist
+- [ ] `StorageService` interface (new `api/app/storage/`): `save(file, key) -> key`, `url_for(key) -> str`, `delete(key)`, `exists(key) -> bool`
+- [ ] `LocalStorage` implementation: writes under a Docker-named-volume-backed directory; generates its own key (never trusts the client's filename — no path-traversal surface); validates content-type (image formats only) and size server-side before writing
+- [ ] File-metadata table (key, owner type/id, content_type, size_bytes, checksum, created_at) in Postgres — bytes never touch the database, only the record of them does
+- [ ] Upload endpoints: submission screenshot (participant, own team's submission only) and user avatar (self only) — gated the same way every other mutating endpoint is: `require_role()` **plus** the same per-resource ownership check already used for scores (§8)
+- [ ] Serving route (e.g. `GET /media/{key}`) streaming from disk with correct `Content-Type`/`Cache-Control`; public by design for gallery screenshots and avatars, exactly as public as the gallery data itself — nothing sensitive is ever put behind this route
+- [ ] `docker-compose.yml`: one new named volume for the upload directory, mounted into `api` only — still 2 services at runtime, per §5's tech stack table
+- [ ] Gallery, submission detail, and navbar/profile wired to render the uploaded image where present, with a defined placeholder (never a broken-image icon) where absent
+- [ ] `api/tests/test_storage.py`: successful upload, oversized/wrong-content-type rejection, cross-team ownership rejection, and a test proving `LocalStorage` cannot be made to write outside its root directory
+- [ ] `fixtures/submissions.json` + seeding extended with a couple of seeded placeholder images, so a fresh `docker compose up` shows a populated gallery, not blank cards
+
+### UX checklist (see Section 4 for detail)
+- [ ] Upload control shows a preview, a loading state while the request is in flight, and a specific rejection message ("Image must be under 5MB", not "Upload failed") — same pattern as every other form in this build
+- [ ] Gallery cards and submission detail render the image responsively at all three breakpoints, with the defined placeholder when no image exists
+- [ ] Avatar upload (if built) reuses the same upload component as the submission screenshot control rather than a second bespoke one
+- [ ] Replacing an existing image is a clear, confirmed action; the superseded file's key is deleted rather than silently orphaned on disk
+
+**Definition of Done — Phase 6 gate:** `test_storage.py` green; the gallery and submission detail render real seeded images on a clean `docker compose up -d --build`; `docker-compose.yml` still runs exactly `db` + `api`; no MinIO/S3 client/CDN dependency exists anywhere in `api/pyproject.toml`, `web/package.json`, or `docker-compose.yml`.
 
 ---
 
@@ -448,6 +498,22 @@ Write this as a pure function with unit tests covering: a judge with only one as
 - Write tests alongside each endpoint, not as a separate pass afterward.
 - Before each phase gate, run: `docker compose up -d && pytest api/tests/ -v` and, once the acceptance suite is published, run it against the running `docker compose` stack exactly as a judge would.
 - Maintain one Playwright test (`web/tests/`) that walks the full lifecycle: event creation → team formation → submission → judge assignment → scoring → normalized results → (voting, if built). Keep it green continuously — it doubles as the demo video script.
+
+**9.1 — The organizer-published acceptance suite (instruction, kickoff).** The organizer publishes,
+at kickoff, a test suite that runs against the *running portal* (not against source code) and reports
+pass/fail per tier requirement. The exact same suite runs on our side and on the judges' side — there
+is no separate "our" version. Once it exists:
+- Run it against a clean `docker compose up -d --build` stack every time it's run — never against a
+  stack with leftover manual test data (§1's seeding-is-the-only-setup rule applies here too).
+- Run it as often as useful — after every phase gate at minimum, and again before any tier claim in
+  `README.md` changes — not once near the end. It is cheap to re-run and there is no reason to let
+  `acceptance-report.txt` go stale against the code.
+- Commit its real output every time it's run, overwriting the previous `acceptance-report.txt`. This
+  is already required by §11 ("do not hand-edit `acceptance-report.txt`"); the organizer's framing —
+  "you run it yourself, as often as you like, and commit the output... nobody is guessing" — is the
+  reason that rule exists, not a new rule on top of it.
+- Until it's published, the self-issued report from our own suites (§5.5) stands in its place, header
+  stating plainly that it's self-issued — see the Open Questions entry on this.
 
 ---
 
@@ -542,6 +608,13 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   invite join/expiry, submission autosave/deadline/gallery visibility, plus one regression test per
   audit finding), 9 Vitest unit tests, and 24 Playwright browser checks. Re-run once the real suite
   ships; tier claims in `README.md` stay unwritten until then.
+  **Update — organizer instruction received:** the organizer confirmed the real suite is published
+  at kickoff, runs against the *running portal* (not source), reports pass/fail per tier requirement,
+  is run by us and by judges identically, and is meant to be re-run "as often as you like" with the
+  output committed each time — see §9.1, added for this. This does not unblock the checkbox above;
+  the suite still hasn't shipped as of this note. It changes the *process* once it does: continuous
+  re-run-and-commit, not a one-time generation near the freeze the way `acceptance-report.txt`'s
+  repo-layout comment originally implied (also updated).
 - **Public registration always creates a participant (Phase 1).** `POST /api/auth/register` never
   accepts a role from the client. Judge/organizer/admin accounts exist only via `fixtures/users.json`
   seeding. This wasn't explicit in PLAN.md; treated as the safer default for a hackathon platform
@@ -549,8 +622,8 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   separate invite-a-judge flow that Phase 1 didn't ask for. **Still the right call for registration,
   but the deferral outlived its justification — see the judge-invitation gap below.**
 
-- **Judge invitation was never built, and the checklist never asked for it (found by re-reading the
-  brief against this plan).** T2's first clause is "**Judge invitation** and assignment". This plan's
+- **~~Judge invitation was never built, and the checklist never asked for it.~~ Found by re-reading
+  the brief against this plan, then built.** T2's first clause is "**Judge invitation** and assignment". This plan's
   Phase 2 checklist covered assignment in detail and omitted invitation entirely, so the omission was
   invisible: every Phase 2 box could be ticked with the capability wholly absent. The Phase 1 note
   above deferred it on the grounds that "Phase 1 didn't ask for it" — true, but Phase 2 does, and
@@ -567,13 +640,49 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   only expressible in seed data, which makes the strongest claim in the build — role isolation
   between competitor and evaluator — un-demonstrable on a live instance.
 
-  **Not built in this pass**, because the request was to reconcile the plan with the brief's role
-  model, not to add scope. Scoped for whoever picks it up: an organizer-only endpoint issuing a
-  single-use, expiring invite token (the `Team.invite_code` pattern already in the codebase is the
-  obvious model), redemption creating or promoting an account to `judge`, the action recorded in the
-  audit log, and a negative-role row added to `test_role_isolation.py` so a participant cannot mint
-  a judge. Explicitly *not* self-service: a self-serve judge signup would be the privilege-escalation
-  hole the Phase 1 note rightly avoided.
+  **Now built**, immediately after this was logged. `api/app/judging/invites.py` + `JudgeInvite`:
+  organizer/admin-only creation, single-use, expiring (1-90 days, default 14), revocable while
+  unused, with a public `/preview` so a dead link explains itself instead of failing at the moment
+  someone presses accept. Redemption promotes the signed-in account and is audit-logged. Still
+  explicitly *not* self-service.
+
+  Three decisions worth recording, none of which the brief specified:
+  - **An organizer redeeming is refused, not demoted.** Silently replacing `organizer` with `judge`
+    would cost them the ability to run their own event, with no warning and no undo.
+  - **Already a judge is a success that does not consume the invitation**, so a double-click or a
+    refresh cannot silently burn the organizer's next invite.
+  - **The preview leaks nothing** — not the invited email, not the organizer's private note — so
+    handing the link to the wrong person discloses only "this is a judge invitation".
+
+  Covered by 15 tests in `test_judge_invites.py` weighted towards the escalation cases (a
+  participant cannot mint an invite; a judge cannot mint further judges, so one compromised judge
+  account does not become many; registration still cannot request the role), two new rows in the
+  `test_role_isolation.py` matrix, and 9 browser tests in `web/tests/judge-invite.spec.ts`.
+
+- **shadcn/ui Select, Framer Motion and GSAP added (UI pass).** All four are npm packages bundled
+  at build time, so §1's no-network-calls rule is untouched — nothing is fetched at runtime and no
+  CDN is involved. Notes on each:
+  - **Select** is shadcn/ui's pattern on Radix primitives, skinned with our own tokens rather than
+    shadcn's palette (`DESIGN_SYSTEM.md` stays the source of truth). Radix is what buys back the
+    accessibility a native `<select>` gave for free and a styled `<div>` would have lost: roving
+    focus, type-ahead, Escape, correct `aria-expanded`, focus returning to the trigger. Two browser
+    tests assert it is a real `listbox`/`option` tree and keyboard-operable, not a div that looks
+    like one.
+  - **GSAP** is used only for the landing page's ScrollTrigger work (trail rows, step band, hero
+    glow); Framer Motion handles entrance variants and the FAQ accordion. GSAP's core and
+    ScrollTrigger are free to use commercially under its current licence.
+  - Every new dependency was pinned exactly, per §5. `npm install` writes carets by default, which
+    would have quietly violated that rule — the whole `package.json` was un-caretted, including
+    devDependencies added earlier in the build that had the same problem.
+
+- **Motion must never be load-bearing for legibility (UI pass).** Both libraries work by setting an
+  element to `opacity: 0` and animating it back, so a trigger that never fires leaves content
+  permanently invisible while the page still "renders" and no existing test notices.
+  `web/tests/landing-motion.spec.ts` guards it: nothing stranded at zero opacity after a scroll
+  pass, every step in the band visible, and under `prefers-reduced-motion` everything visible with
+  no scrolling at all. That last test asserts the media query actually matches before checking
+  anything — without it, `test.use({ reducedMotion })` in a nested describe silently failed to
+  apply and the test was exercising the full-motion path instead.
 
 - **Peer review is not in scope, and the conflict rule is not evidence that it is (role model).**
   The brief never mentions peer review, never uses the phrase, and never describes participants
@@ -773,3 +882,19 @@ after. `api/tests/test_regressions.py` holds one test per defect, named after it
   filled button is the one addition a functional app needs beyond what the reference
   itself does, since the reference never needs a single clear call-to-action competing
   against outline buttons the way a workflow app's "Submit"/"Create event" does.
+
+- **Phase 6 (uploaded assets) added after the Phase 5 freeze, and is not tier-gated.**
+  Screenshots/avatars/gallery images are never named in the brief's tier ladder — T1 only
+  asks for "a searchable public gallery" — so this was never missing from any tier claim
+  and `README.md`'s existing tier claims stand unaffected either way. Added because a real
+  gallery reads better with images than text cards, which speaks to Adoptability &
+  Operability (20%), not to a tier. The storage-architecture question (local disk vs.
+  self-hosted MinIO vs. cloud object storage + CDN) was analyzed against §1's constraints
+  before writing the phase: cloud storage fails outright (needs the network, needs a
+  cloud account — both forbidden by §1); self-hosted MinIO would technically satisfy §1
+  but adds a third stateful service, its own credentials, and its own backup story for no
+  benefit at this scale. Decision: local filesystem storage via a Docker named volume,
+  behind a `StorageService` interface with exactly one implementation (`LocalStorage`).
+  The interface's second implementation (`S3CompatibleStorage`) is documented as the
+  production upgrade path and deliberately never built or tested here — see Phase 6's own
+  header for the full reasoning and the request-flow diagram.

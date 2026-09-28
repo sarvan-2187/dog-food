@@ -152,6 +152,12 @@ MATRIX = [
     ("get", "/api/assignments/{assignment_id}/sheet", None,
      [Role.participant, Role.organizer, Role.admin, Role.judge]),
 
+    # --- judge invitation (organizer/admin only) --------------------------
+    # The one role with no self-service path; a participant or judge minting an
+    # invite would be a straight privilege escalation.
+    ("post", "/api/judge-invites", {"expires_in_days": 14}, [Role.participant, Role.judge]),
+    ("get", "/api/judge-invites", None, [Role.participant, Role.judge]),
+
     # --- audit log (organizer/admin only) ---------------------------------
     ("get", "/api/audit", None, [Role.participant, Role.judge]),
 

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ResultsHiddenNotice } from '../components/ResultsHiddenNotice';
 import { VoteButton } from '../components/VoteButton';
 import { EmptyState, ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
-import { Badge, Card, Input } from '../components/ui';
+import { Badge, Card, Input, SimpleSelect } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { gallerySeed } from '../lib/gallery-seed';
@@ -80,23 +80,13 @@ export function GalleryPage() {
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <h1 className="text-h1 text-ink-900">Gallery</h1>
         <div className="flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="gallery-order" className="text-label text-ink-800">
-              Order
-            </label>
-            <select
-              id="gallery-order"
-              value={order}
-              onChange={(e) => setOrder(e.target.value as Order)}
-              className="h-10 rounded-md border border-border bg-surface-0 px-3 text-body text-ink-800 focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20"
-            >
-              {ORDERS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SimpleSelect
+            label="Order"
+            value={order}
+            onChange={(value) => setOrder(value as Order)}
+            options={ORDERS}
+            triggerClassName="md:w-44"
+          />
           <Input
             label="Search"
             placeholder="Search submissions"

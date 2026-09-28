@@ -9,6 +9,7 @@ import { EventsPage } from './pages/EventsPage';
 import { GalleryPage } from './pages/GalleryPage';
 import { JoinTeamPage } from './pages/JoinTeamPage';
 import { JudgeDashboardPage } from './pages/JudgeDashboardPage';
+import { JudgeInvitePage } from './pages/JudgeInvitePage';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/events/:slug/rubric" element={<RubricBuilderPage />} />
             <Route path="/events/:slug/results" element={<EventResultsPage />} />
             <Route path="/judge" element={<JudgeDashboardPage />} />
+            <Route path="/judge-invite/:token" element={<JudgeInvitePage />} />
             <Route path="/assignments/:assignmentId/score" element={<ScorePage />} />
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/submissions/:submissionId" element={<SubmissionDetailPage />} />
