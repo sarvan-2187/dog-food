@@ -77,6 +77,13 @@ class Event(SQLModel, table=True):
     stages: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
     # Which look its certificates use: a key of scoring.certificate.TEMPLATES.
     certificate_template: str = Field(default="classic")
+    # Organizer-defined questions every team answers on the submission form
+    # (DOGFOOD T1), at most 10: [{"id", "prompt", "required", "hidden", "public"}].
+    # Short text answers live on Submission.answers under the question's id. A
+    # question with answers can't be deleted, only hidden (events/questions.py).
+    questions: List[Dict[str, Any]] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]")
+    )
 
 
 class Announcement(SQLModel, table=True):

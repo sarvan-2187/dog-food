@@ -8,6 +8,7 @@ import { Badge, Button, Card, Input } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { CertificateDesignPicker } from '../components/CertificateDesign';
 import { StagesEditor } from '../components/EventStages';
+import { QuestionsEditor } from '../components/QuestionsEditor';
 import type { EventRecord, PrizeEntry, WebhookRecord } from '../types';
 
 /**
@@ -198,6 +199,10 @@ function EventSettingsForm() {
       </div>
 
       <div className="mt-6">
+        <QuestionsEditor key={event.id} event={event} onSaved={setEvent} onToast={setToast} />
+      </div>
+
+      <div className="mt-6">
         <CertificateDesignPicker event={event} onSaved={setEvent} onToast={setToast} />
       </div>
 
@@ -368,8 +373,10 @@ function WebhookPanel({ eventId, onToast }: { eventId: number; onToast: (t: { me
     >
       <div className="flex flex-col gap-4">
         <p className="text-meta text-ink-500">
-          Each webhook receives a signed POST (verifiable with <code>GET /api/public-key</code>) when a
-          submission is submitted, judges are assigned, a score is submitted, or results are revealed.
+          Each webhook receives a signed POST (verifiable with <code>GET /api/public-key</code>) for every
+          action taken in this event: submissions, teams, judging, scores, votes, comments, announcements and
+          settings changes. The topic is the action's name, for example <code>event.updated</code>. Payloads
+          carry ids only; fetch details through the API with a key.
         </p>
 
         {webhooks === null && <p className="text-meta text-ink-500">Loading...</p>}

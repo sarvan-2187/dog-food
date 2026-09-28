@@ -13,8 +13,13 @@ new code to verify a webhook too.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Optional
+
 import httpx
 from fastapi import BackgroundTasks
+from sqlalchemy import event as sa_event
+from sqlalchemy.orm import Session as OrmSession
 from sqlmodel import Session, select
 
 from .. import crypto
@@ -78,3 +83,112 @@ def notify(session: Session, background_tasks: BackgroundTasks, event_id: int, t
     signed = crypto.sign_record(payload)
     for sub in subscriptions:
         background_tasks.add_task(_deliver, sub.url, sub.id, signed)
+
+
+# --------------------------------------------------------------------------
+# Every audited action (DOGFOOD T4: "webhooks covering every action the UI can
+# take"). audit.log.record() is the one place every consequential action
+# already passes through, so it hands each entry to queue_audited() below and
+# no call site changes. The topic is the audit action string exactly.
+# --------------------------------------------------------------------------
+
+# Topics notify() already sends from its own call sites, with their own payload
+# shape. record() leaves these alone, so each one still goes out exactly once.
+NOTIFY_TOPICS = frozenset(
+    {
+        "assignments.run",
+        "submission.submitted",
+        "submission.disqualified",
+        "submission.reinstated",
+        "score.submitted",
+        "announcement.posted",
+        "event.results_revealed",
+    }
+)
+
+# Audit detail keys that are ids but still say who voted. Never sent.
+_PRIVATE_ID_KEYS = frozenset({"vote_id", "voter_user_id"})
+
+_PENDING = "webhooks.pending"
+
+# Deliveries leave the request thread, like notify()'s BackgroundTasks, so a
+# slow receiver never holds up the response. A handful of workers is plenty at
+# hackathon scale; each delivery is one POST with a 5 second timeout.
+_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="webhook")
+
+
+def _submit(url: str, subscription_id: int, signed_payload: dict) -> None:
+    """Seam for tests, which run deliveries inline instead of on the pool."""
+    _executor.submit(_deliver, url, subscription_id, signed_payload)
+
+
+def _event_id_for(session: Session, entity_type: str, entity_id: Optional[int], detail: dict) -> Optional[int]:
+    """Which event an audited action belongs to, or None for platform-wide ones
+    (accounts, API keys, admin actions): webhooks are per event, so those send
+    nothing."""
+    # Local imports: these models' modules import audit.log, which imports us.
+    from ..judging.models import JudgeInvite
+    from ..submissions.models import Submission
+    from ..teams.models import Team
+    from ..voting.models import Comment
+
+    if isinstance(detail.get("event_id"), int):
+        return detail["event_id"]
+    if entity_id is None:
+        return None
+    if entity_type == "event":
+        return entity_id
+    model = {"submission": Submission, "team": Team, "comment": Comment, "judge_invite": JudgeInvite}.get(entity_type)
+    row = session.get(model, entity_id) if model else None
+    return getattr(row, "event_id", None)
+
+
+def queue_audited(
+    session: Session, action: str, entity_type: str, entity_id: Optional[int], detail: dict[str, Any]
+) -> None:
+    """Stage a signed delivery of this audited action to each of its event's
+    active webhooks. Nothing is sent until the session commits (the listener
+    below), and a rollback drops it, so a receiver never hears about an action
+    that did not happen. The payload carries the action and ids only, never
+    scores, emails, names or vote details: a receiver that wants more fetches
+    it through the API with a key."""
+    if action in NOTIFY_TOPICS:
+        return
+    # no_autoflush: record() is called with the action's own rows still pending,
+    # and flushing them here would move their errors out of the caller's commit.
+    with session.no_autoflush:
+        event_id = _event_id_for(session, entity_type, entity_id, detail)
+        if event_id is None:
+            return
+        subscriptions = session.exec(
+            select(WebhookSubscription).where(
+                WebhookSubscription.event_id == event_id,
+                WebhookSubscription.active == True,  # noqa: E712 -- SQLAlchemy needs `== True`, not `is True`
+            )
+        ).all()
+    if not subscriptions:
+        return
+    payload: dict[str, Any] = {
+        "topic": action,
+        "event_id": event_id,
+        "issued_at": utcnow().isoformat(),
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+    }
+    for key, value in detail.items():
+        if key.endswith("_id") and isinstance(value, int) and key not in _PRIVATE_ID_KEYS and key != "event_id":
+            payload[key] = value
+    signed = crypto.sign_record(payload)
+    pending = session.info.setdefault(_PENDING, [])
+    pending.extend((sub.url, sub.id, signed) for sub in subscriptions)
+
+
+@sa_event.listens_for(OrmSession, "after_commit")
+def _send_after_commit(session: OrmSession) -> None:
+    for url, subscription_id, signed in session.info.pop(_PENDING, []):
+        _submit(url, subscription_id, signed)
+
+
+@sa_event.listens_for(OrmSession, "after_rollback")
+def _drop_after_rollback(session: OrmSession) -> None:
+    session.info.pop(_PENDING, None)

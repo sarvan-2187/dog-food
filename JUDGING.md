@@ -40,7 +40,8 @@ give themselves access to every score.
 Implemented in `api/app/judging/assignment.py` as a pure, DB-free function:
 
 ```python
-assign_judges(submissions, judges, team_memberships, k) -> list[JudgeAssignment]
+assign_judges(submissions, judges, team_memberships, k, *,
+              existing=(), extra_conflicts=(), judge_tracks={}) -> list[JudgeAssignment]
 ```
 
 1. **Build a conflict set** — exclude `(judge, submission)` pairs where the judge is a
@@ -68,6 +69,28 @@ assign_judges(submissions, judges, team_memberships, k) -> list[JudgeAssignment]
 7. **Only after submissions close (Phase 10.3).** Assignment and scoring are refused
    before the event's `end_at`, so every score is of the version that was actually
    submitted. A judge's list only shows assignments from events whose judging has opened.
+8. **Track judges (DOGFOOD T2: "a track judge must never see another track").** An
+   organizer can give any judge on the panel one of the event's tracks, from the Judging
+   progress card (`PUT /api/events/{id}/judges/{user_id}/track`, stored in
+   `event_judges.track`). No track means the judge takes any track. The rule is one
+   function, `outside_track()` in `assignment.py`:
+   - a track judge is only ever given entries in exactly their track;
+   - an entry in a track is offered to that track's judges first, then to untracked
+     judges to reach `k` (the sort key is `(not a track judge, load, judge id)`, still
+     total, so the run stays deterministic);
+   - an entry with no track, or a track nobody judges, goes to untracked judges only. If
+     there are not enough of them the entry is left short and listed in the coverage
+     warnings. It is never handed to another track's judge.
+   - A judge given a track after assignment keeps any entry they already **scored** in
+     another track (a real judgement, like a removed judge's scores). Their **unscored**
+     assignments outside the track are deleted at the start of the next assignment run,
+     and the run refills those gaps.
+
+   Assignment is not the only guard. `assert_in_track()` in `event_judges.py` runs on the
+   score sheet, score submission and score read for every assignment, so a cross-track row
+   that somehow exists (left from before the track was set, or written by hand) still gets
+   a 403. The judge dashboard and `GET /api/judges/me/scores` leave such rows out, so a
+   track judge never sees another track's entry anywhere.
 
 ### Award suggestions (Phase 10.6)
 
@@ -174,6 +197,8 @@ check, since "any judge" is not the same as "the assigned judge":
   the role check alone wouldn't stop them.
 - A participant sees no score detail anywhere, for any submission, including their own
   team's — judging stays confidential until results are released.
+- A track judge gets a 403 on the sheet, score submission and score read for any entry
+  outside their track, even with an assignment row for it (assignment rule 8 above).
 
 The audit log (`GET /api/audit`) is organizer/admin only, and has no write path from any
 client-facing endpoint — see DATA-MODEL.md.

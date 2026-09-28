@@ -180,7 +180,8 @@ test.describe('the Select is a real listbox', () => {
     await expect(trigger).toBeVisible();
     await trigger.click();
     await expect(page.getByRole('listbox')).toBeVisible();
-    await page.getByRole('option', { name: 'Shuffled' }).click();
-    await expect(trigger).toContainText('Shuffled');
+    // Shuffled is already the default here (voting is on), so pick another.
+    await page.getByRole('option', { name: 'Most recent' }).click();
+    await expect(trigger).toContainText('Most recent');
   });
 });

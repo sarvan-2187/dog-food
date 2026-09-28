@@ -284,7 +284,7 @@ function EventResults() {
         <>
           <SuspiciousVotesCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
           <EligibilityCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} onChanged={load} />
-          <JudgePanelCard eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
+          <JudgePanelCard eventId={event.id} tracks={event.tracks} onToast={(message, ok) => setToast({ message, ok })} />
           <JudgeInvitePanel eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
           <WinnersEditor eventId={event.id} onToast={(message, ok) => setToast({ message, ok })} />
         </>
