@@ -1,4 +1,4 @@
-# THREAT-MODEL.md — JudgeR
+# THREAT-MODEL.md — HackFlow
 
 Bonus challenge (PLAN.md Phase 4): each attack paired with the mitigation
 already built, not new work — this is a write-up of what Phases 0–4 already

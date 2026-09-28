@@ -1,4 +1,4 @@
-# DATA-MODEL.md — JudgeR
+# DATA-MODEL.md — HackFlow
 
 Schema documentation for the tables SQLModel creates from `api/app/*/models.py`. All
 timestamps are `TIMESTAMP WITH TIME ZONE` (see `api/app/timeutil.py`'s `utcnow()`) so a

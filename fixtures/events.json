@@ -1,7 +1,7 @@
 [
   {
     "slug": "dogfood-2026",
-    "name": "JudgeR Hackathon 2026",
+    "name": "HackFlow Hackathon 2026",
     "description": "A weekend build sprint for internal tooling ideas.",
     "start_at": "2026-10-15T09:00:00",
     "end_at": "2026-10-17T18:00:00",
@@ -10,6 +10,14 @@
       "Developer Tools",
       "Open Category"
     ],
+    "prize_config": {
+      "prizes": [
+        { "rank": "1st Place", "reward": "$5,000 + mentorship" },
+        { "rank": "2nd Place", "reward": "$2,500" },
+        { "rank": "Best Developer Tool", "reward": "$1,000" }
+      ]
+    },
+    "max_team_size": 4,
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": "2026-10-17T20:00:00"

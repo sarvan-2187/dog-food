@@ -1,5 +1,6 @@
 services:
   db:
+    container_name: hackflow-db
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: dogfood
@@ -15,6 +16,7 @@ services:
       start_period: 10s
 
   api:
+    container_name: hackflow-api
     build:
       context: .
       dockerfile: api/Dockerfile

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ImageUpload } from '../components/ImageUpload';
 import { Button, Card, RoleBadge } from '../components/ui';
 import { useAuth } from '../lib/auth-context';
+import { runTour } from '../lib/tour';
 
 /**
  * Post-login account controls live here, not in the header - the header
@@ -52,15 +53,19 @@ export function ProfilePage() {
               <dd className="text-body text-ink-800">{user.email}</dd>
             </div>
           </dl>
-          <Button
-            variant="secondary"
-            loading={loading}
-            loadingLabel="Signing out..."
-            onClick={onLogout}
-            className="self-start"
-          >
-            Log out
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" onClick={() => runTour(user.role)}>
+              Replay the guided tour
+            </Button>
+            <Button
+              variant="secondary"
+              loading={loading}
+              loadingLabel="Signing out..."
+              onClick={onLogout}
+            >
+              Log out
+            </Button>
+          </div>
         </div>
       </Card>
     </div>

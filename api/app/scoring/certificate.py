@@ -35,7 +35,7 @@ def render_certificate(*, event_name: str, team_name: str, submission_title: str
         pdf.drawCentredString(width / 2, height - 4.5 * inch, f"Final rank: #{rank}")
 
     pdf.setFont("Helvetica-Oblique", 10)
-    pdf.drawCentredString(width / 2, 0.9 * inch, "Issued by JudgeR — Judge Raptors")
+    pdf.drawCentredString(width / 2, 0.9 * inch, "Issued by HackFlow")
 
     pdf.showPage()
     pdf.save()
@@ -44,7 +44,7 @@ def render_certificate(*, event_name: str, team_name: str, submission_title: str
 
 if __name__ == "__main__":
     pdf_bytes = render_certificate(
-        event_name="JudgeR Hackathon 2026",
+        event_name="HackFlow Hackathon 2026",
         team_name="Flake Finders",
         submission_title="Flake Finder",
         rank=2,

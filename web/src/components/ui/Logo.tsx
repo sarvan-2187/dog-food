@@ -1,7 +1,7 @@
 import { cn } from '../../lib/cn';
 
 /**
- * The JudgeR mark + wordmark, drawn fresh for the rebrand (not copied from any
+ * The HackFlow mark + wordmark, drawn fresh for the rebrand (not copied from any
  * reference asset). One component so the nav, footer, and any future usage
  * stay pixel-identical rather than three hand-typed copies drifting apart.
  */
@@ -16,7 +16,7 @@ export function Logo({ tone = 'ink', className }: { tone?: 'ink' | 'inverted'; c
         <path d="M24 6 L26 22" stroke={strokeColor} strokeWidth="3.4" strokeLinecap="round" />
       </svg>
       <span className={cn('text-h3 tracking-tight', textClass)}>
-        Judge<span className="font-serif italic">R</span>
+        Hack<span className="font-serif italic">Flow</span>
       </span>
     </span>
   );

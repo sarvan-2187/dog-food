@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './components/auth/guards';
+import { GuidedTour } from './components/GuidedTour';
 import { NavBar } from './components/layout/NavBar';
 import { AuthProvider } from './lib/auth-context';
 import { EventCreatePage } from './pages/EventCreatePage';
@@ -28,6 +29,7 @@ export default function App() {
       <BrowserRouter>
         <div className="min-h-screen">
           <NavBar />
+          <GuidedTour />
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />

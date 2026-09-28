@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 KEYS_DIR = Path(os.getenv("KEYS_DIR", "keys"))
-_PRIVATE_KEY_PATH = KEYS_DIR / "judger-ed25519.pem"
+_PRIVATE_KEY_PATH = KEYS_DIR / "hackflow-ed25519.pem"
 
 
 def _load_or_create_key() -> Ed25519PrivateKey:

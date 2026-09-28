@@ -77,6 +77,64 @@
   }
 }
 
+/* Guided tour (src/lib/tour.ts). driver.js ships its own popover styling, which
+   is a stock blue on a system font stack — these overrides pull it back onto
+   this app's own tokens. Hex values are transcribed from src/styles/tokens.ts
+   because driver.js's stylesheet sits outside Tailwind's layers and cannot
+   @apply them. Keep them in step with that file if the palette ever moves. */
+.driver-popover.hackflow-tour {
+  background-color: #ffffff; /* surface-0 */
+  border: 1px solid #dee0e0; /* border.DEFAULT */
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(31 36 38 / 18%);
+  font-family: 'Satoshi', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  max-width: 22rem;
+}
+
+.driver-popover.hackflow-tour .driver-popover-title {
+  color: #1f2426; /* ink-900 */
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.driver-popover.hackflow-tour .driver-popover-description {
+  color: #565d5f; /* ink-600 */
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+.driver-popover.hackflow-tour .driver-popover-progress-text {
+  color: #6f7678; /* ink-500 */
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.driver-popover.hackflow-tour .driver-popover-navigation-btns button {
+  background-color: #1f2426; /* brand-500 */
+  border: 0;
+  border-radius: 999px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.875rem;
+  padding: 0.4rem 0.95rem;
+  text-shadow: none;
+}
+
+.driver-popover.hackflow-tour .driver-popover-navigation-btns button:hover {
+  background-color: #171b1c; /* brand-600 */
+}
+
+/* Visible focus ring, since the tour is fully keyboard-driven. */
+.driver-popover.hackflow-tour .driver-popover-navigation-btns button:focus-visible,
+.driver-popover.hackflow-tour .driver-popover-close-btn:focus-visible {
+  outline: 2px solid #1f2426;
+  outline-offset: 2px;
+}
+
+.driver-popover.hackflow-tour .driver-popover-close-btn {
+  color: #6f7678; /* ink-500 */
+}
+
 /* Tailwind ships .sr-only in core utilities; declared here as well so a caption
    stays reachable to screen readers even if utilities are ever purged. */
 @layer utilities {
