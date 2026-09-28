@@ -14,6 +14,8 @@ export interface User {
   name: string;
   role: Role;
   avatar_url: string | null;
+  /** Proven by following an emailed link. Events can require it to vote. */
+  email_verified?: boolean;
 }
 
 export interface PrizeEntry {
@@ -41,6 +43,9 @@ export interface EventRecord {
   results_hidden_until: string | null;
   /** Soft judging deadline; null means none set. */
   judging_deadline?: string | null;
+  /** Opt-in sybil defences for account voters (THREAT-MODEL entry 25). */
+  voting_requires_verified?: boolean;
+  voting_account_cutoff?: string | null;
   /** Organizer-supplied cover art; null falls back to a bundled photo (lib/event-cover.ts). */
   cover_image_url: string | null;
   /** PLAN.md 10.12 - drafts are only ever returned to organizers/admins. */
