@@ -337,6 +337,39 @@ organizer to re-run assignment.
 The weights must total exactly 100%. The page shows the running total as you type. If it is
 locked instead, scoring has already begun and it can no longer be changed.
 
+**I forgot my password.**
+Choose **Forgot password?** under the password box on the login page.
+
+- If your event has email set up, enter your address and you'll get a link. It works once
+  and expires after 30 minutes. Nothing arriving? Check spam, then ask again.
+- If it doesn't, the page tells you so. Ask an organizer at the help desk or in your
+  event's channel for a reset link. It works once and expires after an hour.
+
+Either way, choosing the new password signs you straight in and signs you out everywhere
+else.
+
+**Someone asked me (an organizer) to reset their password.**
+**Dashboard → Help someone sign in**: type their email, press **Create reset link**, press
+**Copy link**, and send it to them directly. The link is shown only once. Organizers can
+reset participants and judges; resetting another organizer takes an admin. Every link is
+recorded with your name on it.
+
+**I'm the admin, and I'm locked out.**
+Anyone with access to the server can run:
+
+```bash
+docker compose exec api python -m app.auth.reset_link you@example.com
+```
+
+It prints a one-time reset link for that account.
+
+**I want to change my password.**
+**Profile → Change password.** This signs you out on every other device.
+
+**Setting up email (admins).**
+See the README's "Email (optional)" section. Once it's set, press **Send test email** on the
+dashboard's **Email delivery** card to check it works before anyone needs it.
+
 **I want the tour again.**
 **Profile** → **Replay the guided tour**.
 

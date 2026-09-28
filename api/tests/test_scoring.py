@@ -92,7 +92,7 @@ def test_full_fixture_dataset_normalises():
     3-judge x 3-submission matrix over the seeded submissions and check the
     pipeline produces a complete, ranked, clamped table."""
     fixtures = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "submissions.json").read_text())
-    submitted = [f for f in fixtures if f.get("status") == "submitted"]
+    submitted = [f for f in fixtures if f.get("status") == "submitted" and f["event_slug"] == "dogfood-2026"]
     assert len(submitted) == 3, "fixture set changed; update this test deliberately"
 
     ids = [101, 102, 103]

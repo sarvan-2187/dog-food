@@ -49,3 +49,24 @@ class Event(SQLModel, table=True):
     results_revealed_notified: bool = Field(default=False)
     created_by_id: int = Field(foreign_key="users.id")
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+    # "draft" | "published" (PLAN.md Phase 10.12). Defaults to published so seeded and
+    # pre-10.12 events stay visible; POST /api/events and import set "draft" explicitly.
+    status: str = Field(default="published")
+    # Plain text shown on the event page, never rendered as HTML (PLAN.md 10.8).
+    rules: str = ""
+
+
+class Announcement(SQLModel, table=True):
+    """An organizer's message to an event's participants (PLAN.md Phase 10.11).
+    Plain text only - never rendered as HTML."""
+
+    __tablename__ = "announcements"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_id: int = Field(foreign_key="events.id", index=True)
+    author_id: int = Field(foreign_key="users.id")
+    title: str
+    body: str
+    emailed_count: int = 0
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column())

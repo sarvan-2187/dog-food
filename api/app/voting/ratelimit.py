@@ -64,6 +64,27 @@ class TokenBucketLimiter:
             missing = 1.0 - bucket.tokens
             return False, missing / bucket.refill_rate
 
+    def peek(self, key: str, *, now: float | None = None) -> tuple[bool, float]:
+        """Would `check` allow `key` right now? Spends nothing. Login uses it to
+        refuse a throttled attempt BEFORE checking the password - otherwise a
+        guesser could ignore the 429s and still be let in by a right guess."""
+        current = self._now() if now is None else now
+        with self._lock:
+            bucket = self._buckets.get(key)
+            if bucket is None:
+                return True, 0.0
+            elapsed = max(0.0, current - bucket.updated_at)
+            tokens = min(bucket.capacity, bucket.tokens + elapsed * bucket.refill_rate)
+            if tokens >= 1.0:
+                return True, 0.0
+            return False, (1.0 - tokens) / bucket.refill_rate
+
+    def forget(self, key: str) -> None:
+        """Drop one key's bucket - e.g. a successful login clears that account's
+        failed-attempt count (PLAN.md 10.4)."""
+        with self._lock:
+            self._buckets.pop(key, None)
+
     def reset(self) -> None:
         """Clear all buckets. Used between tests so one test's spending cannot
         starve the next."""
@@ -76,7 +97,32 @@ class TokenBucketLimiter:
 vote_limiter = TokenBucketLimiter(capacity=20, per_seconds=60.0)
 comment_limiter = TokenBucketLimiter(capacity=10, per_seconds=60.0)
 
+# Password recovery (PLAN.md Phase 9). Per hour: tight per address so nobody
+# can flood one inbox, looser per IP because a venue shares one address.
+forgot_email_limiter = TokenBucketLimiter(capacity=3, per_seconds=3600.0)
+forgot_ip_limiter = TokenBucketLimiter(capacity=20, per_seconds=3600.0)
+# Caps what a compromised organizer account could hand out, while leaving a
+# busy help desk plenty of room on a bad Saturday morning.
+reset_issue_limiter = TokenBucketLimiter(capacity=30, per_seconds=3600.0)
+
+# PLAN.md Phase 10. Login counts FAILED attempts only (a success forgets the
+# account's bucket): 10 per account and 30 per IP per 15 minutes.
+login_account_limiter = TokenBucketLimiter(capacity=10, per_seconds=900.0)
+login_ip_limiter = TokenBucketLimiter(capacity=30, per_seconds=900.0)
+judge_reminder_limiter = TokenBucketLimiter(capacity=1, per_seconds=3600.0)
+announcement_email_limiter = TokenBucketLimiter(capacity=1, per_seconds=600.0)
+
 
 def reset_all() -> None:
-    vote_limiter.reset()
-    comment_limiter.reset()
+    for limiter in (
+        vote_limiter,
+        comment_limiter,
+        forgot_email_limiter,
+        forgot_ip_limiter,
+        reset_issue_limiter,
+        login_account_limiter,
+        login_ip_limiter,
+        judge_reminder_limiter,
+        announcement_email_limiter,
+    ):
+        limiter.reset()

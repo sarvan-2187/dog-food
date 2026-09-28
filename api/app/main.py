@@ -32,6 +32,11 @@ from .storage import models as _storage_models  # noqa: F401
 from .webhooks import models as _webhooks_models  # noqa: F401
 
 from .auth.router import router as auth_router
+from .auth.recovery import router as recovery_router
+from .auth.admin_users import router as admin_users_router
+from .events.announcements import router as announcements_router
+from .judging.event_judges import router as event_judges_router
+from .scoring.awards import router as awards_router
 from .events.router import router as events_router
 from .teams.router import router as teams_router
 from .submissions.router import router as submissions_router
@@ -64,6 +69,11 @@ def healthz() -> dict[str, str]:
 
 
 app.include_router(auth_router)
+app.include_router(recovery_router)
+app.include_router(admin_users_router)
+app.include_router(announcements_router)
+app.include_router(event_judges_router)
+app.include_router(awards_router)
 app.include_router(events_router)
 app.include_router(teams_router)
 app.include_router(submissions_router)
@@ -102,4 +112,7 @@ if (STATIC_DIR / "index.html").exists():
         candidate = (STATIC_DIR / full_path).resolve()
         if candidate.is_relative_to(STATIC_DIR_RESOLVED) and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(STATIC_DIR / "index.html")
+        # A reset link carries its token in the path; never let it ride out in
+        # a Referer header to anything the page loads (PLAN.md Phase 9.2).
+        headers = {"Referrer-Policy": "no-referrer"} if full_path.startswith("reset/") else None
+        return FileResponse(STATIC_DIR / "index.html", headers=headers)

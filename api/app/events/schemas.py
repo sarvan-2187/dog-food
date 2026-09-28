@@ -75,11 +75,19 @@ class EventUpdate(BaseModel):
     cover_image_url: Optional[str] = None
     voting_enabled: Optional[bool] = None
     results_hidden_until: Optional[datetime] = None
+    rules: Optional[str] = None
 
     @field_validator("name")
     @classmethod
     def name_len(cls, v: Optional[str]) -> Optional[str]:
         return v if v is None else _name_len(v)
+
+    @field_validator("rules")
+    @classmethod
+    def rules_len(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 5000:
+            raise ValueError("Rules must be 5000 characters or fewer.")
+        return v
 
     @field_validator("max_team_size")
     @classmethod
