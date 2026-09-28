@@ -199,3 +199,35 @@ class SecurityHeadersMiddleware:
             await send(message)
 
         await self.app(scope, receive, with_headers)
+
+
+class TrustedProxyMiddleware:
+    """Take the client address from X-Forwarded-For only as far as trusted
+    proxies vouch for it.
+
+    Behind a platform proxy (Render, a load balancer) every connection comes
+    from the proxy, so per-IP limits would lump all visitors together. Uvicorn's
+    FORWARDED_ALLOW_IPS="*" is not the answer: it takes the LEFTMOST entry,
+    which the client writes itself, so anyone could pick their own address and
+    step around every per-IP limit. Each proxy appends the address it saw, so
+    with TRUST_PROXY_HOPS=N the Nth entry from the RIGHT is the one the
+    outermost trusted proxy recorded, and nothing the client sends can move it.
+
+    Unset or 0 (the default, and right for `docker compose up`, where browsers
+    connect directly): the header is ignored entirely.
+    """
+
+    def __init__(self, app, hops: "int | None" = None) -> None:
+        self.app = app
+        self.hops = hops if hops is not None else _env_int("TRUST_PROXY_HOPS", 0)
+
+    async def __call__(self, scope, receive, send) -> None:
+        if self.hops > 0 and scope["type"] in ("http", "websocket"):
+            forwarded = [
+                v.decode("latin-1") for n, v in scope.get("headers", []) if n == b"x-forwarded-for"
+            ]
+            hops = [h.strip() for h in ",".join(forwarded).split(",") if h.strip()]
+            if len(hops) >= self.hops:
+                port = scope["client"][1] if scope.get("client") else 0
+                scope = {**scope, "client": (hops[-self.hops], port)}
+        await self.app(scope, receive, send)

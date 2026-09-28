@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 mimetypes.add_type("font/woff2", ".woff2")
 
 from .db import create_db_and_tables
-from .protection import ProtectionMiddleware, SecurityHeadersMiddleware
+from .protection import ProtectionMiddleware, SecurityHeadersMiddleware, TrustedProxyMiddleware
 from .request_limit import RateLimitMiddleware
 from .seed import run_seed
 
@@ -101,6 +101,8 @@ app = FastAPI(
 app.add_middleware(ProtectionMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+# Outermost: fixes request.client before any limiter reads it.
+app.add_middleware(TrustedProxyMiddleware)
 
 
 @app.middleware("http")

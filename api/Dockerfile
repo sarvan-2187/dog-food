@@ -31,4 +31,4 @@ EXPOSE 8000
 # client trickling an endless header block is cut off.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
      "--limit-concurrency", "200", "--timeout-keep-alive", "5", "--backlog", "512", \
-     "--h11-max-incomplete-event-size", "16384", "--proxy-headers"]
+     "--h11-max-incomplete-event-size", "16384"]
