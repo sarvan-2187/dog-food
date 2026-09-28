@@ -71,3 +71,20 @@ class SubmissionPublic(BaseModel):
     repo_url: str = ""
     demo_url: str = ""
     video_url: str = ""
+    disqualified_at: Optional[datetime] = None
+    disqualified_reason: str = ""
+
+
+class EligibilityRow(BaseModel):
+    submission_id: int
+    title: str
+    team_name: str
+    disqualified_at: Optional[datetime] = None
+    disqualified_reason: str = ""
+
+
+class EligibilityUpdate(BaseModel):
+    """An organizer's decision. Disqualifying needs a reason the team will see."""
+
+    eligible: bool
+    reason: str = ""

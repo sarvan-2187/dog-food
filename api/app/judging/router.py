@@ -9,7 +9,7 @@ from ..db import get_session
 from ..events.models import Event
 from ..scoring.models import Score
 from ..storage.lookup import image_url_for
-from ..submissions.models import Submission
+from ..submissions.models import Submission, in_competition
 from ..teams.models import TeamMembership
 from ..timeutil import utcnow
 from ..webhooks.service import notify
@@ -198,7 +198,7 @@ def run_assignment(
 
     submissions = list(
         session.exec(
-            select(Submission).where(Submission.event_id == event_id, Submission.status == "submitted")
+            select(Submission).where(Submission.event_id == event_id, in_competition())
         )
     )
     if not submissions:
@@ -303,6 +303,7 @@ def _to_public(session: Session, assignments: list[JudgeAssignment]) -> list[Ass
                 scored=assignment.id in scored,
                 event_id=assignment.event_id,
                 event_name=event.name if event else "",
+                due_at=event.judging_deadline if event else None,
             )
         )
     rows.sort(key=lambda r: (r.scored, r.submission_id))

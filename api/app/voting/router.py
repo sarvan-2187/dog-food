@@ -1,5 +1,6 @@
 """Votes and comments (PLAN.md Phase 3)."""
 import hashlib
+from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -8,11 +9,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..audit.log import record
-from ..auth import Role, User, get_current_user, get_current_user_optional, mailer
+from ..auth import Role, User, get_current_user, get_current_user_optional, mailer, require_role
 from ..db import get_session
 from ..events.models import Event
 from ..events.visibility import may_see_results, results_are_public
-from ..submissions.models import Submission, SubmissionStatus
+from ..submissions.models import Submission, in_competition
 from ..teams.models import Team
 from ..timeutil import utcnow
 from ..webhooks.service import notify
@@ -60,12 +61,25 @@ def _rate_limit(limiter, key: str, what: str) -> None:
 
 def _votable_submission(session: Session, submission_id: int) -> tuple[Submission, Event]:
     submission = session.get(Submission, submission_id)
-    if not submission or submission.status != SubmissionStatus.submitted:
+    if not submission or not submission.competing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That submission is not in the public gallery.")
     event = session.get(Event, submission.event_id)
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That event no longer exists.")
     return submission, event
+
+
+def _check_account_may_vote(event: Event, user: User) -> None:
+    """The event's opt-in sybil defences (THREAT-MODEL entry 25). A second account
+    needs a second inbox it can prove, and it must predate the cutoff, so it
+    cannot be made after the fact to swing a result."""
+    if event.voting_requires_verified and user.email_verified_at is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Verify your email on your profile page to vote in this event.")
+    if event.voting_account_cutoff is not None and user.created_at >= event.voting_account_cutoff:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Only accounts created before this event's voter cutoff can vote.",
+        )
 
 
 def _count_votes(session: Session, submission_id: int) -> int:
@@ -88,6 +102,8 @@ def cast_vote(
     if not event.voting_enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "Community voting is not open for this event.")
     user, voter_key = resolve_voter(event, request, response, user, mint=True)
+    if user is not None:
+        _check_account_may_vote(event, user)
     fingerprint = _client_fingerprint(request)
     # Guests are limited per client, not per cookie: clearing cookies mints a
     # new open-link voter but does not buy a fresh budget.
@@ -352,7 +368,7 @@ def public_results(
 
     submissions = session.exec(
         select(Submission).where(
-            Submission.event_id == event_id, Submission.status == SubmissionStatus.submitted
+            Submission.event_id == event_id, in_competition()
         )
     ).all()
     counts = {s.id: _count_votes(session, s.id) for s in submissions}
@@ -370,3 +386,77 @@ def public_results(
             )
         )
     return rows
+
+
+# --------------------------------------------------------------------------
+# Organizer review of suspicious votes (THREAT-MODEL entry 25)
+# --------------------------------------------------------------------------
+
+class FlaggedVote(BaseModel):
+    vote_id: int
+    submission_id: int
+    submission_title: str
+    voter: str
+    created_at: datetime
+    # How many distinct voters cast votes from this same client (IP + user agent).
+    voters_on_client: int
+
+
+@router.get("/api/events/{event_id}/votes/flagged", response_model=list[FlaggedVote])
+def flagged_votes(
+    event_id: int,
+    _: User = Depends(require_role(Role.organizer, Role.admin)),
+    session: Session = Depends(get_session),
+) -> list[FlaggedVote]:
+    """Votes from a client that several different voters used. A signal, not a
+    verdict: a shared lab machine looks the same, so a person decides."""
+    votes = session.exec(select(Vote).where(Vote.event_id == event_id, Vote.fingerprint_hash != "")).all()
+    voters: dict[str, set[str]] = {}
+    for v in votes:
+        voters.setdefault(v.fingerprint_hash, set()).add(v.voter_key or f"user:{v.user_id}")
+    shared = [v for v in votes if len(voters[v.fingerprint_hash]) > 1]
+    titles = {s.id: s.title for s in session.exec(select(Submission).where(Submission.event_id == event_id))}
+    emails = {
+        u.id: u.email
+        for u in session.exec(select(User).where(User.id.in_({v.user_id for v in shared if v.user_id})))
+    } if shared else {}
+    shared.sort(key=lambda v: (v.fingerprint_hash, v.created_at))
+    return [
+        FlaggedVote(
+            vote_id=v.id,
+            submission_id=v.submission_id,
+            submission_title=titles.get(v.submission_id) or "Untitled submission",
+            voter=emails.get(v.user_id, "") if v.user_id else "Guest",
+            created_at=v.created_at,
+            voters_on_client=len(voters[v.fingerprint_hash]),
+        )
+        for v in shared
+    ]
+
+
+@router.delete("/api/events/{event_id}/votes/{vote_id}", status_code=status.HTTP_204_NO_CONTENT)
+def void_vote(
+    event_id: int,
+    vote_id: int,
+    user: User = Depends(require_role(Role.organizer, Role.admin)),
+    session: Session = Depends(get_session),
+) -> None:
+    """Remove one vote. The full row goes into the audit log, so a void is never
+    silent and can be reviewed later."""
+    vote = session.get(Vote, vote_id)
+    if vote is None or vote.event_id != event_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That vote isn't in this event.")
+    record(
+        session,
+        "vote.voided",
+        actor=user,
+        entity_type="submission",
+        entity_id=vote.submission_id,
+        vote_id=vote.id,
+        voter_user_id=vote.user_id,
+        voter_key=vote.voter_key,
+        fingerprint_hash=vote.fingerprint_hash,
+        cast_at=vote.created_at.isoformat(),
+    )
+    session.delete(vote)
+    session.commit()

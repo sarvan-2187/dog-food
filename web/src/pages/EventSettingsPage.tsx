@@ -196,6 +196,10 @@ function EventSettingsForm() {
       </div>
 
       <div className="mt-6">
+        <EmbedPanel slug={event.slug} onToast={setToast} />
+      </div>
+
+      <div className="mt-6">
         <WebhookPanel eventId={event.id} onToast={setToast} />
       </div>
 
@@ -246,6 +250,51 @@ function BackupPanel({
           <Button variant="secondary" loading={busy} loadingLabel="Preparing..." onClick={download}>
             Download event backup
           </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * The gallery widget (DOGFOOD T4): a plain HTML page any site can frame, with
+ * the same public data as the gallery - vote counts and awards stay hidden
+ * until the reveal. It is the only HackFlow page other sites may frame.
+ */
+function EmbedPanel({ slug, onToast }: { slug: string; onToast: (t: { message: string; ok: boolean }) => void }) {
+  const src = `${window.location.origin}/embed/events/${slug}`;
+  const snippet = `<iframe src="${src}" title="Hackathon projects" width="100%" height="600" style="border:0" loading="lazy"></iframe>`;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      onToast({ message: 'Embed code copied.', ok: true });
+    } catch {
+      onToast({ message: 'Could not copy - select the code and copy it by hand.', ok: false });
+    }
+  }
+
+  return (
+    <Card title="Embed on your site" meta="HTML">
+      <div className="flex flex-col gap-4">
+        <p className="text-body text-ink-600">
+          Paste this into any web page to show this event's projects. It updates itself as teams submit, and
+          shows winners only after your results reveal.
+        </p>
+        <textarea
+          readOnly
+          aria-label="Embed code"
+          className="min-h-24 w-full rounded-md border border-border bg-surface-100 p-3 font-mono text-meta text-ink-800"
+          value={snippet}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+        <div className="flex flex-wrap gap-3">
+          <Button variant="secondary" onClick={copy}>
+            Copy embed code
+          </Button>
+          <a href={src} target="_blank" rel="noopener" className="self-center text-meta text-brand-500">
+            Preview the widget
+          </a>
         </div>
       </div>
     </Card>

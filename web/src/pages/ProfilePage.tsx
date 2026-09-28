@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ImageUpload } from '../components/ImageUpload';
 import { PasswordField } from '../components/auth/PasswordField';
-import { Button, Card, Input, RoleBadge } from '../components/ui';
+import { Badge, Button, Card, Input, RoleBadge } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { runTour } from '../lib/tour';
@@ -55,7 +55,10 @@ export function ProfilePage() {
             </div>
             <div>
               <dt className="text-label text-ink-500">Email</dt>
-              <dd className="text-body text-ink-800">{user.email}</dd>
+              <dd className="flex flex-col gap-2">
+                <span className="text-body text-ink-800">{user.email}</span>
+                <EmailVerification verified={Boolean(user.email_verified)} />
+              </dd>
             </div>
           </dl>
           <div className="flex flex-wrap gap-3">
@@ -77,6 +80,42 @@ export function ProfilePage() {
       <div className="mt-6">
         <ChangePasswordCard />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Some events only count votes from accounts whose owner has proven the
+ * address (THREAT-MODEL entry 25). The link arrives by email and lands back
+ * here with ?verified=1 (or 0 if it was stale or tampered with).
+ */
+function EmailVerification({ verified }: { verified: boolean }) {
+  const [params] = useSearchParams();
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState<string | null>(
+    params.get('verified') === '0' ? 'That link has expired or is not valid. Send a new one.' : null,
+  );
+
+  if (verified) return <Badge status="success"><span aria-hidden="true">&#10003;</span> Verified</Badge>;
+
+  async function send() {
+    setSending(true);
+    try {
+      const r = await api.post<{ sent_to: string }>('/api/auth/verify-email');
+      setMessage(`Check ${r.sent_to} for a link. It works for 24 hours.`);
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'Could not send a verification link.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <Button variant="secondary" size="sm" loading={sending} loadingLabel="Sending..." onClick={send}>
+        Send verification link
+      </Button>
+      {message && <p role="status" className="text-meta text-ink-600">{message}</p>}
     </div>
   );
 }

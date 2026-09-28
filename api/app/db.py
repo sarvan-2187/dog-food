@@ -56,6 +56,13 @@ _ADDED_COLUMNS = (
     # Voting access modes (DOGFOOD T3)
     ("events", "voting_access", "varchar NOT NULL DEFAULT 'authenticated'"),
     ("votes", "voter_key", "varchar"),
+    # Known limits closed (docs/superpowers/specs/2026-09-27-known-limits-design.md)
+    ("submissions", "disqualified_at", "timestamptz"),
+    ("submissions", "disqualified_reason", "varchar NOT NULL DEFAULT ''"),
+    ("events", "judging_deadline", "timestamptz"),
+    ("events", "voting_requires_verified", "boolean NOT NULL DEFAULT false"),
+    ("events", "voting_account_cutoff", "timestamptz"),
+    ("users", "email_verified_at", "timestamptz"),
 )
 
 
