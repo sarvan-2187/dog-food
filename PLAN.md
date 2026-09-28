@@ -1006,6 +1006,14 @@ demonstrates the full email flow offline; and an existing pre-Phase-9 volume boo
 - **Tests are one file (`test_phase10.py`) with a section per item**, not one file per item.
   Same coverage, and the SMTP/role helpers are shared.
 - **10.1, 10.2 and 10.4 were built twice** and merged. See the note above.
+- **Found after the build, fixed 2026-09-19.**
+  - 10.5's "included in `submissions.csv` and the event backup" was ticked but not built.
+    The links, and the event `rules` from 10.8, are now in the CSV, `export.json` and
+    `import`, with imported links validated like the form's (a backup file is untrusted
+    input). Covered by `test_links_and_rules_survive_a_backup_round_trip_and_bad_links_are_refused`.
+  - Phase 9's two dashboard cards had landed on the *participant* dashboard instead of
+    the admin's. The server refused them, so nothing leaked. They were moved, and a
+    per-role regression spec was added.
 
 **Two implementations, merged (2026-09-19).** pranavneelu06 built 10.1, 10.2 and 10.4
 independently on `feat/phase10` (merged to `main` as PR #2). They stated plainly that 10.3 and

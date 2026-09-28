@@ -6,8 +6,14 @@ client's local offset never drifts against the server's enforcement of a deadlin
 was a real bug (audit finding #1 in PLAN.md) before it was fixed.
 
 There is no migration tool in this build (see PLAN.md Open Questions). `SQLModel.metadata.
-create_all()` only creates missing tables, not missing columns on tables that already
-exist — a schema change means a fresh `docker compose down -v` in development.
+create_all()` only creates missing tables, so three idempotent boot steps in
+`api/app/db.py` upgrade an existing volume in place:
+- `add_missing_columns()` adds new columns, only when `information_schema` says they're
+  absent.
+- `add_guarded_indexes()` creates the one-team-per-event index once the data allows it.
+- `run_backfills()` fills new columns for old rows.
+
+See ARCHITECTURE.md. `docker compose down -v` is only needed for a clean slate.
 
 ## Entities
 
@@ -22,7 +28,8 @@ exist — a schema change means a fresh `docker compose down -v` in development.
 | `role` | enum | `participant` \| `judge` \| `organizer` \| `admin`. Public registration always creates `participant`; the other three roles exist only via `fixtures/users.json` seeding |
 | `avatar_url` | str, nullable | Set via the `stored_files` upload flow below; `null` until the user uploads one |
 | `created_at` | timestamptz | |
-| `session_version` | int, default 0 | Signed into every session cookie; incremented on each password change or reset, which invalidates every older cookie at once (PLAN.md Phase 9.1). Added to existing volumes at boot by `db.add_missing_columns()` |
+| `session_version` | int, default 0 | Signed into every session cookie; incremented on each password change or reset, which invalidates every older cookie at once (PLAN.md Phase 9.1) |
+| `is_active` | bool, default true | False blocks sign-in and, with a `session_version` bump, ends every session at once. Admin accounts can't be deactivated (Phase 10.10) |
 
 ### `password_resets` (`api/app/auth/models.py`)
 
@@ -37,32 +44,6 @@ One row per reset link, whichever way it was issued (PLAN.md Phase 9).
 | `issued_by_id` | int, FK → `users.id`, nullable | The organizer/admin who issued it; `null` for `email` and `cli` |
 | `created_at`, `expires_at` | timestamptz | Issuing a new link sets any earlier unused link's `expires_at` to now |
 | `used_at` | timestamptz, nullable | Set on redeem; a link with `used_at` set is dead. Previewing a link never sets it |
-
-### PLAN.md Phase 10 additions
-
-**New tables**
-
-| Table | Columns | Notes |
-|---|---|---|
-| `event_judges` | `event_id`, `user_id`, `added_by_id`, `added_at` | One judge on one event's panel, unique on (`event_id`, `user_id`). Assignment draws only from here (10.1). Backfilled at boot from existing assignments. |
-| `judge_conflicts` | `event_id`, `judge_id`, `submission_id`, `reason`, `created_at` | A judge's declared conflict of interest, unique on (`judge_id`, `submission_id`). Assignment treats it like a same-team conflict (10.7). |
-| `awards` | `event_id`, `prize_rank`, `submission_id`, `note`, `awarded_by_id`, `updated_at` | One prize (the label from `prize_config`) given to one submission, unique on (`event_id`, `prize_rank`). Public only once results are visible (10.6). |
-| `announcements` | `event_id`, `author_id`, `title`, `body`, `emailed_count`, `created_at`, `updated_at` | Plain text, never rendered as HTML (10.11). |
-
-**New columns** (added to existing volumes at boot by `db.add_missing_columns()`)
-
-| Column | Notes |
-|---|---|
-| `judge_invites.event_id` | The event a judge invitation is for. Null on pre-10.1 and organizer invitations. |
-| `judge_invites.grants_role` | `judge` \| `organizer` (10.10). |
-| `team_memberships.event_id` | Filled from the team by a `before_insert` listener. A unique index on (`event_id`, `user_id`) enforces one team per person per event (10.2). The index is created only once existing data has no duplicates; until then the admin Users page lists them. |
-| `teams.captain_id` | The creator, or the earliest member for pre-10.9 teams (10.9). |
-| `submissions.repo_url`, `demo_url`, `video_url` | Optional, http(s) only, at most 500 characters (10.5). |
-| `events.status` | `draft` \| `published`. Existing events are backfilled as published; new and imported events start as drafts (10.12). |
-| `events.rules` | Plain text (10.8). |
-| `users.is_active` | False blocks sign-in and ends every session (10.10). |
-
-Rubric criteria (JSON) may also carry a `description` (10.8). No schema change was needed.
 
 ### `events` (`api/app/events/models.py`)
 
@@ -80,6 +61,22 @@ Rubric criteria (JSON) may also carry a `description` (10.8). No schema change w
 | `results_revealed_notified` | bool | One-shot guard so the `event.results_revealed` webhook topic fires exactly once, flipped the first time `public_results` is read after `results_are_public()` goes true (PLAN.md Phase 7.3) |
 | `created_by_id` | int, FK → `users.id` | Must be `organizer` or `admin` |
 | `created_at` | timestamptz | |
+| `status` | str | `draft` \| `published`. New and imported events start as drafts, which are hidden (404) from everyone but organizers; existing events were backfilled as published (Phase 10.12) |
+| `rules` | str | Plain text shown on the event page, never rendered as HTML (Phase 10.8) |
+
+### `announcements` (`api/app/events/models.py`)
+
+An organizer's message to an event's participants (Phase 10.11). Plain text, never
+rendered as HTML.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `event_id` | int, FK → `events.id` | |
+| `author_id` | int, FK → `users.id` | Organizer or admin |
+| `title`, `body` | str | 3–120 and 1–2000 characters |
+| `emailed_count` | int | How many participants it was emailed to (0 when email is off) |
+| `created_at`, `updated_at` | timestamptz | |
 
 ### `teams` / `team_memberships` (`api/app/teams/models.py`)
 
@@ -91,8 +88,9 @@ One event has many teams; one team has many members via the join table.
 | `event_id` | int, FK → `events.id` | |
 | `name` | str | |
 | `invite_code` | str, unique | `secrets.token_urlsafe(6)`, generated on team creation |
-| `invite_code_expires_at` | timestamptz | Defaults to 30 days out; checked server-side on redemption, not just hidden in the UI |
+| `invite_code_expires_at` | timestamptz | Defaults to 30 days out; checked server-side on redemption, not just hidden in the UI. The captain can replace the code, which kills the old link at once |
 | `created_at` | timestamptz | |
+| `captain_id` | int, FK → `users.id`, nullable | The creator; may rename, remove members, hand the role on and replace the invite link. Passes to the earliest remaining member if the captain leaves (Phase 10.9) |
 
 | `team_memberships` column | Type | Notes |
 |---|---|---|
@@ -100,8 +98,12 @@ One event has many teams; one team has many members via the join table.
 | `team_id` | int, FK → `teams.id` | |
 | `user_id` | int, FK → `users.id` | |
 | `joined_at` | timestamptz | |
+| `event_id` | int, FK → `events.id` | Copied from the team by a `before_insert` listener, so callers never set it |
 
-Unique constraint: `(team_id, user_id)` — a user can't join the same team twice.
+Unique constraints: `(team_id, user_id)` — a user can't join the same team twice — and
+`(event_id, user_id)`, one team per person per event (Phase 10.2). The second is created at
+boot only when existing data already satisfies it; until then the admin Users page lists
+the duplicates.
 
 ### `submissions` (`api/app/submissions/models.py`)
 
@@ -114,6 +116,7 @@ Unique constraint: `(team_id, user_id)` — a user can't join the same team twic
 | `team_id` | int, FK → `teams.id`, **unique** | Enforces the one-per-team rule at the DB level |
 | `event_id` | int, FK → `events.id` | Denormalized for query convenience |
 | `title`, `description`, `track` | str | |
+| `repo_url`, `demo_url`, `video_url` | str | Optional; `http`/`https` only, at most 500 characters, validated on save and on import. Shown as links, never embedded (Phase 10.5) |
 | `status` | enum | `draft` \| `submitted`. Only `submitted` rows appear in the public gallery |
 | `created_at`, `updated_at` | timestamptz | `updated_at` bumps on every autosave `PATCH` |
 
@@ -131,8 +134,54 @@ per-rubric at save time.
 | `id` | int, PK | |
 | `event_id` | int, FK → `events.id` | No longer unique — an event can hold several rubrics |
 | `name` | str | e.g. `"Technical"`, `"Presentation"` |
-| `criteria` | JSON list[dict] | Each item: `{key, label, weight, max_score}`. The rubric **locks** (`PUT`/`DELETE` return `409`) once any score exists for the event — see JUDGING.md |
+| `criteria` | JSON list[dict] | Each item: `{key, label, weight, max_score, description?}`; `description` (Phase 10.8) is shown to judges and, with the weight, to entrants. The rubric **locks** (`PUT`/`DELETE` return `409`) once any score exists for the event — see JUDGING.md |
 | `created_at`, `updated_at` | timestamptz | |
+
+### `judge_invites` (`api/app/judging/models.py`)
+
+The only routes into the `judge` and `organizer` roles besides the seed data.
+Single-use, expiring and revocable.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `token` | str, unique | `secrets.token_urlsafe(16)`, the part of the link that grants the role |
+| `invited_email`, `note` | str | For the issuer's own records; redemption isn't tied to the email |
+| `created_by_id` | int, FK → `users.id` | Organizer/admin (judge invitations); admin only (organizer invitations) |
+| `expires_at` | timestamptz | 1–90 days out |
+| `redeemed_at`, `redeemed_by_id` | nullable | Set once, on redemption |
+| `event_id` | int, FK → `events.id`, nullable | The event a judge invitation is for; redeeming it adds the judge to that event's panel. Null on organizer invitations and on pre-Phase-10 judge invitations |
+| `grants_role` | str | `judge` \| `organizer` (Phase 10.10) |
+| `created_at` | timestamptz | |
+
+### `event_judges` (`api/app/judging/models.py`)
+
+An event's judge panel (Phase 10.1). Assignment draws only from here, never from every
+judge on the platform.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `event_id` | int, FK → `events.id` | |
+| `user_id` | int, FK → `users.id` | Must hold the `judge` role to be assigned |
+| `added_by_id` | int, FK → `users.id`, nullable | |
+| `added_at` | timestamptz | |
+
+Unique constraint: `(event_id, user_id)`. Backfilled at boot from existing assignments.
+
+### `judge_conflicts` (`api/app/judging/models.py`)
+
+A judge's declared conflict of interest with one submission (Phase 10.7). Assignment treats
+it exactly like a same-team conflict, so the submission is never handed back to them.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `event_id`, `judge_id`, `submission_id` | int, FK | |
+| `reason` | str | Optional, up to 300 characters; shown to the organizer |
+| `created_at` | timestamptz | |
+
+Unique constraint: `(judge_id, submission_id)`.
 
 ### `judge_assignments` (`api/app/judging/models.py`)
 
@@ -148,7 +197,8 @@ A judge's mandate to score one submission — the output of the assignment algor
 | `created_at` | timestamptz | |
 
 Unique constraint: `(submission_id, judge_id)` — makes re-running the assignment
-idempotent and blocks double-assignment.
+idempotent and blocks double-assignment. Removing a judge from an event deletes their
+*unscored* assignments; scored ones stay (Phase 10.7).
 
 ### `scores` (`api/app/scoring/models.py`)
 
@@ -164,6 +214,23 @@ duplicates.
 | `comment` | str | |
 | `raw_total` | float | `sum(weight × value)` across criteria — see JUDGING.md for why this formula was chosen |
 | `created_at`, `updated_at` | timestamptz | |
+
+### `awards` (`api/app/scoring/models.py`)
+
+One configured prize given to one submission (Phase 10.6). Hidden until results are
+visible, through the same `may_see_results` gate as the standings.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `event_id` | int, FK → `events.id` | |
+| `prize_rank` | str | The prize's label from `events.prize_config` ("1st Place", "Best Developer Tool") |
+| `submission_id` | int, FK → `submissions.id` | Must be a submitted entry in the same event |
+| `note` | str | Optional, shown with the winner |
+| `awarded_by_id` | int, FK → `users.id` | |
+| `updated_at` | timestamptz | |
+
+Unique constraint: `(event_id, prize_rank)`. A submission may win more than one prize.
 
 ### `votes` / `comments` (`api/app/voting/models.py`)
 
@@ -223,7 +290,7 @@ platform does not need").
 | `created_at` | timestamptz | |
 
 Payload topics: `submission.submitted`, `assignments.run`, `score.submitted`,
-`event.results_revealed`. Every payload is signed with the same Ed25519 key used for judge
+`event.results_revealed`, `announcement.posted`. Every payload is signed with the same Ed25519 key used for judge
 participation records (`api/app/crypto.py`'s `sign_record()`), verifiable offline against
 `GET /api/public-key`.
 
@@ -251,12 +318,19 @@ action and its log entry commit or roll back together.
 
 ```
 users ──< events (created_by)
-users ──< team_memberships >── teams ──< events
+users ──< team_memberships >── teams ──< events   (one membership per user per event)
+teams >── users (captain)
 users ──< submissions (via teams, one-to-one with team)
+users ──< password_resets
 events ──< rubrics (one-to-many)
+events ──< judge_invites (judge invitations; organizer invitations have no event)
+events ──< event_judges >── users (judges)        (the event's judge panel)
 events ──< judge_assignments >── submissions
 users (judges) ──< judge_assignments
+users (judges) ──< judge_conflicts >── submissions
 judge_assignments ──< scores (one-to-one)
+events ──< awards >── submissions
+events ──< announcements
 users ──< votes >── submissions
 users ──< comments >── submissions
 users ──< audit_log (nullable actor)
@@ -268,13 +342,20 @@ events ──< webhook_subscriptions
 ## Import / export paths
 
 - **Fixture seeding** (`api/app/seed.py`): `fixtures/users.json` → `fixtures/events.json`
-  → `fixtures/teams.json` → `fixtures/rubrics.json` → `fixtures/submissions.json`, in that
-  order, since each step needs the previous step's generated ids. Every insert is guarded
+  → `fixtures/teams.json` → `fixtures/submissions.json` → `fixtures/rubrics.json` → event
+  judge panels (each event's `judge_emails`), in that order, since each step needs the
+  previous step's generated ids. Every insert is guarded
   by a lookup on the row's natural key, so re-running on an already-seeded database is a
   no-op.
 - **CSV export** (`api/app/scoring/router.py`, stdlib `csv` only): `users.csv`,
-  `submissions.csv`, `assignments.csv`, `scores.csv`, `results.csv` per event, organizer/
-  admin only (see `test_role_isolation.py`).
+  `submissions.csv` (including `repo_url`, `demo_url`, `video_url`), `assignments.csv`,
+  `scores.csv`, `results.csv` per event, organizer/admin only (see
+  `test_role_isolation.py`).
+- **Event backup** (`GET /api/events/{id}/export.json` / `POST /api/events/import`): the
+  event's config (including `rules`), rubrics, teams and submissions (including links).
+  Imports arrive as drafts, and links are validated with the same http(s)-only rule as the
+  submission form. Judge panels, assignments, scores and awards are deliberately not
+  carried over: they belong to specific judge accounts.
 - **Uploaded images**: not part of bulk event export/import — a `stored_files` row's
   content lives only on the API container's local disk, so restoring an export into a
   different environment restores data, not the accompanying images (see ARCHITECTURE.md).
