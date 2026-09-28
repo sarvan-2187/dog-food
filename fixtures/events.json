@@ -30,7 +30,13 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": "2026-10-17T20:00:00",
-    "cover_image_url": "/images/covers/cover-devtools.jpg"
+    "cover_image_url": "/images/covers/cover-devtools.jpg",
+    "judges": [
+      "sam@example.com",
+      "mina@example.com",
+      "omar@example.com",
+      "dana@example.com"
+    ]
   },
   {
     "slug": "raptor-ai-agents-2026",
@@ -64,7 +70,8 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": "2026-09-27T20:00:00",
-    "cover_image_url": "/images/covers/cover-ai-agents.jpg"
+    "cover_image_url": "/images/covers/cover-ai-agents.jpg",
+    "judges": []
   },
   {
     "slug": "climate-hack-2026",
@@ -94,7 +101,8 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-climate.jpg"
+    "cover_image_url": "/images/covers/cover-climate.jpg",
+    "judges": []
   },
   {
     "slug": "fintech-rails-2026",
@@ -124,7 +132,8 @@
     "created_by": "alice@example.com",
     "voting_enabled": false,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-fintech.jpg"
+    "cover_image_url": "/images/covers/cover-fintech.jpg",
+    "judges": []
   },
   {
     "slug": "women-in-tech-buildathon-2026",
@@ -154,7 +163,8 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-women-in-tech.jpg"
+    "cover_image_url": "/images/covers/cover-women-in-tech.jpg",
+    "judges": []
   },
   {
     "slug": "campus-48-spring-2026",
@@ -183,7 +193,8 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-campus-48h.jpg"
+    "cover_image_url": "/images/covers/cover-campus-48h.jpg",
+    "judges": []
   },
   {
     "slug": "quantum-tooling-jam-2026",
@@ -213,7 +224,8 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-quantum.jpg"
+    "cover_image_url": "/images/covers/cover-quantum.jpg",
+    "judges": []
   },
   {
     "slug": "open-source-maintainers-jam-2026",
@@ -242,6 +254,7 @@
     "created_by": "alice@example.com",
     "voting_enabled": true,
     "results_hidden_until": null,
-    "cover_image_url": "/images/covers/cover-open-track.jpg"
+    "cover_image_url": "/images/covers/cover-open-track.jpg",
+    "judges": []
   }
 ]

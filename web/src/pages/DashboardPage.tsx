@@ -75,7 +75,7 @@ function ParticipantDashboard() {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 sm:grid-cols-3">
-        <MetricTile label="Your teams" value={teams.data?.length ?? '—'} caption="Across all events" accent />
+        <MetricTile label="Teams you're on" value={teams.data?.length ?? '—'} caption="Across all events" accent />
         <MetricTile label="Open events" value={open.length || '—'} caption="Accepting submissions" />
         <MetricTile label="Projects in gallery" value={gallery.data?.length ?? '—'} caption="Public submissions" />
       </div>
@@ -191,7 +191,7 @@ function OrganizerDashboard({ userId }: { userId: number }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 sm:grid-cols-3">
-        <MetricTile label="Your events" value={mine.length || '—'} caption="You created these" accent />
+        <MetricTile label="Events you run" value={mine.length || '—'} caption="You created these" accent />
         <MetricTile label="Running" value={live.length} caption="Before the deadline" />
         <MetricTile label="Wrapped" value={mine.length - live.length} caption="Deadline passed" />
       </div>

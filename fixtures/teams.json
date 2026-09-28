@@ -2,22 +2,35 @@
   {
     "name": "Codehawks",
     "event_slug": "dogfood-2026",
-    "member_emails": ["jordan@example.com", "riley@example.com"]
+    "member_emails": [
+      "jordan@example.com",
+      "riley@example.com"
+    ]
   },
   {
     "name": "Nightjar",
     "event_slug": "dogfood-2026",
-    "member_emails": ["kai@example.com", "lena@example.com"]
+    "member_emails": [
+      "kai@example.com",
+      "lena@example.com"
+    ]
   },
   {
     "name": "Pipeline Pals",
     "event_slug": "dogfood-2026",
     "comment": "dana is a judge AND on this team - exercises the conflict rule in the assignment algorithm (PLAN.md section 8 step 1).",
-    "member_emails": ["theo@example.com", "nadia@example.com", "dana@example.com"]
+    "member_emails": [
+      "theo@example.com",
+      "nadia@example.com",
+      "dana@example.com"
+    ]
   },
   {
     "name": "Quiet Ledger",
     "event_slug": "dogfood-2026",
-    "member_emails": ["jordan@example.com"]
+    "member_emails": [
+      "mara@example.com"
+    ],
+    "comment": "A one-person team, which the UI and the assignment algorithm both have to handle."
   }
 ]

@@ -16,7 +16,9 @@ import { RaptorMark } from '../ui/Logo';
  *
  * This renders its own <header>, because the global pill nav hides itself on
  * these two routes (it would collide with the photo panel and duplicate the
- * wordmark) and every page still owes the page a banner landmark.
+ * wordmark) and every page still owes the page a banner landmark. The header
+ * is deliberately a sibling of <main> rather than a child - see the comment at
+ * the markup itself.
  */
 export function AuthLayout({
   title,
@@ -63,7 +65,11 @@ export function AuthLayout({
         </div>
       </aside>
 
-      <main className="flex flex-col bg-surface-0">
+      {/* The header must be a sibling of <main>, not a child of it: an HTML
+          <header> only exposes the `banner` landmark when it is NOT inside
+          main/article/aside/nav/section. Nested, it is an anonymous group and
+          the page has no banner at all. */}
+      <div className="flex flex-col bg-surface-0">
         <header className="px-6 pt-8 md:px-10">
           <Link to="/" aria-label="HackFlow home" className="inline-flex items-center gap-2.5 text-ink-900">
             <RaptorMark className="h-6 w-12" />
@@ -73,7 +79,7 @@ export function AuthLayout({
           </Link>
         </header>
 
-        <div className="flex flex-1 items-center justify-center px-6 py-10 md:px-10">
+        <main className="flex flex-1 items-center justify-center px-6 py-10 md:px-10">
           <div className="w-full max-w-[420px]">
             <h1 className="text-h1 text-ink-900">{title}</h1>
             <p className="mt-2 text-body text-ink-500">{subtitle}</p>
@@ -91,8 +97,8 @@ export function AuthLayout({
 
             <div className="mt-8 border-t border-border-subtle pt-5 text-meta text-ink-500">{footer}</div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

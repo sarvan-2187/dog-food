@@ -1,5 +1,6 @@
 """Rubric CRUD, assignment runs, and the judge progress dashboard."""
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .. import crypto
@@ -13,7 +14,7 @@ from ..teams.models import TeamMembership
 from ..timeutil import utcnow
 from ..webhooks.service import notify
 from .assignment import assign_judges, coverage_report
-from .models import JudgeAssignment, Rubric
+from .models import EventJudge, JudgeAssignment, Rubric
 from .schemas import (
     WEIGHT_SUM_TOLERANCE,
     AssignmentPublic,
@@ -27,6 +28,24 @@ from .schemas import (
 )
 
 router = APIRouter(tags=["judging"])
+
+ORGANIZER = (Role.organizer, Role.admin)
+
+
+def _panel_judges(session: Session, event_id: int) -> list[User]:
+    """The judges enrolled on this event, in a stable order.
+
+    Ordered by id so an assignment run is reproducible: PLAN.md section 8 requires
+    the same inputs to produce the same assignment, and an unordered query gives
+    the algorithm its judges in whatever order the database felt like.
+    """
+    rows = session.exec(select(EventJudge).where(EventJudge.event_id == event_id)).all()
+    if not rows:
+        return []
+    judges = session.exec(
+        select(User).where(User.id.in_([r.judge_id for r in rows]), User.role == Role.judge)
+    ).all()
+    return sorted(judges, key=lambda u: u.id)
 
 
 def _event_or_404(session: Session, event_id: int) -> Event:
@@ -196,9 +215,16 @@ def run_assignment(
             status.HTTP_409_CONFLICT,
             "No submissions have been submitted for this event yet, so there is nothing to assign.",
         )
-    judges = list(session.exec(select(User).where(User.role == Role.judge)))
+    # Phase 10.1: this event's panel, not every judge account on the platform.
+    # Drawing from all of them handed a judge invited for one hackathon the
+    # submissions of every other one running at the same time.
+    judges = _panel_judges(session, event_id)
     if not judges:
-        raise HTTPException(status.HTTP_409_CONFLICT, "There are no judge accounts to assign.")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "No judges have been added to this event yet. Invite or add judges to its panel "
+            "before running assignment.",
+        )
 
     team_ids = {s.team_id for s in submissions}
     memberships = list(session.exec(select(TeamMembership).where(TeamMembership.team_id.in_(team_ids))))
@@ -381,3 +407,96 @@ def participation_record(
         "issued_at": utcnow().isoformat(),
     }
     return crypto.sign_record(payload)
+
+
+# --------------------------------------------------------------------------
+# Event judge panel (Phase 10.1). Assignment draws from this, so an organizer
+# needs a way to see and edit it. Adding is deliberately restricted to accounts
+# that already hold the judge role: this endpoint composes a panel, it does not
+# grant the role. The only route into the role is still an invitation
+# (judging/invites.py), so this cannot become a privilege-escalation path.
+# --------------------------------------------------------------------------
+
+
+class PanelJudge(BaseModel):
+    judge_id: int
+    name: str
+    email: str
+
+
+class PanelAdd(BaseModel):
+    judge_id: int
+
+
+@router.get("/api/events/{event_id}/judges", response_model=list[PanelJudge])
+def list_panel(
+    event_id: int,
+    _: User = Depends(require_role(*ORGANIZER)),
+    session: Session = Depends(get_session),
+) -> list[PanelJudge]:
+    _event_or_404(session, event_id)
+    return [
+        PanelJudge(judge_id=j.id, name=j.name, email=j.email) for j in _panel_judges(session, event_id)
+    ]
+
+
+@router.post("/api/events/{event_id}/judges", response_model=PanelJudge, status_code=status.HTTP_201_CREATED)
+def add_to_panel(
+    event_id: int,
+    payload: PanelAdd,
+    user: User = Depends(require_role(*ORGANIZER)),
+    session: Session = Depends(get_session),
+) -> PanelJudge:
+    _event_or_404(session, event_id)
+    judge = session.get(User, payload.judge_id)
+    if not judge or judge.role != Role.judge:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "That account is not a judge. Send them a judge invitation for this event first.",
+        )
+    existing = session.exec(
+        select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.judge_id == judge.id)
+    ).first()
+    if existing:
+        # Idempotent rather than a 409: the caller's intent ("this judge is on the
+        # panel") is already true, and failing here would make a double-click an error.
+        return PanelJudge(judge_id=judge.id, name=judge.name, email=judge.email)
+    session.add(EventJudge(event_id=event_id, judge_id=judge.id, added_by_id=user.id))
+    record(
+        session,
+        "event.judge_added",
+        actor=user,
+        entity_type="event",
+        entity_id=event_id,
+        judge_id=judge.id,
+    )
+    session.commit()
+    return PanelJudge(judge_id=judge.id, name=judge.name, email=judge.email)
+
+
+@router.delete("/api/events/{event_id}/judges/{judge_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_from_panel(
+    event_id: int,
+    judge_id: int,
+    user: User = Depends(require_role(*ORGANIZER)),
+    session: Session = Depends(get_session),
+) -> None:
+    _event_or_404(session, event_id)
+    row = session.exec(
+        select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.judge_id == judge_id)
+    ).first()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That judge is not on this event's panel.")
+    # Their existing assignments are left alone on purpose. Deleting scores already
+    # given would silently rewrite results; what happens to unfinished work is the
+    # organizer's call, which is 10.7's reassignment flow, not a side effect of this.
+    session.delete(row)
+    record(
+        session,
+        "event.judge_removed",
+        actor=user,
+        entity_type="event",
+        entity_id=event_id,
+        judge_id=judge_id,
+    )
+    session.commit()
