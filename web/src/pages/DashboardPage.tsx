@@ -138,11 +138,6 @@ function ParticipantDashboard() {
           )}
         </Card>
       </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <HelpSignInPanel />
-        <EmailDeliveryPanel />
-      </div>
     </div>
   );
 }
@@ -301,6 +296,11 @@ function AdminDashboard() {
             </ul>
           )}
         </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <HelpSignInPanel />
+        <EmailDeliveryPanel />
       </div>
     </div>
   );

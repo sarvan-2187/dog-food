@@ -181,3 +181,20 @@ for (const width of [375, 768, 1280]) {
     expect(await overflow(), '/dashboard').toBeLessThanOrEqual(0);
   });
 }
+
+// Regression: a Phase 9 edit put both admin cards on the *participant* dashboard
+// (and none on the admin's). The server refused them, but they should never render.
+for (const { who, email, password, help, emailCard } of [
+  { who: 'participant', email: 'jordan@example.com', password: 'participant-pass1', help: false, emailCard: false },
+  { who: 'judge', email: 'sam@example.com', password: 'judge-pass123', help: false, emailCard: false },
+  { who: 'organizer', email: 'alice@example.com', password: 'organizer-pass1', help: true, emailCard: false },
+  { who: 'admin', email: 'priya@example.com', password: 'admin-pass123', help: true, emailCard: true },
+]) {
+  test(`the ${who} dashboard shows only the account-recovery cards that role can use`, async ({ page }) => {
+    await login(page, email, password);
+    await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Help someone sign in' })).toHaveCount(help ? 1 : 0);
+    await expect(page.getByRole('heading', { name: 'Email delivery' })).toHaveCount(emailCard ? 1 : 0);
+  });
+}
