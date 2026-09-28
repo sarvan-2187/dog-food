@@ -9,7 +9,9 @@ licence.
 Several are **CC BY-SA**, which is a share-alike licence: if you crop, recolour
 or otherwise adapt one of those images, the adapted image has to be released
 under the same licence. The images are used unmodified apart from resizing and,
-for the event covers, a centre crop to 16:9.
+for the event covers, a centre crop to 16:9. Several seeded events share a cover (the
+"Raptor Judging Showcase" demo event reuses `cover-devtools.jpg`); no new photographs
+were added after this table was written.
 
 If you are replacing these with your own event photography, delete the files and
 this table together — an attribution list that no longer matches what ships is
@@ -43,3 +45,22 @@ Machine-readable form of the same data: `web/public/images/attribution.json`.
 The HackFlow raptor mark (`web/public/logo.png`, and `web/public/images/raptor.png`
 derived from it by trimming and removing a faint watermark from the alpha
 channel) is the project's own asset and is not covered by the table above.
+
+# Software
+
+Everything the running app depends on is pinned in `api/requirements.txt` and
+`web/package.json` (with `package-lock.json`) and installed at build time; each package
+keeps its own licence. Two are worth naming because they're easy to miss:
+
+| Component | Used for | Licence |
+|---|---|---|
+| [driver.js](https://driverjs.com) | The guided tour, bundled into the app (no network calls) | MIT |
+| [Mailpit](https://mailpit.axllent.org) (`axllent/mailpit:v1.31.1`) | *Optional* local test inbox for password-reset email, started only by `docker-compose.mail.yml`. Not part of the default stack | MIT |
+
+# Contributors
+
+Built by Team CodeHawk. The commits in this repository are by Sarvan Kumar
+([@sarvan-2187](https://github.com/sarvan-2187)) and
+[@pranavneelu06](https://github.com/pranavneelu06), who independently built the first
+version of Phase 10.1, 10.2 and 10.4 and fixed the login/register `banner` landmark.
+Commits co-written with Claude (Anthropic) carry a `Co-Authored-By` trailer.

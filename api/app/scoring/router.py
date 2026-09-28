@@ -234,10 +234,13 @@ def export_submissions(
     rows = []
     for s in subs:
         team = session.get(Team, s.team_id)
-        rows.append([s.id, s.title, team.name if team else "", s.track, s.status.value, s.updated_at.isoformat()])
+        rows.append([
+            s.id, s.title, team.name if team else "", s.track, s.status.value,
+            s.repo_url, s.demo_url, s.video_url, s.updated_at.isoformat(),
+        ])
     return _csv_response(
         f"event-{event_id}-submissions.csv",
-        ["submission_id", "title", "team", "track", "status", "updated_at"],
+        ["submission_id", "title", "team", "track", "status", "repo_url", "demo_url", "video_url", "updated_at"],
         rows,
     )
 
@@ -397,6 +400,7 @@ def export_event(
             "prize_config": event.prize_config,
             "voting_enabled": event.voting_enabled,
             "results_hidden_until": event.results_hidden_until.isoformat() if event.results_hidden_until else None,
+            "rules": event.rules,
         },
         "rubrics": [{"name": r.name, "criteria": r.criteria} for r in rubrics],
         "teams": [{"name": t.name} for t in teams],
@@ -407,6 +411,9 @@ def export_event(
                 "description": s.description,
                 "track": s.track,
                 "status": s.status.value,
+                "repo_url": s.repo_url,
+                "demo_url": s.demo_url,
+                "video_url": s.video_url,
             }
             for s in submissions
         ],
@@ -434,6 +441,7 @@ def import_event(
         if payload.results_hidden_until
         else None,
         created_by_id=user.id,
+        rules=payload.rules,
         status="draft",  # PLAN.md 10.12: an import is reviewed before it goes public
     )
     session.add(event)
@@ -460,6 +468,9 @@ def import_event(
                 title=s.title,
                 description=s.description,
                 track=s.track,
+                repo_url=s.repo_url,
+                demo_url=s.demo_url,
+                video_url=s.video_url,
                 status=SubmissionStatus(s.status),
             )
         )
