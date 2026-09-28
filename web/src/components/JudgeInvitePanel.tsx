@@ -26,7 +26,14 @@ const STATUS_TONE: Record<JudgeInvite['status'], 'success' | 'warning' | 'neutra
  * account would hand anyone sight of every score — so this panel is the only
  * route into it.
  */
-export function JudgeInvitePanel({ onToast }: { onToast: (message: string, ok: boolean) => void }) {
+export function JudgeInvitePanel({
+  eventId,
+  onToast,
+}: {
+  /** Invitations are issued for, and listed per, one event (Phase 10.1). */
+  eventId: number;
+  onToast: (message: string, ok: boolean) => void;
+}) {
   const [invites, setInvites] = useState<JudgeInvite[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
@@ -38,10 +45,12 @@ export function JudgeInvitePanel({ onToast }: { onToast: (message: string, ok: b
   const load = useCallback(() => {
     setError(null);
     api
-      .get<JudgeInvite[]>('/api/judge-invites')
+      // Scoped to this event: the unfiltered list showed every invitation ever
+      // issued across every event, which on an event page is just noise.
+      .get<JudgeInvite[]>(`/api/judge-invites?event_id=${eventId}`)
       .then(setInvites)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load invitations.'));
-  }, []);
+  }, [eventId]);
 
   useEffect(load, [load]);
 
@@ -53,6 +62,9 @@ export function JudgeInvitePanel({ onToast }: { onToast: (message: string, ok: b
         invited_email: email.trim() || null,
         note: note.trim(),
         expires_in_days: Number(expiry),
+        // Without this the invitation enrols the judge on no panel, so they
+        // would be promoted and then never assigned anything.
+        event_id: eventId,
       });
       setEmail('');
       setNote('');

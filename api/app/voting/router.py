@@ -15,7 +15,7 @@ from ..teams.models import Team
 from ..timeutil import utcnow
 from ..webhooks.service import notify
 from .models import Comment, Vote
-from .ratelimit import comment_limiter, vote_limiter
+from ..ratelimit import comment_limiter, vote_limiter
 from .schemas import CommentPublic, CommentWrite, PublicResultRow, VoteResult
 
 router = APIRouter(tags=["voting"])

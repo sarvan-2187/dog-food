@@ -1,5 +1,10 @@
 """In-process token bucket (PLAN.md Phase 3: no external service).
 
+Shared by voting/commenting (Phase 3) and by sign-in (Phase 10.4). It lives at
+the app root rather than under voting/ because authentication is not a voting
+concern and importing across sibling feature packages to reach it would be the
+wrong dependency direction.
+
 Deliberately process-local. The app runs as a single Uvicorn worker, so one
 process is the whole rate limiter; a multi-worker deployment would need shared
 state, which would mean a network service and is therefore out of scope by
@@ -64,6 +69,12 @@ class TokenBucketLimiter:
             missing = 1.0 - bucket.tokens
             return False, missing / bucket.refill_rate
 
+    def reset_key(self, key: str) -> None:
+        """Forget one key's bucket. Used when an action succeeds and its earlier
+        failures should stop counting against it."""
+        with self._lock:
+            self._buckets.pop(key, None)
+
     def reset(self) -> None:
         """Clear all buckets. Used between tests so one test's spending cannot
         starve the next."""
@@ -76,7 +87,22 @@ class TokenBucketLimiter:
 vote_limiter = TokenBucketLimiter(capacity=20, per_seconds=60.0)
 comment_limiter = TokenBucketLimiter(capacity=10, per_seconds=60.0)
 
+# Sign-in (Phase 10.4). Two buckets, because they defend different things and a
+# single one cannot do both:
+#  - per account, against many machines working on one account;
+#  - per client fingerprint, against one machine spraying many accounts.
+#
+# Only FAILED attempts are charged to the client bucket, and a successful sign-in
+# clears the account bucket. That distinction matters: everyone behind one office
+# or campus NAT address shares a fingerprint, so charging successful sign-ins to
+# it would lock out a whole building on a busy morning. Guessing produces
+# failures by definition, so counting only those loses nothing defensively.
+login_ip_limiter = TokenBucketLimiter(capacity=30, per_seconds=300.0)
+login_account_limiter = TokenBucketLimiter(capacity=6, per_seconds=300.0)
+
 
 def reset_all() -> None:
     vote_limiter.reset()
     comment_limiter.reset()
+    login_ip_limiter.reset()
+    login_account_limiter.reset()

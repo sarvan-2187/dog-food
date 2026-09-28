@@ -50,7 +50,14 @@ def test_organizer_invites_and_a_participant_becomes_a_judge(client, session):
 
     r = client.post(f"/api/judge-invites/{invite['token']}/redeem")
     assert r.status_code == 200, r.text
-    assert r.json() == {"role": "judge", "already_a_judge": False}
+    # event_id/event_name are null here: this invitation carries no event, which is
+    # the pre-Phase-10.1 shape and still redeems (it just enrols them on no panel).
+    assert r.json() == {
+        "role": "judge",
+        "already_a_judge": False,
+        "event_id": None,
+        "event_name": None,
+    }
 
     assert client.get("/api/auth/me").json()["role"] == "judge"
     # ...and can now reach it, which is the whole point of the invitation.
