@@ -46,6 +46,19 @@ One row per reset link, whichever way it was issued (PLAN.md Phase 9).
 | `created_at`, `expires_at` | timestamptz | Issuing a new link sets any earlier unused link's `expires_at` to now |
 | `used_at` | timestamptz, nullable | Set on redeem; a link with `used_at` set is dead. Previewing a link never sets it |
 
+### `api_keys` (`api/app/auth/api_keys.py`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int, PK | |
+| `user_id` | int, FK → `users.id` | The organizer or admin the key acts as |
+| `name` | str | The owner's label, e.g. "Discord bot" |
+| `hint` | str | First 6 characters after `hf_`, so the owner can tell keys apart |
+| `key_hash` | str, unique | SHA-256 of the key; the key itself is never stored |
+| `created_at`, `last_used_at`, `revoked_at` | timestamptz | `last_used_at` is refreshed at most every 5 minutes; a revoked key never authenticates again |
+
+A request authenticates with `Authorization: Bearer hf_...` instead of the session cookie. The key's owner must still be active and an organizer or admin.
+
 ### `events` (`api/app/events/models.py`)
 
 | Column | Type | Notes |
@@ -68,6 +81,7 @@ One row per reset link, whichever way it was issued (PLAN.md Phase 9).
 | `created_at` | timestamptz | |
 | `status` | str | `draft` \| `published`. New and imported events start as drafts, which are hidden (404) from everyone but organizers; existing events were backfilled as published (Phase 10.12) |
 | `rules` | str | Plain text shown on the event page, never rendered as HTML (Phase 10.8) |
+| `stages` | JSON list | Named rounds shown as a timeline on the event page: `[{"name", "description", "starts_at", "ends_at"}]`, ISO-8601 UTC, at most 10, sorted by start. Informational: the server's gates are still `start_at` / `end_at` / `results_hidden_until`. Included in event export/import |
 
 ### `announcements` (`api/app/events/models.py`)
 
