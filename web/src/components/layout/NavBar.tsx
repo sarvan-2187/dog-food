@@ -1,9 +1,10 @@
+import { motion, useScroll, useSpring, useTransform } from 'framer-motion';
 import { Home, Menu, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../lib/auth-context';
 import { cn } from '../../lib/cn';
-import { useRaptorHandedOff } from '../../lib/mascot';
+import { useWordmarkHandedOff, wordmarkHandoffPoint } from '../../lib/mascot';
 import { RaptorMark } from '../ui/Logo';
 
 /**
@@ -26,12 +27,37 @@ export function NavBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   // Only the landing page runs the scroll mascot, so only there does the nav's
   // own mark start hidden and wait to be handed over.
-  const handedOff = useRaptorHandedOff(pathname === '/');
+  const handedOff = useWordmarkHandedOff(pathname === '/');
 
   // /login and /register are full-bleed split screens that carry their own
   // banner landmark and wordmark (components/auth/AuthLayout.tsx); the pill
   // nav over the top would collide with the photo panel and show the mark twice.
   const isAuthScreen = pathname === '/login' || pathname === '/register';
+
+  // Measured rather than hardcoded: the wordmark's width depends on the webfont,
+  // which lands after first paint, and on whatever the name is.
+  const wordmarkRef = useRef<HTMLSpanElement>(null);
+  const [wordmarkWidth, setWordmarkWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const measure = () => {
+      const w = wordmarkRef.current?.scrollWidth;
+      if (w) setWordmarkWidth(w);
+    };
+    measure();
+    document.fonts?.ready.then(measure).catch(() => {});
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  const { scrollY } = useScroll();
+  const isLanding = pathname === '/';
+  const targetWidth = wordmarkWidth ?? 0;
+  const scrolledWidth = useTransform(scrollY, [0, wordmarkHandoffPoint()], [0, targetWidth], {
+    clamp: true,
+  });
+  const springWidth = useSpring(scrolledWidth, { stiffness: 260, damping: 34, mass: 0.5 });
+  // Only the landing page animates the berth; everywhere else it is simply open.
+  const navWordmarkWidth = isLanding ? springWidth : targetWidth;
 
   // `tour` anchors the guided tour's steps (src/lib/tour.ts) to a stable hook
   // rather than to link text or tab order, either of which is fair game to
@@ -107,20 +133,28 @@ export function NavBar() {
           <Link
             to="/"
             aria-label="HackFlow home"
-            className="mr-1 flex shrink-0 items-center gap-2 whitespace-nowrap pl-2 text-surface-0"
+            className="mr-1 flex shrink-0 items-center whitespace-nowrap pl-2 text-surface-0"
           >
             <RaptorMark aria-hidden="true" className="h-4 w-8" />
-            {/* Reserved at full size always, so the pill never resizes at the
-                handoff; only its paint waits for the flying copy to land. */}
-            <span
-              id="wordmark-nav-slot"
-              className={cn(
-                'text-body tracking-tight transition-opacity duration-fast',
-                handedOff ? 'opacity-100' : 'opacity-0',
-              )}
+            {/* The wordmark's berth opens in step with the incoming flying copy
+                rather than being reserved up front - an empty gap waiting in
+                the pill reads as a layout bug. Width is animated, not just
+                opacity, so the pill grows around the wordmark as it lands. */}
+            <motion.span
+              className="overflow-hidden"
+              style={wordmarkWidth === null ? undefined : { width: navWordmarkWidth }}
             >
-              Hack<span className="font-serif italic">Flow</span>
-            </span>
+              <span
+                ref={wordmarkRef}
+                id="wordmark-nav-slot"
+                className={cn(
+                  'block pl-2 text-body tracking-tight transition-opacity duration-fast',
+                  handedOff ? 'opacity-100' : 'opacity-0',
+                )}
+              >
+                Hack<span className="font-serif italic">Flow</span>
+              </span>
+            </motion.span>
           </Link>
           <NavLink
             to="/"

@@ -6,14 +6,14 @@ const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
 page.on('pageerror', (e) => console.log('PAGEERROR', String(e).slice(0, 200)));
 await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-await page.waitForTimeout(1600);
-for (const [i, y] of [0, 160, 320, 440, 560].entries()) {
+await page.waitForTimeout(1800);
+for (const [i, y] of [0, 130, 260, 390, 520].entries()) {
   await page.evaluate((v) => window.scrollTo(0, v), y);
-  await page.waitForTimeout(850);
-  await page.screenshot({ path: `${OUT}/h${i}-${y}.png`, clip: { x: 0, y: 0, width: 1440, height: 110 } });
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${OUT}/h${i}-${y}.png`, clip: { x: 300, y: 0, width: 900, height: 100 } });
 }
 await page.goto(`${BASE}/events`, { waitUntil: 'networkidle' });
-await page.waitForTimeout(1000);
-await page.screenshot({ path: `${OUT}/z-events-nav.png`, clip: { x: 0, y: 0, width: 1440, height: 110 } });
+await page.waitForTimeout(1200);
+await page.screenshot({ path: `${OUT}/z-events.png`, clip: { x: 300, y: 0, width: 900, height: 100 } });
 await b.close();
 console.log('done');
