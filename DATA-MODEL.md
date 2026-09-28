@@ -30,6 +30,7 @@ See ARCHITECTURE.md. `docker compose down -v` is only needed for a clean slate.
 | `created_at` | timestamptz | |
 | `session_version` | int, default 0 | Signed into every session cookie; incremented on each password change or reset, which invalidates every older cookie at once (PLAN.md Phase 9.1) |
 | `is_active` | bool, default true | False blocks sign-in and, with a `session_version` bump, ends every session at once. Admin accounts can't be deactivated (Phase 10.10) |
+| `email_verified_at` | timestamptz, nullable | Set when the owner follows a signed 24-hour link from `POST /api/auth/verify-email`; fixture accounts are seeded verified. An event can require it to vote (THREAT-MODEL.md entry 25) |
 
 ### `password_resets` (`api/app/auth/models.py`)
 
@@ -58,8 +59,11 @@ One row per reset link, whichever way it was issued (PLAN.md Phase 9).
 | `max_team_size` | int | Default `4`, matching the hackathon's own "Team Size: 1–4" rule; enforced server-side in `teams/router.py`'s `join_team` (PLAN.md Phase 7.2) |
 | `voting_enabled` | bool | Gates the Phase 3 vote/comment endpoints |
 | `voting_access` | str | `authenticated` (default), `email` or `open` - who may vote; see `voting/voter.py` and THREAT-MODEL.md entry 25. `email` is refused while SMTP is off |
+| `voting_requires_verified` | bool, default false | Account voters need `users.email_verified_at`. Refused (409) while SMTP is off, since nobody could verify |
+| `voting_account_cutoff` | timestamptz, nullable | Accounts created at or after this can't vote. Needs no email |
 | `results_hidden_until` | timestamptz, nullable | Gates who may see vote counts and standings — enforced in the API response itself, not just hidden in the UI |
 | `results_revealed_notified` | bool | One-shot guard so the `event.results_revealed` webhook topic fires exactly once, flipped the first time `public_results` is read after `results_are_public()` goes true (PLAN.md Phase 7.3) |
+| `judging_deadline` | timestamptz, nullable | Soft: shown to judges and organizers, must be after `end_at`. A score saved after it is recorded with `late: true` in the audit log, never refused |
 | `created_by_id` | int, FK → `users.id` | Must be `organizer` or `admin` |
 | `created_at` | timestamptz | |
 | `status` | str | `draft` \| `published`. New and imported events start as drafts, which are hidden (404) from everyone but organizers; existing events were backfilled as published (Phase 10.12) |
@@ -119,6 +123,8 @@ the duplicates.
 | `title`, `description`, `track` | str | |
 | `repo_url`, `demo_url`, `video_url` | str | Optional; `http`/`https` only, at most 500 characters, validated on save and on import. Shown as links, never embedded (Phase 10.5) |
 | `status` | enum | `draft` \| `submitted`. Only `submitted` rows appear in the public gallery |
+| `disqualified_at` | timestamptz, nullable | Set by an organizer's eligibility ruling. A disqualified entry leaves the gallery, voting, assignment, awards and standings (`in_competition()` in `submissions/models.py`); its scores are kept so reinstating restores it. A column, not a status value, so reinstating never loses `draft`/`submitted` |
+| `disqualified_reason` | str | Shown to the team. Required to disqualify |
 | `created_at`, `updated_at` | timestamptz | `updated_at` bumps on every autosave `PATCH` |
 
 ### `rubrics` (`api/app/judging/models.py`)
