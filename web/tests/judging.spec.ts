@@ -194,6 +194,21 @@ test.describe('organizer results', () => {
     await expect(page.getByRole('columnheader', { name: 'Normalised' })).toBeVisible();
   });
 
+  test('standings narrow to one track, ranked within it', async ({ page }) => {
+    await asOrganizer(page);
+    await page.goto(`/events/${EVENT}/results`);
+    const table = page.locator('table');
+    await expect(table.locator('tbody tr').first()).toBeVisible();
+    await page.getByRole('combobox', { name: 'Standings for' }).click();
+    await page.getByRole('option', { name: 'Developer Tools' }).click();
+    // Every row left is a Developer Tools entry, numbered from 1 within the track.
+    const rows = table.locator('tbody tr');
+    await expect(rows.first().locator('td').first()).toHaveText('1');
+    for (const row of await rows.all()) {
+      await expect(row.getByText('Developer Tools')).toBeVisible();
+    }
+  });
+
   test('a CSV export downloads and is real CSV', async ({ page }) => {
     await asOrganizer(page);
     await page.goto(`/events/${EVENT}/results`);

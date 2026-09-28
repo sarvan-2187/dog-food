@@ -26,6 +26,9 @@ const EXPORTS = [
   { file: 'results', label: 'Normalised results' },
 ] as const;
 
+// Radix Select can't hold an empty value, so "every track" gets a sentinel.
+const ALL_TRACKS = '__all__';
+
 /** An ISO instant as the value a datetime-local input expects, in local time. */
 function toLocalInput(iso: string): string {
   const d = new Date(iso);
@@ -45,6 +48,8 @@ function EventResults() {
   const { slug = '' } = useParams();
   const [event, setEvent] = useState<EventRecord | null>(null);
   const [rows, setRows] = useState<ResultRow[] | null>(null);
+  // Track standings for track prizes: the same normalised ranking, narrowed.
+  const [trackFilter, setTrackFilter] = useState(ALL_TRACKS);
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [summary, setSummary] = useState<AssignmentSummary | null>(null);
@@ -143,6 +148,10 @@ function EventResults() {
       setDownloading(null);
     }
   }
+
+  const trackOptions = [...new Set((rows ?? []).map((r) => r.track).filter(Boolean))].sort();
+  const shown = (rows ?? []).filter((r) => trackFilter === ALL_TRACKS || r.track === trackFilter);
+  const place = (r: ResultRow) => (trackFilter === ALL_TRACKS ? r.rank : r.track_rank ?? r.rank);
 
   if (error) {
     return (
@@ -317,11 +326,28 @@ function EventResults() {
       )}
 
       {rows && rows.length > 0 && (
-        <Card title="Normalised standings" meta={`${rows.length} submissions`}>
+        <Card title="Normalised standings" meta={`${shown.length} submissions`}>
           <p className="mb-4 text-meta text-ink-500">
             Ranking uses the normalised score, which cancels out how harsh or generous each individual judge is. The
             raw mean is shown alongside so you can see where the two disagree.
           </p>
+          {trackOptions.length > 0 && (
+            <SimpleSelect
+              label="Standings for"
+              className="mb-4 sm:w-72"
+              value={trackFilter}
+              onChange={setTrackFilter}
+              options={[
+                { value: ALL_TRACKS, label: 'All tracks (overall)' },
+                ...trackOptions.map((t) => ({ value: t, label: t })),
+              ]}
+              hint={
+                trackFilter === ALL_TRACKS
+                  ? undefined
+                  : 'Places within this track, on the same normalised scores: every judge is calibrated on everything they scored.'
+              }
+            />
+          )}
 
           {/* Below md the table becomes stacked cards - DESIGN_SYSTEM.md 4:
               never a horizontal scrollbar on a primary view. */}
@@ -345,11 +371,12 @@ function EventResults() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {shown.map((r) => (
                   <tr key={r.submission_id} className="border-b border-border-subtle last:border-b-0">
-                    <td className="tabular py-3 pr-3 text-ink-500">{r.rank}</td>
+                    <td className="tabular py-3 pr-3 text-ink-500">{place(r)}</td>
                     <th scope="row" className="py-3 pr-3 text-left font-normal text-ink-800">
                       {r.submission_title}
+                      {r.track && <span className="block text-meta text-ink-500">{r.track}</span>}
                     </th>
                     <td className="py-3 pr-3 text-ink-600">{r.team_name}</td>
                     <td className="tabular py-3 pr-3 text-right text-ink-600">{r.judges}</td>
@@ -363,17 +390,23 @@ function EventResults() {
           </div>
 
           <ul className="flex flex-col gap-3 md:hidden">
-            {rows.map((r) => (
+            {shown.map((r) => (
               <li key={r.submission_id} className="rounded-md border border-border-subtle p-card-sm">
                 <div className="mb-2 flex items-baseline justify-between gap-2">
                   <span className="text-label text-ink-800">
-                    #{r.rank} {r.submission_title}
+                    #{place(r)} {r.submission_title}
                   </span>
                   <Badge status="info">{r.display.toFixed(1)}</Badge>
                 </div>
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-meta text-ink-600">
                   <dt>Team</dt>
                   <dd className="text-right text-ink-800">{r.team_name}</dd>
+                  {r.track && (
+                    <>
+                      <dt>Track</dt>
+                      <dd className="text-right text-ink-800">{r.track}</dd>
+                    </>
+                  )}
                   <dt>Judges</dt>
                   <dd className="tabular text-right text-ink-800">{r.judges}</dd>
                   <dt>Raw mean</dt>

@@ -263,6 +263,9 @@ export interface ResultRow {
   raw_mean: number;
   z_bar: number;
   display: number;
+  /** The entry's track, and its place within that track on the same z_bar ordering. */
+  track: string;
+  track_rank: number | null;
 }
 
 

@@ -41,6 +41,11 @@ class ResultRow(BaseModel):
     raw_mean: float
     z_bar: float
     display: float
+    # The entry's track and its place within it, for track prizes. Ranked on the
+    # same z_bar as `rank`: each judge is calibrated on everything they scored,
+    # not just one track (JUDGING.md, "Track standings").
+    track: str = ""
+    track_rank: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------

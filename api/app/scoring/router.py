@@ -216,9 +216,14 @@ def _result_rows(session: Session, event_id: int) -> list[ResultRow]:
     """Shared by the JSON and CSV endpoints so the two can never disagree."""
     rows = normalized_table(_raw_by_judge(session, event_id))
     out: list[ResultRow] = []
+    per_track: dict[str, int] = {}
     for row in rows:
         submission = session.get(Submission, int(row["submission_id"]))
         team = session.get(Team, submission.team_id) if submission else None
+        track = submission.track if submission else ""
+        # rows arrive in overall rank order, so counting per track gives the
+        # place within the track on the same z_bar ordering.
+        per_track[track] = per_track.get(track, 0) + 1
         out.append(
             ResultRow(
                 rank=int(row["rank"]),
@@ -229,6 +234,8 @@ def _result_rows(session: Session, event_id: int) -> list[ResultRow]:
                 raw_mean=float(row["raw_mean"]),
                 z_bar=float(row["z_bar"]),
                 display=float(row["display"]),
+                track=track,
+                track_rank=per_track[track] if track else None,
             )
         )
     return out
@@ -373,8 +380,10 @@ def export_results(
     rows = _result_rows(session, event_id)
     return _csv_response(
         f"event-{event_id}-results.csv",
-        ["rank", "submission_id", "submission_title", "team", "judges", "raw_mean", "z_bar", "display"],
-        [[r.rank, r.submission_id, r.submission_title, r.team_name, r.judges, r.raw_mean, r.z_bar, r.display]
+        ["rank", "submission_id", "submission_title", "team", "judges", "raw_mean", "z_bar", "display",
+         "track", "track_rank"],
+        [[r.rank, r.submission_id, r.submission_title, r.team_name, r.judges, r.raw_mean, r.z_bar, r.display,
+          r.track, r.track_rank if r.track_rank is not None else ""]
          for r in rows],
     )
 

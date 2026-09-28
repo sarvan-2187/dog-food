@@ -92,6 +92,19 @@ assign_judges(submissions, judges, team_memberships, k, *,
    a 403. The judge dashboard and `GET /api/judges/me/scores` leave such rows out, so a
    track judge never sees another track's entry anywhere.
 
+### Track standings
+
+Organizers usually hand out a prize per track as well as overall. `GET
+/api/events/{id}/results` and `results.csv` carry each entry's `track` and `track_rank`,
+and the results page has a **Standings for** filter that narrows the table to one track.
+
+`track_rank` is the entry's place among its own track's entries in the overall
+normalized order. It is not a second normalization run on one track's scores: each
+judge's `mu_j` and `sigma_j` come from everything that judge scored, so a judge who saw
+both tracks is calibrated on their whole workload, and a track judge (rule 8) is
+calibrated on their track, which is all they scored. An entry with no track has no
+`track_rank`.
+
 ### Award suggestions (Phase 10.6)
 
 Each prize in `prize_config` gets a suggested winner from the normalised standings:

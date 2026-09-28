@@ -288,3 +288,23 @@ def test_an_untracked_judge_is_unaffected(client, session):
         r = client.put(f"/api/assignments/{assignment.id}/score", json={"values": {"impact": 5, "execution": 5}})
         assert r.status_code == 200
     assert client.get("/api/judge/assignments").json()["completed"] == 2
+
+
+def test_results_carry_each_entrys_place_within_its_track(client, session):
+    """Track prizes: the same normalised order, counted within each track."""
+    event = _event(session, "track-standings")
+    entries = [_entry(session, event, n, t) for n, t in (("a", "Tools"), ("b", "Apps"), ("c", "Tools"), ("d", ""))]
+    judge = _user(session, "track-standings-j@example.com", Role.judge)
+    for submission, total in zip(entries, (9, 8, 7, 6)):
+        assignment = _assign(session, event, submission, judge)
+        session.add(Score(assignment_id=assignment.id, submission_id=submission.id, judge_id=judge.id,
+                          values={"impact": total, "execution": total}, raw_total=total))
+    session.commit()
+    _login_as(client, session, "track-standings-org@example.com", Role.organizer)
+
+    rows = {r["submission_id"]: r for r in client.get(f"/api/events/{event.id}/results").json()}
+    got = [(rows[s.id]["rank"], rows[s.id]["track"], rows[s.id]["track_rank"]) for s in entries]
+    assert got == [(1, "Tools", 1), (2, "Apps", 1), (3, "Tools", 2), (4, "", None)]
+
+    csv_text = client.get(f"/api/events/{event.id}/export/results.csv").text
+    assert csv_text.splitlines()[0].endswith("track,track_rank")
