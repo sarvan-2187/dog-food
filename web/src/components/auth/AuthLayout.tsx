@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link, NavLink, useSearchParams } from 'react-router-dom';
+import { Link, NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import { cn } from '../../lib/cn';
 import { RaptorMark } from '../ui/Logo';
 
@@ -32,6 +32,11 @@ export function AuthLayout({
   footer: ReactNode;
 }) {
   const [searchParams] = useSearchParams();
+  // The tabs only mean something on the two routes they point at. On
+  // /forgot-password and /reset-password neither is active, so they render as a
+  // dead control that looks like the visitor lost their place.
+  const { pathname } = useLocation();
+  const showTabs = pathname === '/login' || pathname === '/register';
   // Carry ?next= across the tab swap, so bouncing between the two tabs doesn't
   // silently drop where the visitor was originally headed.
   const next = searchParams.get('next');
@@ -84,14 +89,16 @@ export function AuthLayout({
             <h1 className="text-h1 text-ink-900">{title}</h1>
             <p className="mt-2 text-body text-ink-500">{subtitle}</p>
 
-            <nav aria-label="Account" className="mt-7 flex gap-1 rounded-full bg-surface-100 p-1">
-              <NavLink to={withNext('/login')} className={tabClass}>
-                Sign in
-              </NavLink>
-              <NavLink to={withNext('/register')} className={tabClass}>
-                Create account
-              </NavLink>
-            </nav>
+            {showTabs && (
+              <nav aria-label="Account" className="mt-7 flex gap-1 rounded-full bg-surface-100 p-1">
+                <NavLink to={withNext('/login')} className={tabClass}>
+                  Sign in
+                </NavLink>
+                <NavLink to={withNext('/register')} className={tabClass}>
+                  Create account
+                </NavLink>
+              </nav>
+            )}
 
             <div className="mt-6">{children}</div>
 
