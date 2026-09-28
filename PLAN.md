@@ -979,7 +979,33 @@ demonstrates the full email flow offline; and an existing pre-Phase-9 volume boo
 
 ## Phase 10 — Platform Audit: Judging Integrity, Core Hackathon Features, Operability
 
-**Status: planned, not built. Approved 2026-09-19 (all 13 items).**
+**Status: BUILT (2026-09-19). All 13 items.** Verified on the merged tree:
+- **348 backend tests**, including 40 in `test_phase10.py`, each opening with the audit's
+  own "Found" scenario, plus Phase 9 and 10 endpoints added to the role-isolation matrix
+  (139 cases).
+- **105 Playwright specs green, 1 skipped** (the email-only recovery spec, correct with
+  email off). This includes 7 new flows in `phase10.spec.ts`.
+- An existing pre-Phase-10 volume, including a duplicate team membership, booted without
+  `down -v`: it logged the duplicate, held back the unique index, and the admin Users page
+  lists it.
+
+**Build notes: where the build differs from the plan.**
+- **`event_phase()` is computed in the browser** (`components/EventTimeline.tsx`) from the
+  same `start_at`/`end_at`/`results_hidden_until` the server enforces, rather than returned
+  on every event. The event endpoints return the table model directly, and a derived field
+  there would have been a second source of truth for the same dates.
+- **A judge's list only shows assignments from events whose judging has opened.** This was
+  found while testing 10.3: an assignment made before the deadline gate existed would
+  otherwise offer a "Score now" the server refuses. The "Coming up" card says when the rest
+  open.
+- **Assignment re-runs now fill gaps properly.** Existing assignments count toward `k` and
+  toward judge load, which 10.7's "remove a judge, re-run" depends on. The result with
+  nothing assigned yet is unchanged (the existing determinism tests still pass).
+- **Confirmations use the browser's own `window.confirm`**, which is keyboard- and
+  screen-reader-accessible, rather than a new modal component.
+- **Tests are one file (`test_phase10.py`) with a section per item**, not one file per item.
+  Same coverage, and the SMTP/role helpers are shared.
+- **10.1, 10.2 and 10.4 were built twice** and merged. See the note above.
 
 **Two implementations, merged (2026-09-19).** pranavneelu06 built 10.1, 10.2 and 10.4
 independently on `feat/phase10` (merged to `main` as PR #2). They stated plainly that 10.3 and
@@ -1046,22 +1072,22 @@ dogfood-2026's Judges card listed 12 invitations, none of them for that event. F
 organization running many events, a judge invited to one hackathon gets submissions from
 all of them.
 
-- [ ] New table `event_judges` (`event_id`, `user_id`, `added_at`, `added_by_id`), unique on
+- [x] New table `event_judges` (`event_id`, `user_id`, `added_at`, `added_by_id`), unique on
       `(event_id, user_id)`. **The assignment pool is this event's judges only.**
-- [ ] `judge_invites.event_id` (nullable for old rows). Invitations are created from an
+- [x] `judge_invites.event_id` (nullable for old rows). Invitations are created from an
       event's page, and redeeming one adds the redeemer to that event's judges (plus the
       existing participant-to-judge role change).
-- [ ] **"Add an existing judge"** on the event's Judges card, by email, so a judge who works
+- [x] **"Add an existing judge"** on the event's Judges card, by email, so a judge who works
       several events isn't sent a new invitation each time. Organizer or admin only; the
       account must already have the judge role.
-- [ ] The Judges card lists only **this event's** invitations and judges.
+- [x] The Judges card lists only **this event's** invitations and judges.
       `GET /api/judge-invites` takes `event_id`.
-- [ ] **Backfill at boot:** every `(event_id, judge_id)` pair in existing
+- [x] **Backfill at boot:** every `(event_id, judge_id)` pair in existing
       `judge_assignments` becomes an `event_judges` row, so already-assigned judging keeps
       working. Seeded judges are attached to the seeded events in the fixtures.
-- [ ] The judge dashboard groups assignments by event (the fields exist since Phase 4's
+- [x] The judge dashboard groups assignments by event (the fields exist since Phase 4's
       `event_id`/`event_name` addition).
-- [ ] **Test hygiene:** the Playwright specs create their invitations against a named test
+- [x] **Test hygiene:** the Playwright specs create their invitations against a named test
       event, so they stop piling up in the Judges card of real events.
 
 ### 10.2 — One team per participant per event (bug)
@@ -1071,15 +1097,15 @@ and `create_team` doesn't check anything. The seed data already contains a viola
 `jordan@` is on both Codehawks and Quiet Ledger in dogfood-2026. One person can enter the
 same hackathon twice.
 
-- [ ] `create_team` and `join_team` refuse with 409 when the user already belongs to a team
+- [x] `create_team` and `join_team` refuse with 409 when the user already belongs to a team
       in that event: *"You're already on Codehawks for this event. Leave it first to join
       another team."*
-- [ ] Database-level guard: `team_memberships.event_id` (backfilled from `teams`) with a
+- [x] Database-level guard: `team_memberships.event_id` (backfilled from `teams`) with a
       unique index on `(event_id, user_id)`, so two requests at once can't both get through.
       If an existing volume already contains duplicates, **boot doesn't crash**: it skips
       the index, logs each duplicate, and the admin dashboard shows a warning listing them
       until an organizer resolves them with 10.9's leave/remove.
-- [ ] Fix `fixtures/teams.json` so no participant is on two teams in one event.
+- [x] Fix `fixtures/teams.json` so no participant is on two teams in one event.
 
 ### 10.3 — Judging opens only after submissions close (bug)
 
@@ -1087,17 +1113,17 @@ same hackathon twice.
 the live app a judge had already scored "Audit Trail Explorer", which its team can keep
 editing until Oct 17, so the score can describe a version that no longer exists.
 
-- [ ] `POST /api/events/{id}/assignments` refuses before `end_at` with 409: *"Judging opens
+- [x] `POST /api/events/{id}/assignments` refuses before `end_at` with 409: *"Judging opens
       when submissions close on 17 Oct at 18:00. Close submissions early from Event
       settings if you need to."*
-- [ ] `PUT /api/assignments/{id}/score` refuses before `end_at` too, which covers
+- [x] `PUT /api/assignments/{id}/score` refuses before `end_at` too, which covers
       assignments made before this fix.
-- [ ] **"Close submissions now"** in Event settings sets `end_at` to now, behind a
+- [x] **"Close submissions now"** in Event settings sets `end_at` to now, behind a
       confirmation that says what it does ("Teams will no longer be able to edit their
       entries").
-- [ ] The judge dashboard shows *"Judging opens on …"* for an event still open for
+- [x] The judge dashboard shows *"Judging opens on …"* for an event still open for
       submissions, instead of an empty list.
-- [ ] **Fixtures and specs:** seed one event that is already past its deadline with results
+- [x] **Fixtures and specs:** seed one event that is already past its deadline with results
       still hidden. `judging.spec.ts` and `judge-invite.spec.ts` move to it, because
       dogfood-2026 (deadline Oct 17) can no longer be judged.
 
@@ -1107,13 +1133,13 @@ editing until Oct 17, so the score can describe a version that no longer exists.
 guessed without limit. It also returns *faster* for an unknown email, because bcrypt only
 runs for real accounts, which lets anyone probe which emails are registered.
 
-- [ ] Only **failed** attempts count: 10 per account and 30 per IP per 15 minutes, reusing
+- [x] Only **failed** attempts count: 10 per account and 30 per IP per 15 minutes, reusing
       `TokenBucketLimiter`. Going over returns 429: *"Too many attempts. Try again in about
       N minutes, or reset your password."* The message is the same whether the account
       exists or not.
-- [ ] Unknown emails run bcrypt against a fixed dummy hash, so both paths take the same time.
-- [ ] A successful login clears that account's failure count.
-- [ ] Audit: log `user.login_throttled` with the IP. Don't log every failure, which would
+- [x] Unknown emails run bcrypt against a fixed dummy hash, so both paths take the same time.
+- [x] A successful login clears that account's failure count.
+- [x] Audit: log `user.login_throttled` with the IP. Don't log every failure, which would
       flood the log.
 
 ---
@@ -1124,16 +1150,16 @@ runs for real accounts, which lets anyone probe which emails are registered.
 scoring screen, a judge rated four weighted criteria from **one sentence** of text, with no
 code, no running demo and no video to open.
 
-- [ ] `submissions.repo_url`, `demo_url`, `video_url`, all optional. Validated server-side:
+- [x] `submissions.repo_url`, `demo_url`, `video_url`, all optional. Validated server-side:
       `http`/`https` only (so no `javascript:` links), at most 500 characters.
-- [ ] The editor has three fields with inline validation, autosaving like the others.
-- [ ] Shown as labelled buttons (**Code**, **Live demo**, **Video**) that open in a new tab
+- [x] The editor has three fields with inline validation, autosaving like the others.
+- [x] Shown as labelled buttons (**Code**, **Live demo**, **Video**) that open in a new tab
       with `rel="noopener noreferrer nofollow"`:
       - on the submission detail page
       - as small icons on gallery cards
       - on the judge's scoring screen, which also gains the screenshot it currently lacks.
-- [ ] Video is a link, never an embed (§1).
-- [ ] Included in `submissions.csv` and the Phase 4 event backup.
+- [x] Video is a link, never an embed (§1).
+- [x] Included in `submissions.csv` and the Phase 4 event backup.
 
 ### 10.6 — Winners and awards
 
@@ -1141,20 +1167,20 @@ code, no running demo and no video to open.
 "Best Developer Tool — $1,000"), but nothing links a prize to a winning project. The event
 ends without ever saying who won.
 
-- [ ] New `awards` table (`event_id`, `prize_rank`, `submission_id`, `note`, `awarded_by_id`),
+- [x] New `awards` table (`event_id`, `prize_rank`, `submission_id`, `note`, `awarded_by_id`),
       unique on `(event_id, prize_rank)`.
-- [ ] An **"Winners"** card on the results page lists each configured prize with a project
+- [x] An **"Winners"** card on the results page lists each configured prize with a project
       picker. Pickers are pre-suggested: overall prizes follow the normalised standings in
       order, and a track prize suggests the top-ranked project in that track. The organizer
       confirms or changes each one. A project can win more than one prize; the card flags
       it when that happens.
-- [ ] Awards stay **hidden until results are revealed**, using the same
+- [x] Awards stay **hidden until results are revealed**, using the same
       `may_see_results` gate as the standings.
-- [ ] After the reveal:
+- [x] After the reveal:
       - the event page gets a **Winners** section
       - winning gallery cards and submission pages get a prize badge
       - the Phase 4 certificate names the prize
-- [ ] Audit log records every award change.
+- [x] Audit log records every award change.
 
 ### 10.7 — Judging progress, reassignment, and conflicts of interest
 
@@ -1162,19 +1188,19 @@ ends without ever saying who won.
 per-judge progress is a CSV download. In the live app the standings showed 1 judge per
 project out of 3 assigned, and nothing on screen said which judges hadn't scored.
 
-- [ ] A **"Judging progress"** card on the results page. It leads with the overall
+- [x] A **"Judging progress"** card on the results page. It leads with the overall
       "X of Y scores in", then one row per judge: scored/assigned and last activity.
-- [ ] **Remove a judge from this event:** deletes their unscored assignments and keeps any
+- [x] **Remove a judge from this event:** deletes their unscored assignments and keeps any
       scores they already submitted. Confirmation required. Pressing **Assign judges**
       again fills the gaps, since assignment already only fills gaps.
-- [ ] **A judge can declare a conflict of interest** on the scoring screen with an optional
+- [x] **A judge can declare a conflict of interest** on the scoring screen with an optional
       reason. This deletes that unscored assignment and records a `judge_conflicts` row
       (`event_id`, `judge_id`, `submission_id`, `reason`) that assignment's conflict check
       always respects, so the project is never handed back to that judge. The organizer
       sees the declaration in the progress card.
-- [ ] **Send a reminder**, shown only when email is on: emails a judge their remaining
+- [x] **Send a reminder**, shown only when email is on: emails a judge their remaining
       count and a link to `/judge`. Limited to one per judge per hour.
-- [ ] Tests cover all of it: the removed judge's scores stay, conflicts are honoured on a
+- [x] Tests cover all of it: the removed judge's scores stay, conflicts are honoured on a
       re-run, and reminders are hidden and never sent with email off.
 
 ### 10.8 — Event timeline, rules, and judging criteria everyone can see
@@ -1185,23 +1211,23 @@ project out of 3 assigned, and nothing on screen said which judges hadn't scored
 - Participants can't see the criteria they'll be scored on.
 - Event dates can't be changed after creation, despite README's claim that they can.
 
-- [ ] A server-side `event_phase()`, returned on every event, gives one of: `upcoming`,
+- [x] A server-side `event_phase()`, returned on every event, gives one of: `upcoming`,
       `open` (taking submissions), `judging` (deadline passed, results not out),
       `results`.
-- [ ] Every event card and event page shows a phase badge, the start and end dates, and a
+- [x] Every event card and event page shows a phase badge, the start and end dates, and a
       countdown worded for the phase: "Starts in", "Submissions close in", "Judging in
       progress", "Results are out".
-- [ ] `events.rules`: plain text, rendered with line breaks and **never as HTML** (so it
+- [x] `events.rules`: plain text, rendered with line breaks and **never as HTML** (so it
       can't carry a script). Edited in Event settings and shown on the event page.
-- [ ] Rubric criteria gain an optional `description` ("Impact: who would use this, and how
+- [x] Rubric criteria gain an optional `description` ("Impact: who would use this, and how
       much would it help them?"). Judges see it under each field; participants see a
       read-only **"How projects are judged"** section with criterion names, weights and
       descriptions (never scores). Served from a new public
       `GET /api/events/{id}/criteria`.
-- [ ] **Edit dates after creation** in Event settings. Start must come before end, and
+- [x] **Edit dates after creation** in Event settings. Start must come before end, and
       moving the end date earlier than now asks for the same confirmation as 10.3's
       "Close submissions now". Correct README's claim at the same time.
-- [ ] No change to who can do what in each phase, apart from 10.3.
+- [x] No change to who can do what in each phase, apart from 10.3.
 
 ### 10.9 — Team management
 
@@ -1209,18 +1235,18 @@ project out of 3 assigned, and nothing on screen said which judges hadn't scored
 member, rename the team or get a fresh invite link. Invite links also expire after 30 days
 with no way to renew them.
 
-- [ ] `teams.captain_id`: whoever created the team. Existing teams are backfilled with their
+- [x] `teams.captain_id`: whoever created the team. Existing teams are backfilled with their
       earliest member.
-- [ ] **Any member can leave.**
+- [x] **Any member can leave.**
       - If the captain leaves, the earliest remaining member becomes captain.
       - If the last member leaves, the team is deleted, along with any draft entry.
       - The last member **can't** leave once the team has *submitted*. They get a plain
         explanation instead.
-- [ ] **The captain can rename the team, remove a member, hand captaincy to someone else, and
+- [x] **The captain can rename the team, remove a member, hand captaincy to someone else, and
       get a new invite link** (the old link stops working straight away). Removing a member
       and changing the link each need a confirmation.
-- [ ] Everything is blocked after the submission deadline, like all other team changes.
-- [ ] Audit log entries for leave, remove, rename, captaincy change and new invite link.
+- [x] Everything is blocked after the submission deadline, like all other team changes.
+- [x] Audit log entries for leave, remove, rename, captaincy change and new invite link.
 
 ---
 
@@ -1230,38 +1256,38 @@ with no way to renew them.
 come from `fixtures/users.json`, so a real organization can't add a new organizer without
 editing the database.
 
-- [ ] An admin-only `/admin/users` page: search by name or email, filter by role, 50 per
+- [x] An admin-only `/admin/users` page: search by name or email, filter by role, 50 per
       page.
-- [ ] **Change a user's role** between participant, judge and organizer. The admin role is
+- [x] **Change a user's role** between participant, judge and organizer. The admin role is
       never granted from the UI (only the seed data or the 9.6 CLI can create admins), and
       admins can't change their own role.
-- [ ] **Deactivate or reactivate an account.** `users.is_active` is checked at login
+- [x] **Deactivate or reactivate an account.** `users.is_active` is checked at login
       (*"This account has been deactivated. Contact an admin."*), and deactivating bumps
       `session_version`, which signs the user out immediately. Admins can't be deactivated,
       nor can you deactivate yourself.
-- [ ] **Organizer invitations**, reusing the judge-invite pattern: `judge_invites.grants_role`
+- [x] **Organizer invitations**, reusing the judge-invite pattern: `judge_invites.grants_role`
       (`judge` | `organizer`). Only admins can create organizer invitations, and they aren't
       tied to an event. Redeeming one promotes the account to organizer. They're single
       use, expire and can be revoked, exactly like judge invitations.
-- [ ] Audit log entries for every role change, deactivation and invitation.
+- [x] Audit log entries for every role change, deactivation and invitation.
 
 ### 10.11 — Event announcements
 
 **Found:** once an event is running, organizers have no way to tell participants anything,
 such as "the deadline has moved" or "the demo livestream starts at 5".
 
-- [ ] New `announcements` table (`event_id`, `author_id`, `title`, `body`, `created_at`,
+- [x] New `announcements` table (`event_id`, `author_id`, `title`, `body`, `created_at`,
       `emailed_count`). Plain text, at most 2,000 characters, **never rendered as HTML**.
-- [ ] Organizers post from the event page. Announcements show newest first on the event
+- [x] Organizers post from the event page. Announcements show newest first on the event
       page, and the latest ones appear on the dashboard of every participant on a team in
       that event.
-- [ ] **"Also email everyone in this event"** checkbox, shown only when email is on. It
+- [x] **"Also email everyone in this event"** checkbox, shown only when email is on. It
       sends from a background task over **one** SMTP connection; this needs a new
       `mailer.send_many`, so a 200-person event doesn't open 200 connections. Limited to one
       emailed announcement per event per 10 minutes. The card reports how many were sent.
-- [ ] A new webhook topic, `announcement.posted`, so events already wired to Discord or
+- [x] A new webhook topic, `announcement.posted`, so events already wired to Discord or
       Slack (Phase 7.3) post announcements there automatically.
-- [ ] Organizers can edit or delete an announcement. A deleted announcement disappears from
+- [x] Organizers can edit or delete an announcement. A deleted announcement disappears from
       the page; emails already sent obviously stay sent.
 
 ### 10.12 — Draft events
@@ -1269,13 +1295,13 @@ such as "the deadline has moved" or "the demo livestream starts at 5".
 **Found:** an event is public the moment it's created, before its tracks, prizes, rubric or
 rules are set.
 
-- [ ] `events.status` (`draft` | `published`). Existing events are backfilled as
+- [x] `events.status` (`draft` | `published`). Existing events are backfilled as
       `published`; events created from now on, including imported ones, **start as
       drafts**.
-- [ ] A draft is invisible to everyone except organizers and admins: left out of
+- [x] A draft is invisible to everyone except organizers and admins: left out of
       `/api/events` and the gallery, and **404 (not 403)** by slug, so a draft's existence
       doesn't leak. No teams can be created on a draft.
-- [ ] A **Publish** button with a short checklist: dates set, at least one track, and a
+- [x] A **Publish** button with a short checklist: dates set, at least one track, and a
       rubric. Missing items are warnings, not blocks. **Unpublish** is allowed only while
       the event has no teams.
 
@@ -1283,10 +1309,10 @@ rules are set.
 
 **Found:** the profile page can change only the avatar.
 
-- [ ] `PATCH /api/auth/me` `{name}`, with the same 2–60 character rule as sign-up, edited
+- [x] `PATCH /api/auth/me` `{name}`, with the same 2–60 character rule as sign-up, edited
       inline on `/profile`. Names are read live wherever they appear (teams, comments,
       judge progress), so no other data changes. Audit log entry.
-- [ ] Changing the email address is **out of scope**: it needs verification of the new
+- [x] Changing the email address is **out of scope**: it needs verification of the new
       address, which is its own flow.
 
 ---
@@ -1310,22 +1336,22 @@ rules are set.
 
 ### UX checklist (PLAN.md §4.7, every new or changed screen)
 
-- [ ] Every new card and page has loading, empty and error states, and works at 375, 768
+- [x] Every new card and page has loading, empty and error states, and works at 375, 768
       and 1280px, and by keyboard alone.
-- [ ] Every destructive action has a confirmation that says what will happen: removing a
+- [x] Every destructive action has a confirmation that says what will happen: removing a
       judge, a team member or a user; leaving a team; new invite link; closing submissions;
       unpublishing; deactivating.
-- [ ] Role-aware navigation: admins get **Users**; nobody else sees admin screens, and the
+- [x] Role-aware navigation: admins get **Users**; nobody else sees admin screens, and the
       API refuses them regardless.
-- [ ] The guided tours gain steps for "Judging progress", "Winners", "Announcements" and
+- [x] The guided tours gain steps for "Judging progress", "Winners", "Announcements" and
       (for admins) "Users", anchored to their cards like the Phase 9 steps.
 
 ### Tests
 
-- [ ] pytest, one file per item, covering the "Found" case of each (the audit's exact
+- [x] pytest, one file per item, covering the "Found" case of each (the audit's exact
       scenario must fail before the fix and pass after), plus the role matrix for every new
       endpoint in `test_role_isolation.py`.
-- [ ] Specifically:
+- [x] Specifically:
       - **10.1:** a judge not attached to an event is never assigned its submissions.
       - **10.2:** a second team in the same event is refused.
       - **10.3:** assignment and scoring are refused before the deadline.
@@ -1333,7 +1359,7 @@ rules are set.
       - **10.5:** a `javascript:` link is refused.
       - **10.6:** winners stay hidden until the reveal.
       - **10.12:** a draft returns 404 to a participant.
-- [ ] Playwright:
+- [x] Playwright:
       - add a link to a submission and see it on the judge's screen
       - declare a conflict and see it reported to the organizer
       - assign a winner and see it appear after the reveal
@@ -1341,25 +1367,25 @@ rules are set.
       - leave a team
       - publish a draft
       - an admin promotes a user to organizer
-- [ ] Every existing spec that depends on judging before the deadline or on dogfood-2026's
+- [x] Every existing spec that depends on judging before the deadline or on dogfood-2026's
       judges moves to the new past-deadline fixture event (10.3).
 
 ### Docs
 
-- [ ] `README.md`: correct the "edit an event's dates" claim (true once 10.8 lands), and
+- [x] `README.md`: correct the "edit an event's dates" claim (true once 10.8 lands), and
       update "What's here".
-- [ ] `USER-MANUAL.md`: participant sections for project links, team management and
+- [x] `USER-MANUAL.md`: participant sections for project links, team management and
       announcements; judge sections for conflicts of interest and "judging opens after the
       deadline"; organizer sections for event judges, progress, winners, drafts and
       announcements; admin section for users and organizer invitations.
-- [ ] `DATA-MODEL.md`: the four new tables and every new column.
-- [ ] `JUDGING.md`: event-scoped judge pools, the deadline gate, conflicts of interest, and
+- [x] `DATA-MODEL.md`: the four new tables and every new column.
+- [x] `JUDGING.md`: event-scoped judge pools, the deadline gate, conflicts of interest, and
       how award suggestions are derived from the standings.
-- [ ] `THREAT-MODEL.md`: new entries for cross-event judge leakage (10.1), multi-team
+- [x] `THREAT-MODEL.md`: new entries for cross-event judge leakage (10.1), multi-team
       entries (10.2), judging a moving target (10.3), password guessing and email probing
       by timing (10.4), `javascript:` links (10.5), early winner leaks (10.6), draft
       leakage (10.12), and admin lockout or escalation (10.10).
-- [ ] PLAN.md Phase 8's "89 Playwright checks, all passing" line: update to the real count
+- [x] PLAN.md Phase 8's "89 Playwright checks, all passing" line: update to the real count
       after this phase.
 
 **Definition of Done — Phase 10 gate:**

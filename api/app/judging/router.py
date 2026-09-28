@@ -314,8 +314,17 @@ def my_progress(
     user: User = Depends(require_role(Role.judge)),
     session: Session = Depends(get_session),
 ) -> JudgeProgress:
-    """A judge sees only their own assignments -- never another judge's."""
-    assignments = list(session.exec(select(JudgeAssignment).where(JudgeAssignment.judge_id == user.id)))
+    """A judge sees only their own assignments -- never another judge's -- and
+    only from events whose judging has opened (PLAN.md 10.3). An assignment
+    made before judging was gated on the deadline would otherwise offer a
+    "Score now" the server refuses; /api/judge/events says when it opens."""
+    assignments = list(
+        session.exec(
+            select(JudgeAssignment)
+            .join(Event, Event.id == JudgeAssignment.event_id)
+            .where(JudgeAssignment.judge_id == user.id, Event.end_at <= utcnow())
+        )
+    )
     rows = _to_public(session, assignments)
     done = [r for r in rows if r.scored]
     return JudgeProgress(completed=len(done), total=len(rows), pending=[r for r in rows if not r.scored], done=done)

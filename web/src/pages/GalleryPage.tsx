@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ProjectLinks } from '../components/EventSections';
 import { Link, useParams } from 'react-router-dom';
 import { ResultsHiddenNotice } from '../components/ResultsHiddenNotice';
 import { VoteButton } from '../components/VoteButton';
@@ -201,7 +202,19 @@ export function GalleryPage() {
                   <div className="flex h-full w-full items-center justify-center text-meta text-ink-500">No image</div>
                 )}
               </div>
+              {s.awards.length > 0 && (
+                <p className="mb-2 flex flex-wrap gap-1.5">
+                  {s.awards.map((a) => (
+                    <Badge key={a} status="success">{a}</Badge>
+                  ))}
+                </p>
+              )}
               <p className="line-clamp-4 text-body text-ink-600">{s.description}</p>
+              {(s.repo_url || s.demo_url || s.video_url) && (
+                <p className="mt-3">
+                  <ProjectLinks repo={s.repo_url} demo={s.demo_url} video={s.video_url} />
+                </p>
+              )}
               {s.votes === null && scopedEvent?.voting_enabled && (
                 <p className="mt-3">
                   <Badge status="info">Counts hidden until voting closes</Badge>
