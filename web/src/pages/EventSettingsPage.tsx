@@ -319,7 +319,6 @@ function EmbedPanel({ slug, onToast }: { slug: string; onToast: (t: { message: s
 const STATUS_BADGE: Record<WebhookRecord['last_status'], 'success' | 'danger' | 'info'> = {
   delivered: 'success',
   failed: 'danger',
-  blocked: 'danger',
   'never fired': 'info',
 };
 

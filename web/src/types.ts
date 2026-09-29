@@ -4,8 +4,7 @@ export interface WebhookRecord {
   id: number;
   url: string;
   active: boolean;
-  // 'blocked': the URL named or resolved to a private address (SSRF guard).
-  last_status: 'never fired' | 'delivered' | 'failed' | 'blocked';
+  last_status: 'never fired' | 'delivered' | 'failed';
   created_at: string;
 }
 

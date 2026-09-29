@@ -38,7 +38,8 @@ class ResultRow(BaseModel):
     submission_title: str
     team_name: str
     judges: int
-    # Judges whose scores moved z_bar (they scored 2+ entries with some spread).
+    # Judges whose scores carry ordering information: they scored 2+ entries
+    # with some spread. A judge with none contributes z = 0 (JUDGING.md).
     informative_judges: int = 0
     # Judges assigned to this entry; judges < assigned_judges means scoring is
     # still in progress for it.

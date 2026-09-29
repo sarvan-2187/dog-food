@@ -49,6 +49,11 @@ services:
       WEBHOOK_ALLOW_PRIVATE: ${WEBHOOK_ALLOW_PRIVATE:-}
       # Secure cookies follow APP_BASE_URL (https => secure); 1/0 overrides.
       COOKIE_SECURE: ${COOKIE_SECURE:-}
+    # Lets a webhook reach a receiver on the host as http://host.docker.internal:PORT
+    # on Linux too (Docker Desktop provides the name already). Only used when
+    # WEBHOOK_ALLOW_PRIVATE=1, e.g. the Raptor Relay demo (docs/USER-MANUAL.md).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     volumes:

@@ -15,7 +15,7 @@ from ..timeutil import utcnow
 from ..submissions.schemas import MAX_IMAGES, ImageOrder, SubmissionImage
 from .lookup import image_list_for, images_for
 from .models import StoredFile
-from .service import MAX_UPLOAD_BYTES, StorageError, checksum_of, storage
+from .service import StorageError, checksum_of, storage
 
 router = APIRouter(tags=["storage"])
 
@@ -64,7 +64,7 @@ async def upload_submission_image(
     Frozen at the deadline like every other part of the entry: without this
     check a team could swap its thumbnail after judging opened."""
     submission = _team_submission_open(session, team)
-    data = await file.read(MAX_UPLOAD_BYTES + 1)  # never more than one byte past the cap
+    data = await file.read()
     try:
         key = storage.save(data, file.content_type or "")
     except StorageError as e:
@@ -121,7 +121,7 @@ async def add_submission_image(
         raise HTTPException(
             status.HTTP_409_CONFLICT, f"A project can have at most {MAX_IMAGES} images. Remove one first."
         )
-    data = await file.read(MAX_UPLOAD_BYTES + 1)  # never more than one byte past the cap
+    data = await file.read()
     try:
         key = storage.save(data, file.content_type or "")
     except StorageError as e:
@@ -195,7 +195,7 @@ async def upload_avatar(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    data = await file.read(MAX_UPLOAD_BYTES + 1)  # never more than one byte past the cap
+    data = await file.read()
     try:
         key = storage.save(data, file.content_type or "")
     except StorageError as e:

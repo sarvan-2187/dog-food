@@ -12,9 +12,16 @@ from ..audit.log import record
 from ..auth import Role, User, require_role
 from ..db import get_session
 from ..events.models import Event
+from .. import crypto
 from ..ratelimit import webhook_test_limiter
+from ..timeutil import utcnow
 from .models import WebhookSubscription
+from .service import _deliver, _delivery_id
 from .targets import refusal
+
+# Each subscription turns every action in the event into one more outbound
+# POST, so the count is capped: nobody can make HackFlow a request amplifier.
+MAX_WEBHOOKS_PER_EVENT = 10
 
 router = APIRouter(tags=["webhooks"])
 
@@ -32,9 +39,6 @@ class WebhookCreate(BaseModel):
             raise ValueError("Webhook URL must start with http:// or https://.")
         if len(v) > 500:
             raise ValueError("Webhook URL must be 500 characters or fewer.")
-        # No DNS lookup at validation time; delivery re-checks with one.
-        if reason := blocked_reason(v, resolve=False):
-            raise ValueError(reason)
         return v
 
 
@@ -71,6 +75,13 @@ def create_webhook(
     session: Session = Depends(get_session),
 ) -> WebhookSubscription:
     _event_or_404(session, event_id)
+    existing = list(session.exec(select(WebhookSubscription).where(WebhookSubscription.event_id == event_id)))
+    if any(w.url == payload.url for w in existing):
+        raise HTTPException(status.HTTP_409_CONFLICT, "This event already sends webhooks to that URL.")
+    if len(existing) >= MAX_WEBHOOKS_PER_EVENT:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"An event can have at most {MAX_WEBHOOKS_PER_EVENT} webhooks. Delete one first."
+        )
     if problem := refusal(payload.url):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
     webhook = WebhookSubscription(event_id=event_id, url=payload.url, created_by_id=user.id)
@@ -117,7 +128,8 @@ def test_webhook(
     session: Session = Depends(get_session),
 ) -> WebhookTestResult:
     """Send one signed `webhook.test` delivery now and report how it went, so an
-    organizer wiring up an integration doesn't have to wait for a real action."""
+    organizer wiring up an integration doesn't have to wait for a real action.
+    Same guard, signature and timeout as every other delivery."""
     webhook = session.get(WebhookSubscription, webhook_id)
     if not webhook or webhook.event_id != event_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such webhook on this event.")
@@ -131,7 +143,7 @@ def test_webhook(
         "topic": "webhook.test",
         "event_id": event_id,
         "issued_at": utcnow().isoformat(),
-        "delivery_id": uuid.uuid4().hex,
+        "delivery_id": _delivery_id(),
         "webhook_id": webhook_id,
     }
     _deliver(webhook.url, webhook.id, crypto.sign_record(payload), session=session)

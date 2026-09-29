@@ -16,7 +16,6 @@ from ..events.visibility import may_see_results, results_are_public
 from ..submissions.models import Submission, in_competition
 from ..teams.models import Team
 from ..timeutil import utcnow
-from ..protection import client_ip
 from ..webhooks.service import notify
 from .models import Comment, Vote
 from ..ratelimit import comment_limiter, vote_limiter, voter_email_limiter
@@ -43,7 +42,7 @@ def _client_fingerprint(request: Request) -> str:
     Hashed rather than stored raw so the audit trail does not become a log of
     everyone's IP address.
     """
-    client = client_ip(request)
+    client = request.client.host if request.client else ""
     agent = request.headers.get("user-agent", "")
     return hashlib.sha256(f"{client}|{agent}".encode()).hexdigest()[:32]
 

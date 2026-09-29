@@ -516,9 +516,10 @@ What a key can and can't do:
   shows when each key was last used, so a key nobody uses is easy to spot and remove.
 - **Revoking works immediately**, and so does deactivating the owner or removing their
   organizer role. You can have up to 20 live keys.
-- **Keys are rate-limited**: 1,200 requests a minute per key by default, with the minute's
-  budget usable as a burst. A tool that goes over gets `429 Too Many Requests` and a
-  `Retry-After` header telling it how many seconds to wait.
+- **Requests are rate-limited**: a tool calling with a key gets 200 requests a minute from
+  its address (the same allowance as any visitor). A tool that goes over gets
+  `429 Too Many Requests` and a `Retry-After` header telling it how many seconds to wait.
+  Every response also carries `X-RateLimit-Remaining`.
 
 The full list of endpoints, with a "try it out" button for each, is at **`/docs`** on your
 HackFlow (linked from the Integrations page as **Interactive API reference**). A few useful
@@ -544,8 +545,8 @@ curl -H "Authorization: Bearer hf_your_key" https://your-hackflow.example/api/ev
 2. Paste the address that should be notified (it must start with `http://` or `https://`) and
    choose **Add webhook**.
 3. Choose **Send test**. HackFlow sends a signed `webhook.test` notification right away. The
-   badge next to the address then shows **delivered**, **failed** (the address didn't answer
-   with success) or **blocked** (see below).
+   badge next to the address then shows **delivered**, or **failed** if the address didn't
+   answer with success or is one HackFlow won't call (see below).
 
 From then on, every action in the event is sent to that address as it happens:
 submissions, team changes, judge assignments, scores, votes, comments, announcements,
@@ -583,8 +584,7 @@ Each notification is a `POST` with a JSON body:
 }
 ```
 
-It also has the headers `X-HackFlow-Topic`, `X-HackFlow-Delivery` and
-`User-Agent: HackFlow-Webhooks/1.0`. To accept a notification, the receiver should:
+To accept a notification, the receiver should:
 
 1. **Fetch HackFlow's public key once** from `GET /api/public-key`, over https, and keep it.
    **Never** verify against the `public_key` inside the notification: anyone forging one

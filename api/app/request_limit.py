@@ -49,6 +49,16 @@ PER_IP_CEILING = _env_int("RATE_LIMIT_PER_IP_CEILING", 3000)
 WINDOW_SECONDS = 60.0
 MAX_CLIENTS = _env_int("RATE_LIMIT_MAX_CLIENTS", 20_000)
 EXEMPT_PATHS = frozenset({"/healthz"})
+# Files a page load fetches in bulk (the JS bundle, fonts, favicon, uploaded
+# images). They are cheap to serve and one page view needs a dozen of them, so
+# charging them to the per-client allowance meant a venue of anonymous visitors
+# behind one NAT address ran out after ~13 page views a minute. They still count towards
+# the per-IP ceiling, so a flood of them stays bounded.
+STATIC_PREFIXES = ("/assets/", "/fonts/", "/images/", "/media/", "/favicon")
+
+
+def is_static(path: str) -> bool:
+    return path.startswith(STATIC_PREFIXES)
 
 
 class SlidingWindowLimiter:
@@ -149,17 +159,25 @@ class RateLimitMiddleware:
             return
 
         identity, by_ip = client_key(scope)
-        allowed, remaining, retry_after = client_limiter.hit(identity)
-        if allowed and identity != by_ip and ip_limiter.limit > 0:
-            allowed, _, retry_after = ip_limiter.hit(by_ip)
+        applied = client_limiter
+        if is_static(scope.get("path", "")):
+            if ip_limiter.limit <= 0:
+                await self.app(scope, receive, send)
+                return
+            applied = ip_limiter
+            allowed, remaining, retry_after = ip_limiter.hit(by_ip)
+        else:
+            allowed, remaining, retry_after = client_limiter.hit(identity)
+            if allowed and identity != by_ip and ip_limiter.limit > 0:
+                allowed, _, retry_after = ip_limiter.hit(by_ip)
         limit_headers = [
-            (b"x-ratelimit-limit", str(client_limiter.limit).encode()),
+            (b"x-ratelimit-limit", str(applied.limit).encode()),
             (b"x-ratelimit-remaining", str(remaining if allowed else 0).encode()),
         ]
         if not allowed:
             wait = max(1, int(retry_after + 0.999))
             body = json.dumps(
-                {"detail": f"Too many requests - the limit is {client_limiter.limit} a minute. "
+                {"detail": f"Too many requests - the limit is {applied.limit} a minute. "
                            f"Try again in about {wait} seconds."}
             ).encode()
             await send(

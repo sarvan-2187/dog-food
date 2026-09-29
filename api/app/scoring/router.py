@@ -37,16 +37,16 @@ ORGANIZER = (Role.organizer, Role.admin)
 
 def _weighted_total(criteria: list[dict], values: dict[str, float]) -> float:
     """Raw total = sum(w_i * v_i / max_i) / sum(w_i) * M, with M the largest
-    max_score in the rubric. Callers validate completeness first.
+    max_score in the rubric set. Callers validate completeness first.
 
     Each value is taken as a fraction of its own criterion's maximum before it
     is weighted, so a weight means what the organizer set: with Technical (0-10,
     70%) and Presentation (0-100, 30%), a plain sum(w * v) would let
     Presentation carry ~81% of the total just because its numbers are bigger.
     Dividing by sum(w) keeps the total right while a rubric set is still being
-    built and its weights don't yet add to 1. When every criterion shares one
-    max_score and the weights add to 1 - every rubric the fixtures ship - this
-    is exactly sum(w * v), so existing totals and exports don't change."""
+    built. When every criterion shares one max_score and the weights add to 1 -
+    every rubric the fixtures ship - this equals sum(w * v), so existing totals
+    and exports don't change."""
     total_weight = sum(float(c["weight"]) for c in criteria)
     if total_weight <= 0:
         return 0.0
@@ -634,6 +634,10 @@ def _account(session: Session, email: str) -> "User | None":
     return session.exec(select(User).where(func.lower(User.email) == email.strip().lower())).first()
 
 
+def _positive_finite(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < float("inf")
+
+
 def _check_people(session: Session, payload: EventImportPayload) -> tuple[dict[str, User], list[str]]:
     """Everything the people half of an import refers to, checked before a row
     is written: (judge accounts by lowercased email, problems). Any problem
@@ -645,16 +649,12 @@ def _check_people(session: Session, payload: EventImportPayload) -> tuple[dict[s
             well_formed = isinstance(c, dict) and {"key", "weight", "max_score"} <= set(c)
             # Positive and finite: a zero max_score would divide by zero in the
             # weighted total, and NaN would poison every judge's normalization.
-            if well_formed and all(
-                isinstance(c[k], (int, float)) and not isinstance(c[k], bool) and 0 < c[k] < float("inf")
-                for k in ("weight", "max_score")
-            ):
+            bad_number = isinstance(c, dict) and any(
+                k in c and not (_positive_finite(c[k])) for k in ("weight", "max_score")
+            )
+            if well_formed and not bad_number:
                 criteria[c["key"]] = c
-            elif payload.scores or (
-                isinstance(c, dict)
-                and any(k in c and not (isinstance(c[k], (int, float)) and 0 < c[k] < float("inf"))
-                        for k in ("weight", "max_score"))
-            ):
+            elif payload.scores or bad_number:
                 problems.append(
                     f"Rubric {r.name!r} has a criterion without a key and a positive weight and max_score."
                 )

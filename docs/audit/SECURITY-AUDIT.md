@@ -22,6 +22,8 @@ a test in `api/tests/test_security.py` unless noted.
 | S9 | Low | Passwords over 72 bytes were silently truncated by bcrypt, so two long passwords with the same first 72 bytes were the same password. | New passwords over 72 bytes are refused with a clear message. |
 | S10 | Low | `read_session_token` trusted the shape of a validly signed payload. | It requires `{"user_id": int}`. |
 | S11 | Low | Early refusals (413/429/503), sent before a route runs, had no `X-Frame-Options`. | Added, except under `/embed/`, which is meant to be framed. |
+| S12 | Medium | **Static files spent the per-client allowance.** Only `/healthz` was exempt from the 200/min limit, so the JS bundle, fonts, favicon and images each cost one request. A page view is about 15 requests, so a venue of anonymous visitors behind one NAT address ran dry after ~13 page views a minute. | `/assets`, `/fonts`, `/images`, `/media` and `/favicon` skip the per-client allowance but still count towards the per-IP ceiling (3000/min), so a flood of them stays bounded. The parallel browser suite still needs `RATE_LIMIT_PER_MINUTE=0`: its dozens of test users sign in from one address, which is the anonymous per-address limit doing its job. (PR #15) |
+| S13 | Low | **Webhook amplification.** No cap on subscriptions per event, so one action could fan out into any number of outbound POSTs. | At most 10 per event, no duplicate URLs. A rate-limited `POST .../webhooks/{id}/test` sends a signed `webhook.test` on demand (**Send test** in Event settings). (PR #15) |
 
 Also from this branch: DoS hardening and the 200/min limit (tasks 1-2, THREAT-MODEL
 entry 32), the audit log made append-only in the database (task 6), and webhook

@@ -110,9 +110,6 @@ def join_team(
     if event and event.end_at < utcnow():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This event's deadline has passed.")
     max_size = event.max_team_size if event else 4
-    # Lock the team row before counting, so two people joining at the same
-    # moment can't both see "one seat left" and push the team past its cap.
-    session.exec(select(Team).where(Team.id == team.id).with_for_update()).one()
     current_size = len(session.exec(select(TeamMembership).where(TeamMembership.team_id == team.id)).all())
     if current_size >= max_size:
         raise HTTPException(status.HTTP_409_CONFLICT, f"This team is full (max {max_size} members).")
