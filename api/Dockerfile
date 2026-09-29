@@ -25,4 +25,7 @@ COPY fixtures.json ./fixtures/dogfood.json
 COPY --from=web /web/dist ./static
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# app/serve.py runs uvicorn with its transport-level DoS limits (concurrency,
+# keep-alive, backlog, 16 KB request head) and a 10 s header timeout against
+# slow-loris; app/protection.py covers the application level.
+CMD ["python", "-m", "app.serve"]

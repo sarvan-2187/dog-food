@@ -22,7 +22,7 @@ from ..timeutil import utcnow
 from ..ratelimit import reset_issue_limiter
 from . import mailer
 from .deps import require_role
-from .models import PasswordReset, ResetChannel, Role, User, UserPublic
+from .models import PasswordReset, ResetChannel, Role, User, UserPublic, find_user_by_email
 from .security import hash_password
 
 router = APIRouter(tags=["recovery"])
@@ -41,6 +41,10 @@ MAY_RESET: dict[Role, frozenset[Role]] = {
 def validate_new_password(v: str) -> str:
     if len(v) < 8:
         raise ValueError("Password must be at least 8 characters.")
+    # bcrypt reads only the first 72 bytes and silently ignores the rest, so a
+    # longer password would be weaker than it looks: say so instead.
+    if len(v.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 bytes (about 72 characters).")
     return v
 
 
@@ -291,9 +295,7 @@ def create_reset_link(
     """The raw link exists in this one response and nowhere else. An organizer
     looking an email up is not an enumeration leak: users.csv already lists
     every address to them."""
-    from .router import user_by_email  # router imports this module
-
-    target = user_by_email(session, payload.email)
+    target = find_user_by_email(session, payload.email)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No HackFlow account uses that email address.")
     if target.id == issuer.id:

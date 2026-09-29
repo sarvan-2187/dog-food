@@ -33,6 +33,7 @@ def create_db_and_tables() -> None:
     widen_stored_file_key()
     run_backfills()
     add_vote_voter_index()
+    protect_audit_log()
 
 
 # create_all() creates missing *tables* but never adds a column to one that
@@ -205,6 +206,36 @@ def add_vote_voter_index() -> None:
             )
         )
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_vote_voter ON votes (voter_key, submission_id)"))
+
+
+def protect_audit_log() -> None:
+    """Make audit_log append-only in the database itself (PLAN.md section 9:
+    "enforced at the DB grant level, not just 'we don't call UPDATE in our
+    code'"). The app connects as the table's owner, so a REVOKE would not bind
+    it; a trigger does. Any UPDATE or DELETE of a row, from this app, a bug,
+    or someone at a psql prompt with the app's credentials, is refused.
+    INSERT is untouched, and TRUNCATE (a deliberate wipe, used between test
+    runs) is not a row-level change. Idempotent: CREATE OR REPLACE, and the
+    trigger is only created when missing."""
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE OR REPLACE FUNCTION audit_log_append_only() RETURNS trigger "
+                "LANGUAGE plpgsql AS $$ BEGIN "
+                "RAISE EXCEPTION 'audit_log is append-only: % refused', TG_OP "
+                "USING ERRCODE = 'insufficient_privilege'; END $$"
+            )
+        )
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'audit_log_append_only' AND NOT tgisinternal")
+        ).first()
+        if exists is None:
+            conn.execute(
+                text(
+                    "CREATE TRIGGER audit_log_append_only BEFORE UPDATE OR DELETE ON audit_log "
+                    "FOR EACH ROW EXECUTE FUNCTION audit_log_append_only()"
+                )
+            )
 
 
 def get_session() -> Iterator[Session]:

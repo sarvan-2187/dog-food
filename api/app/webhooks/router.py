@@ -14,14 +14,7 @@ from ..db import get_session
 from ..events.models import Event
 from ..ratelimit import webhook_test_limiter
 from .models import WebhookSubscription
-from .service import _deliver, blocked_reason
-from .. import crypto
-from ..timeutil import utcnow
-import uuid
-
-# Each subscription multiplies every action into one more outbound request, so
-# the count is capped: nobody can turn HackFlow into a request amplifier.
-MAX_WEBHOOKS_PER_EVENT = 10
+from .targets import refusal
 
 router = APIRouter(tags=["webhooks"])
 
@@ -78,15 +71,8 @@ def create_webhook(
     session: Session = Depends(get_session),
 ) -> WebhookSubscription:
     _event_or_404(session, event_id)
-    existing = list(session.exec(select(WebhookSubscription).where(WebhookSubscription.event_id == event_id)))
-    if any(w.url == payload.url for w in existing):
-        raise HTTPException(status.HTTP_409_CONFLICT, "This event already sends webhooks to that URL.")
-    if len(existing) >= MAX_WEBHOOKS_PER_EVENT:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, f"An event can have at most {MAX_WEBHOOKS_PER_EVENT} webhooks. Delete one first."
-        )
-    if reason := blocked_reason(payload.url):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, reason)
+    if problem := refusal(payload.url):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
     webhook = WebhookSubscription(event_id=event_id, url=payload.url, created_by_id=user.id)
     session.add(webhook)
     session.flush()
@@ -109,8 +95,12 @@ def delete_webhook(
     webhook = session.get(WebhookSubscription, webhook_id)
     if not webhook or webhook.event_id != event_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such webhook on this event.")
-    record(session, "webhook.deleted", actor=user, entity_type="event", entity_id=event_id, webhook_id=webhook_id)
+    # Deleted and flushed before the audit entry is recorded: record() also
+    # queues a webhook delivery to the event's active subscriptions, and the
+    # removed URL must not be sent even this one last payload.
     session.delete(webhook)
+    session.flush()
+    record(session, "webhook.deleted", actor=user, entity_type="event", entity_id=event_id, webhook_id=webhook_id)
     session.commit()
 
 

@@ -56,6 +56,7 @@ from app.db import (  # noqa: E402
     add_missing_columns,
     add_vote_voter_index,
     engine,
+    protect_audit_log,
     widen_stored_file_key,
 )
 from app.auth import models as _auth_models  # noqa: E402,F401
@@ -75,6 +76,7 @@ add_missing_columns()
 add_guarded_indexes()
 widen_stored_file_key()
 add_vote_voter_index()
+protect_audit_log()
 
 
 def _truncate_all() -> None:
@@ -144,3 +146,21 @@ def webhook_deliveries(monkeypatch):
     sent: list = []
     monkeypatch.setattr(service, "_submit", lambda url, sub_id, signed: sent.append((url, sub_id, signed)))
     return sent
+
+
+@pytest.fixture(autouse=True)
+def _offline_dns(monkeypatch):
+    """The webhook SSRF guard resolves hosts; tests must not need DNS. IP
+    literals resolve to themselves, "localhost" to loopback, and any other
+    name to a public documentation-range stand-in."""
+    import ipaddress
+
+    from app.webhooks import targets
+
+    def resolve(host, port):
+        try:
+            return [str(ipaddress.ip_address(host.strip("[]")))]
+        except ValueError:
+            return ["127.0.0.1"] if host == "localhost" else ["93.184.215.14"]
+
+    monkeypatch.setattr(targets, "_resolve", resolve)

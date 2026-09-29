@@ -247,9 +247,9 @@ def submit_submission(
 def gallery(
     request: Request,
     event_id: "int | None" = None,
-    q: "str | None" = Query(default=None, max_length=100),
-    track: "str | None" = Query(default=None, max_length=100, description="Only entries in this track."),
-    tag: "str | None" = Query(default=None, max_length=60, description="Only entries with this tech tag (any case)."),
+    q: "str | None" = Query(default=None, max_length=200),
+    track: "str | None" = Query(default=None, description="Only entries in this track."),
+    tag: "str | None" = Query(default=None, description="Only entries with this tech tag (any case)."),
     order: str = Query(default="recent", pattern="^(recent|random|votes)$"),
     seed: "int | None" = Query(
         default=None,
@@ -307,7 +307,10 @@ def gallery(
     if order == "random":
         # Seeded, so the same visitor sees the same order all session and the
         # grid does not jump around between visits (PLAN.md Phase 3 UX).
-        random.Random(seed if seed is not None else 0).shuffle(rows)
+        # Without a seed every caller used to get seed 0, the same "random"
+        # order for everyone - exactly the fixed-top-slot bias shuffling exists
+        # to remove (PLAN.md T3).
+        random.Random(seed if seed is not None else random.SystemRandom().randrange(2**32)).shuffle(rows)
     elif order == "votes":
         if not all(visible.get(r.event_id, False) for r in rows):
             raise HTTPException(

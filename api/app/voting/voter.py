@@ -50,7 +50,8 @@ def read_voter_key(request: Request) -> Optional[str]:
 
 def set_voter_cookie(response: Response, key: str) -> None:
     response.set_cookie(
-        VOTER_COOKIE, _cookie.dumps(key), max_age=VOTER_MAX_AGE, httponly=True, samesite="lax", secure=COOKIE_SECURE
+        VOTER_COOKIE, _cookie.dumps(key), max_age=VOTER_MAX_AGE, httponly=True, samesite="lax",
+        secure=COOKIE_SECURE,
     )
 
 
