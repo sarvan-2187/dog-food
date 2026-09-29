@@ -145,6 +145,9 @@ announcement_email_limiter = TokenBucketLimiter(capacity=1, per_seconds=600.0)
 
 
 def reset_all() -> None:
+    from . import request_limit
+
+    request_limit.reset()
     for limiter in (
         vote_limiter,
         comment_limiter,

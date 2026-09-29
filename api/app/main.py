@@ -16,6 +16,7 @@ mimetypes.add_type("font/woff2", ".woff2")
 
 from .db import create_db_and_tables
 from .protection import ProtectionMiddleware, SecurityHeadersMiddleware
+from .request_limit import RateLimitMiddleware
 from .seed import run_seed
 
 # Import every model module before create_db_and_tables() so SQLModel.metadata
@@ -90,9 +91,12 @@ app = FastAPI(
 )
 
 
-# Outermost last: security headers wrap everything, including the cheap
-# 413/503/504 refusals ProtectionMiddleware sends without reaching a route.
+# Added innermost first. A request meets security headers, then the global
+# 200/minute limit (request_limit.py), then ProtectionMiddleware; so a
+# rate-limited request is refused before it takes an in-flight slot, and every
+# cheap 413/429/503/504 refusal still carries the security headers.
 app.add_middleware(ProtectionMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 
