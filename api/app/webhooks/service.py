@@ -17,6 +17,7 @@ import logging
 import secrets
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import BackgroundTasks
@@ -30,6 +31,66 @@ from .models import WebhookSubscription
 from .targets import refusal
 
 TIMEOUT_SECONDS = 5.0
+USER_AGENT = "HackFlow-Webhooks/1.0"
+
+# --------------------------------------------------------------------------
+# SSRF guard. A webhook URL is typed by an organizer, and the server then
+# POSTs to it from inside its own network - where the database, the cloud
+# metadata service (169.254.169.254) and other private hosts live. So a URL
+# that names, or resolves to, a loopback, private, link-local or otherwise
+# non-public address is refused, at creation and again at every delivery (DNS
+# can change after creation). WEBHOOK_ALLOW_PRIVATE=1 lifts this for a local
+# demo whose receiver runs on the same machine or LAN (docs/USER-MANUAL.md).
+# --------------------------------------------------------------------------
+
+
+def allow_private() -> bool:
+    return os.getenv("WEBHOOK_ALLOW_PRIVATE", "").strip().lower() in ("1", "true", "yes")
+
+
+def _non_public(ip: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bool:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+        or not ip.is_global
+    )
+
+
+def blocked_reason(url: str, *, resolve: bool = True) -> Optional[str]:
+    """Why this URL may not receive webhooks, or None if it may. With
+    resolve=False only the literal host is judged (no DNS lookup)."""
+    if allow_private():
+        return None
+    host = (urlparse(url).hostname or "").strip("[]").lower()
+    if not host:
+        return "The webhook URL has no host."
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local") or host.endswith(".internal"):
+        return "Webhooks can't be sent to a local or internal host name."
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        return "Webhooks can't be sent to a private or reserved address." if _non_public(literal) else None
+    if not resolve:
+        return None
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return None  # unresolvable: the POST itself will fail and be recorded as such
+    for info in infos:
+        try:
+            if _non_public(ipaddress.ip_address(info[4][0])):
+                return "That host resolves to a private or reserved address."
+        except ValueError:
+            continue
+    return None
 
 log = logging.getLogger("hackflow.webhooks")
 
@@ -102,7 +163,16 @@ def notify(session: Session, background_tasks: BackgroundTasks, event_id: int, t
                "delivery_id": _delivery_id(), **detail}
     signed = crypto.sign_record(payload)
     for sub in subscriptions:
-        background_tasks.add_task(_deliver, sub.url, sub.id, signed)
+        # One signed payload per subscription, each with its own delivery_id,
+        # so a receiver can drop a replayed or duplicated delivery.
+        payload = {
+            "topic": topic,
+            "event_id": event_id,
+            "issued_at": utcnow().isoformat(),
+            "delivery_id": uuid.uuid4().hex,
+            **detail,
+        }
+        background_tasks.add_task(_deliver, sub.url, sub.id, crypto.sign_record(payload))
 
 
 # --------------------------------------------------------------------------
@@ -199,9 +269,10 @@ def queue_audited(
     for key, value in detail.items():
         if key.endswith("_id") and isinstance(value, int) and key not in _PRIVATE_ID_KEYS and key != "event_id":
             payload[key] = value
-    signed = crypto.sign_record(payload)
     pending = session.info.setdefault(_PENDING, [])
-    pending.extend((sub.url, sub.id, signed) for sub in subscriptions)
+    pending.extend(
+        (sub.url, sub.id, crypto.sign_record({**payload, "delivery_id": uuid.uuid4().hex})) for sub in subscriptions
+    )
 
 
 @sa_event.listens_for(OrmSession, "after_commit")

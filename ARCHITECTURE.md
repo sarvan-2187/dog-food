@@ -46,6 +46,8 @@ api/app/
 ├── seed.py          # idempotent fixture seeding, run automatically on every boot
 ├── timeutil.py      # utcnow() / ensure_utc() — the only source of "now" in the app
 ├── ratelimit.py     # the in-process token bucket, and every limiter the app uses
+├── protection.py    # ASGI middleware every request passes first: global rate limits,
+│                     #   body-size caps, security headers, proxy-aware client_ip()
 ├── crypto.py        # the Ed25519 signing key (participation records, webhook payloads)
 ├── auth/            # User model, Role enum, password hashing, versioned session cookies,
 │   │                 #   get_current_user(), require_role() — imported everywhere else
@@ -255,6 +257,7 @@ by every consequential action, in the same transaction. It now also calls
   webhooks are per event;
 - skips the topics `notify()` sends itself (below);
 - signs a payload with the topic set to the audit action string exactly, plus ids only:
+  `{topic, event_id, issued_at, entity_type, entity_id, delivery_id}` and any integer `*_id` from the
   `{topic, event_id, issued_at, delivery_id, entity_type, entity_id}` and any integer `*_id` from the
   audit detail. Never scores, emails, names, free text or vote details (`vote_id`,
   `voter_user_id`, voter keys and fingerprints are dropped). A receiver that wants more
@@ -296,6 +299,42 @@ payload is signed with the same Ed25519 key already built for judge participatio
 topic fires exactly once per event, guarded by a one-shot flag checked lazily the next
 time results are actually read (not by a background scheduler), and gated on results
 being *publicly* visible so an organizer's own early access can't trigger it.
+
+### Hardening (2026-09-29, docs/SECURITY-AUDIT.md)
+
+- **SSRF guard.** A webhook URL that names or resolves to a loopback, private, link-local
+  or reserved address, or an internal host name, is refused at creation and re-checked at
+  every delivery (`blocked_reason()`), which records `blocked`. Redirects are never
+  followed. `WEBHOOK_ALLOW_PRIVATE=1` lifts this for a local demo only.
+- **Bounded fan-out.** At most 10 webhooks per event, no duplicate URLs.
+- **Replay-safe.** Each signed record carries a random `delivery_id`. Deliveries also carry
+  `X-HackFlow-Topic`, `X-HackFlow-Delivery` and `User-Agent: HackFlow-Webhooks/1.0`.
+- **Test ping.** `POST /api/events/{id}/webhooks/{wid}/test` sends a signed `webhook.test`
+  now and returns the result (the **Send test** button).
+
+The reference receiver is the separate
+[Raptor Relay](https://github.com/sarvan-2187/hackflow-third-party) app (docs/USER-MANUAL.md).
+
+## Request protection: before any route runs
+
+`app/protection.py` is a pure ASGI middleware, mounted inside the frame-policy middleware.
+Every request passes it first:
+
+1. **Rate limit.** Token buckets: 600 requests a minute and 120 writes a minute (all
+   configurable). A signed-in browser is counted **per account** (a session cookie whose
+   signature verifies, an HMAC with no database read), because a hackathon venue often
+   shares one public IP. Anonymous traffic is counted per address, and API keys per key
+   (1,200/min). `/healthz`, `/assets`, `/fonts` and `/media` are never counted. The
+   endpoint-specific limits in `ratelimit.py` still apply on top. Every limiter caps its
+   memory at 50,000 buckets.
+2. **Body cap.** 1 MB by default, 6 MB for uploads, 10 MB for event import, enforced on the
+   declared `Content-Length` and on streamed bodies, before the route reads anything.
+3. **Headers.** `nosniff`, `Referrer-Policy`, `Permissions-Policy`,
+   `Cross-Origin-Opener-Policy`, and HSTS when `APP_BASE_URL` is https.
+
+`client_ip()` is the only place the app reads a client's address. It trusts
+`X-Forwarded-For` only when `TRUSTED_PROXY_HOPS` says a proxy is there, and then takes the
+entry the proxy appended (counted from the right), never the client-chosen left end.
 
 ## Testing architecture
 

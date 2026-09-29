@@ -76,12 +76,16 @@ def _assert_keys_free(session: Session, event_id: int, criteria: list[dict], exc
 @router.get("/api/events/{event_id}/rubrics", response_model=list[Rubric])
 def list_rubrics(
     event_id: int,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> list[Rubric]:
     """Readable by any signed-in user: a judge needs the criteria to score, and a
     participant is entitled to know what they are being judged on. It carries no
-    scores, so this is not score data."""
+    scores, so this is not score data. A draft event's rubrics stay hidden like
+    the draft itself (404), so a draft's existence doesn't leak through here."""
+    from ..events.router import visible_or_404  # local: events.router imports judging models
+
+    visible_or_404(session.get(Event, event_id), user)
     return _rubrics_for_event(session, event_id)
 
 

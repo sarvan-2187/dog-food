@@ -142,6 +142,12 @@ register_ip_limiter = TokenBucketLimiter(capacity=20, per_seconds=3600.0)
 judge_reminder_limiter = TokenBucketLimiter(capacity=1, per_seconds=3600.0)
 verify_email_limiter = TokenBucketLimiter(capacity=3, per_seconds=3600.0)
 announcement_email_limiter = TokenBucketLimiter(capacity=1, per_seconds=600.0)
+# Sign-ups per client address: bcrypt makes each one cost real CPU, and a
+# script creating thousands of accounts is how sybil voting starts. Twenty an
+# hour still covers a room of people registering from one venue network.
+register_ip_limiter = TokenBucketLimiter(capacity=20, per_seconds=3600.0)
+# Webhook test pings, per organizer: each one is an outbound request.
+webhook_test_limiter = TokenBucketLimiter(capacity=10, per_seconds=600.0)
 
 
 def reset_all() -> None:
@@ -161,5 +167,10 @@ def reset_all() -> None:
         judge_reminder_limiter,
         verify_email_limiter,
         announcement_email_limiter,
+        register_ip_limiter,
+        webhook_test_limiter,
     ):
         limiter.reset()
+    from .protection import reset as reset_protection  # local: protection imports us
+
+    reset_protection()

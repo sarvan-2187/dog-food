@@ -4,6 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, EmailStr, field_validator
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..audit.log import record
@@ -17,6 +18,7 @@ from ..ratelimit import (
     register_ip_limiter,
     verify_email_limiter,
 )
+from ..protection import client_ip
 from ..timeutil import utcnow
 from . import mailer
 from .deps import get_current_user
@@ -39,10 +41,21 @@ def public_user(session: Session, user: User) -> UserPublic:
     )
 
 
+def user_by_email(session: Session, email: str) -> "User | None":
+    """Email addresses are matched case-insensitively everywhere: Alice@x.com
+    and alice@x.com are one person, and must never become two accounts."""
+    return session.exec(select(User).where(func.lower(User.email) == email.strip().lower())).first()
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     name: str
+
+    @field_validator("email")
+    @classmethod
+    def lower_email(cls, v: str) -> str:
+        return v.strip().lower()
 
     @field_validator("password")
     @classmethod
@@ -131,7 +144,7 @@ def login(
     account key is the typed email, so the answer is identical whether or not
     that account exists."""
     account_key = f"login-account:{payload.email.lower()}"
-    ip_key = f"login-ip:{request.client.host if request.client else 'unknown'}"
+    ip_key = f"login-ip:{client_ip(request)}"
     for limiter, key in ((login_account_limiter, account_key), (login_ip_limiter, ip_key)):
         allowed, retry_after = limiter.peek(key)
         if not allowed:
@@ -211,7 +224,7 @@ def forgot_password(
             "Password reset emails aren't set up here. Ask an organizer for a reset link.",
         )
     email = payload.email.lower()
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     # Both buckets are always charged, so a flood from one IP can't hide behind
     # rotating addresses and a flood at one address can't hide behind IPs.
     ip_ok, _ = forgot_ip_limiter.check(f"forgot-ip:{ip}")
