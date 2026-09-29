@@ -43,12 +43,16 @@ async function open(page, path) {
   await page.waitForTimeout(700);
 }
 
+const STATIC_BAR = 'header, aside { position: static !important; }';
+
 async function shot(page, name, target) {
   const path = `${OUT}${name}.png`;
   if (target) {
     await target.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
-    await target.screenshot({ path });
+    // A card taller than the viewport is stitched while scrolling; unstick the top bar so it
+    // isn't painted across the middle of the image.
+    await target.screenshot({ path, style: STATIC_BAR });
   } else {
     await page.screenshot({ path });
   }
