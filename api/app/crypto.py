@@ -28,7 +28,10 @@ def _load_or_create_key() -> Ed25519PrivateKey:
         return load_pem_private_key(_PRIVATE_KEY_PATH.read_bytes(), password=None)
     KEYS_DIR.mkdir(parents=True, exist_ok=True)
     key = Ed25519PrivateKey.generate()
-    _PRIVATE_KEY_PATH.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
+    # 0600 from creation: the default umask left the private key world-readable.
+    fd = os.open(_PRIVATE_KEY_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
     return key
 
 

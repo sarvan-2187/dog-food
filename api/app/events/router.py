@@ -227,6 +227,19 @@ def delete_event(
             f"This event has {teams} team(s) and {submissions} submission(s). "
             "Deleting it would destroy their work, so it cannot be deleted while they exist.",
         )
+    # With no teams or submissions nothing anyone made is lost, but the
+    # organizer's own setup (rubrics, judge panel and invites, conflicts,
+    # announcements, webhooks) still points at the event. Deleting the event
+    # under it was a foreign-key violation, so an event that had merely been
+    # configured could never be deleted: a bare 500. That setup goes with it.
+    from ..judging.models import EventJudge, JudgeAssignment, JudgeConflict, JudgeInvite
+    from ..webhooks.models import WebhookSubscription
+    from .models import Announcement
+
+    for model in (JudgeAssignment, JudgeConflict, EventJudge, JudgeInvite, Rubric, Announcement, WebhookSubscription):
+        for row in session.exec(select(model).where(model.event_id == event_id)):
+            session.delete(row)
+    session.flush()
     record(session, "event.deleted", actor=user, entity_type="event", entity_id=event_id, slug=event.slug)
     session.delete(event)
     session.commit()

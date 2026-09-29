@@ -192,7 +192,7 @@ def test_an_audited_action_reaches_a_subscribed_webhook(client, session, webhook
     assert body["event_id"] == event.id and body["entity_type"] == "event" and body["entity_id"] == event.id
     assert verify_record(body, signed["signature"], signed["public_key"]), "still Ed25519-signed"
     # Ids and the action only: none of the audit detail ("changed") rides along.
-    assert set(body) == {"topic", "event_id", "issued_at", "entity_type", "entity_id"}
+    assert set(body) == {"topic", "event_id", "issued_at", "entity_type", "entity_id", "delivery_id"}
 
 
 def test_an_action_on_a_submission_resolves_to_its_event(client, session, webhook_deliveries):

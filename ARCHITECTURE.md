@@ -255,7 +255,7 @@ by every consequential action, in the same transaction. It now also calls
   webhooks are per event;
 - skips the topics `notify()` sends itself (below);
 - signs a payload with the topic set to the audit action string exactly, plus ids only:
-  `{topic, event_id, issued_at, entity_type, entity_id}` and any integer `*_id` from the
+  `{topic, event_id, issued_at, delivery_id, entity_type, entity_id}` and any integer `*_id` from the
   audit detail. Never scores, emails, names, free text or vote details (`vote_id`,
   `voter_user_id`, voter keys and fingerprints are dropped). A receiver that wants more
   fetches it through the API with a key;

@@ -13,6 +13,8 @@ new code to verify a webhook too.
 """
 from __future__ import annotations
 
+import logging
+import secrets
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 
@@ -25,8 +27,17 @@ from sqlmodel import Session, select
 from .. import crypto
 from ..timeutil import utcnow
 from .models import WebhookSubscription
+from .targets import refusal
 
 TIMEOUT_SECONDS = 5.0
+
+log = logging.getLogger("hackflow.webhooks")
+
+
+def _delivery_id() -> str:
+    """Unique per payload and inside the signed record, so a receiver can
+    de-duplicate and refuse a replayed delivery."""
+    return secrets.token_hex(12)
 
 
 def _deliver(url: str, subscription_id: int, signed_payload: dict, *, session: "Session | None" = None) -> None:
@@ -42,10 +53,18 @@ def _deliver(url: str, subscription_id: int, signed_payload: dict, *, session: "
     own transaction pass their own session directly instead."""
     status_text = "failed"
     try:
+        # Checked again at delivery, not only at creation: DNS may have changed.
+        if problem := refusal(url):
+            raise ValueError(problem)
+        # httpx.post does not follow redirects by default: a 3xx is a failed
+        # delivery, never a hop to another host (tests pin this).
         response = httpx.post(url, json=signed_payload, timeout=TIMEOUT_SECONDS)
         if response.is_success:
             status_text = "delivered"
-    except httpx.HTTPError:
+    except Exception:  # noqa: BLE001 - any failure is "failed", never an unhandled error in a worker
+        # Not only httpx.HTTPError: a malformed URL raises httpx.InvalidURL,
+        # which is not one, and used to escape here without recording anything.
+        log.info("webhook %s delivery failed", subscription_id, exc_info=True)
         status_text = "failed"
 
     def _record_status(s: Session) -> None:
@@ -79,7 +98,8 @@ def notify(session: Session, background_tasks: BackgroundTasks, event_id: int, t
     ).all()
     if not subscriptions:
         return
-    payload = {"topic": topic, "event_id": event_id, "issued_at": utcnow().isoformat(), **detail}
+    payload = {"topic": topic, "event_id": event_id, "issued_at": utcnow().isoformat(),
+               "delivery_id": _delivery_id(), **detail}
     signed = crypto.sign_record(payload)
     for sub in subscriptions:
         background_tasks.add_task(_deliver, sub.url, sub.id, signed)
@@ -174,6 +194,7 @@ def queue_audited(
         "issued_at": utcnow().isoformat(),
         "entity_type": entity_type,
         "entity_id": entity_id,
+        "delivery_id": _delivery_id(),
     }
     for key, value in detail.items():
         if key.endswith("_id") and isinstance(value, int) and key not in _PRIVATE_ID_KEYS and key != "event_id":

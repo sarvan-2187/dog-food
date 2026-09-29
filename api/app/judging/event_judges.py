@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 from ..audit.log import record
 from ..auth import Role, User, require_role
 from ..auth import mailer
+from ..auth.models import find_user_by_email
 from ..db import get_session
 from ..events.models import Event
 from ..scoring.models import Score
@@ -164,7 +165,7 @@ def add_existing_judge(
     """For a judge who already has an account - no need to send them a fresh
     invitation for every event they work on."""
     _event_or_404(session, event_id)
-    judge = session.exec(select(User).where(User.email == payload.email)).first()
+    judge = find_user_by_email(session, payload.email)
     if judge is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "No HackFlow account uses that email address - send them an invitation instead."
