@@ -54,6 +54,8 @@ export interface EventRecord {
   rules: string;
   /** Named rounds (Stage 1, Stage 2, ...) in start order. Informational. */
   stages: EventStage[];
+  /** How its certificates look: a key of CERTIFICATE_DESIGNS. */
+  certificate_template?: string;
 }
 
 export interface EventStage {

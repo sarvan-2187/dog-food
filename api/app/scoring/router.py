@@ -20,7 +20,7 @@ from ..teams.models import Team, TeamMembership
 from ..timeutil import ensure_utc, utcnow
 from ..webhooks.service import notify
 from .awards import awards_by_submission
-from .certificate import certificate_serial, render_certificate, submission_for_serial
+from .certificate import TEMPLATES, certificate_serial, render_certificate, submission_for_serial
 from .models import Score
 from .normalization import normalized_table
 from .schemas import EventImportPayload, ResultRow, ScorePublic, ScoreWrite
@@ -399,6 +399,7 @@ def certificate(
         issued_on=(event.results_hidden_until or utcnow()).date(),
         serial=record_.serial,
         verify_url=f"{mailer.APP_BASE_URL}/verify/{record_.serial}",
+        template=event.certificate_template,
     )
     return Response(
         content=pdf_bytes,
@@ -444,6 +445,7 @@ def export_event(
             "results_hidden_until": event.results_hidden_until.isoformat() if event.results_hidden_until else None,
             "rules": event.rules,
             "stages": event.stages,
+            "certificate_template": event.certificate_template,
         },
         "rubrics": [{"name": r.name, "criteria": r.criteria} for r in rubrics],
         "teams": [{"name": t.name} for t in teams],
@@ -487,6 +489,7 @@ def import_event(
         created_by_id=user.id,
         rules=payload.rules,
         stages=stages_to_json(payload.stages),
+        certificate_template=payload.certificate_template if payload.certificate_template in TEMPLATES else "classic",
         status="draft",  # PLAN.md 10.12: an import is reviewed before it goes public
     )
     session.add(event)
