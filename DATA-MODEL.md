@@ -332,9 +332,12 @@ participation records (`api/app/crypto.py`'s `sign_record()`), verifiable offlin
 
 ### `audit_log` (`api/app/audit/models.py`)
 
-Append-only **by construction**, not by a database-level guarantee (no `REVOKE` or
-trigger) — there is simply no update or delete path to this table anywhere in the app,
-and `GET /api/audit` is the only endpoint that reads it. See JUDGING.md's role-isolation
+Append-only **in the database**: a `BEFORE UPDATE OR DELETE` trigger
+(`audit_log_append_only`, created at boot by `db.protect_audit_log()`) refuses any change
+to an existing row, whoever sends it, including a psql session with the app's own
+credentials. The app is the table's owner, so a `REVOKE` would not bind it; the trigger
+does. There is also no update or delete path to this table anywhere in the app, and
+`GET /api/audit` is the only endpoint that reads it. See JUDGING.md's role-isolation
 section for who may read it.
 
 | Column | Type | Notes |
