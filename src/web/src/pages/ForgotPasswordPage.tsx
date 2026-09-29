@@ -74,7 +74,7 @@ export function ForgotPasswordPage() {
         subtitle="An organizer can get you back in within a minute."
         footer={footer}
       >
-        <div className="flex flex-col gap-3 text-body text-ink-700">
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-100 p-card text-body text-ink-700">
           <p>
             This HackFlow doesn't send email, so there's no link to request here. Ask an organizer at the help
             desk or in your event's channel - they can make you a one-time reset link.
@@ -90,7 +90,7 @@ export function ForgotPasswordPage() {
   if (sent) {
     return (
       <AuthLayout title="Check your email" subtitle={sent} footer={footer}>
-        <div className="flex flex-col gap-3 text-body text-ink-700">
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-100 p-card text-body text-ink-700">
           <p>
             Sent to <span className="font-medium text-ink-900">{email.trim()}</span>. Open the link in the email to
             choose a new password.
