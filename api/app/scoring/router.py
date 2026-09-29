@@ -51,6 +51,15 @@ def _rubrics_for_event(session: Session, event_id: int) -> list[Rubric]:
     return rubrics
 
 
+def _existing_event(session: Session, event_id: int) -> Event:
+    """Results and exports for an event id that doesn't exist are a 404, not an
+    empty 200 that reads as "nobody has been scored yet"."""
+    event = session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
+    return event
+
+
 def _combined_criteria(rubrics: list[Rubric]) -> list[dict]:
     """The flat criteria list every submission is actually scored against --
     every rubric in the event's set, concatenated (PLAN.md Open Questions)."""
@@ -242,6 +251,7 @@ def results(
 ) -> list[ResultRow]:
     """Normalised standings. Organizer/admin only -- participants and judges get
     403 here, not a filtered view."""
+    _existing_event(session, event_id)
     return _result_rows(session, event_id)
 
 
@@ -267,6 +277,7 @@ def export_users(
     _: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> Response:
+    _existing_event(session, event_id)
     users = session.exec(select(User).order_by(User.id)).all()
     return _csv_response(
         f"event-{event_id}-users.csv",
@@ -281,6 +292,7 @@ def export_submissions(
     _: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> Response:
+    _existing_event(session, event_id)
     subs = session.exec(select(Submission).where(Submission.event_id == event_id).order_by(Submission.id)).all()
     event = session.get(Event, event_id)
     # One column per custom question, hidden ones included: an answer given is
@@ -308,10 +320,14 @@ def export_assignments(
     _: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> Response:
+    _existing_event(session, event_id)
     assignments = session.exec(
         select(JudgeAssignment).where(JudgeAssignment.event_id == event_id).order_by(JudgeAssignment.id)
     ).all()
-    scored = {s.assignment_id for s in session.exec(select(Score))}
+    scored = {
+        s.assignment_id
+        for s in session.exec(select(Score).where(Score.assignment_id.in_([a.id for a in assignments] or [0])))
+    }
     rows = []
     for a in assignments:
         judge = session.get(User, a.judge_id)
@@ -339,14 +355,15 @@ def export_scores(
 ) -> Response:
     """Raw per-judge scores. Organizer-only: this is exactly the cross-judge
     detail a judge must not see."""
+    _existing_event(session, event_id)
     keys = [c["key"] for c in _combined_criteria(_rubrics_for_event_or_empty(session, event_id))]
     assignments = {
         a.id: a for a in session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id))
     }
     rows = []
-    for score in session.exec(select(Score).order_by(Score.id)):
-        if score.assignment_id not in assignments:
-            continue
+    for score in session.exec(
+        select(Score).where(Score.assignment_id.in_(list(assignments) or [0])).order_by(Score.id)
+    ):
         judge = session.get(User, score.judge_id)
         submission = session.get(Submission, score.submission_id)
         rows.append(
@@ -370,6 +387,7 @@ def export_results(
 ) -> Response:
     """Normalised standings, raw mean alongside the normalised value so the
     difference between the two rankings is visible (PLAN.md Phase 4 bonus)."""
+    _existing_event(session, event_id)
     rows = _result_rows(session, event_id)
     return _csv_response(
         f"event-{event_id}-results.csv",

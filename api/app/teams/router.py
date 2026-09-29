@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..audit.log import record
@@ -70,11 +71,18 @@ def create_team(
         raise _already_on_a_team(existing_team)
     team = Team(event_id=event_id, name=payload.name, captain_id=user.id)
     session.add(team)
-    session.commit()
-    session.refresh(team)
+    # One transaction for the team and its first member: committing the team
+    # first left a memberless team behind whenever the membership insert then
+    # failed (two tabs creating teams at once hit the one-team-per-event index).
+    session.flush()
     session.add(TeamMembership(team_id=team.id, user_id=user.id))
     record(session, "team.created", actor=user, entity_type="team", entity_id=team.id, name=team.name)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "You're already on a team for this event.")
+    session.refresh(team)
     return _team_public(session, team)
 
 
@@ -84,7 +92,9 @@ def join_team(
     user: User = Depends(require_role(Role.participant)),
     session: Session = Depends(get_session),
 ) -> TeamPublic:
-    team = session.exec(select(Team).where(Team.invite_code == payload.invite_code)).first()
+    # Locked, so two people redeeming the last free seat at once cannot both
+    # pass the size check below and overfill the team.
+    team = session.exec(select(Team).where(Team.invite_code == payload.invite_code).with_for_update()).first()
     if not team:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That invite link is not valid.")
     if team.invite_code_expires_at < utcnow():
@@ -105,7 +115,11 @@ def join_team(
         raise HTTPException(status.HTTP_409_CONFLICT, f"This team is full (max {max_size} members).")
     session.add(TeamMembership(team_id=team.id, user_id=user.id))
     record(session, "team.invite_redeemed", actor=user, entity_type="team", entity_id=team.id)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "You're already on a team for this event.")
     return _team_public(session, team)
 
 

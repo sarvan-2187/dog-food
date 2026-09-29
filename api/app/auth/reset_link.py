@@ -13,7 +13,7 @@ import sys
 from sqlmodel import Session, select
 
 from ..db import engine
-from .models import ResetChannel, User
+from .models import ResetChannel, User, find_user_by_email
 from .recovery import HANDOVER_TTL, issue_reset, reset_url
 
 
@@ -23,7 +23,7 @@ def main(argv: list[str]) -> int:
         return 2
     email = argv[0].strip()
     with Session(engine) as session:
-        user = session.exec(select(User).where(User.email == email)).first()
+        user = find_user_by_email(session, email)
         if user is None:
             print(f"No HackFlow account uses {email}.", file=sys.stderr)
             return 1
