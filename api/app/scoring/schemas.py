@@ -38,6 +38,11 @@ class ResultRow(BaseModel):
     submission_title: str
     team_name: str
     judges: int
+    # Judges whose scores moved z_bar (they scored 2+ entries with some spread).
+    informative_judges: int = 0
+    # Judges assigned to this entry; judges < assigned_judges means scoring is
+    # still in progress for it.
+    assigned_judges: int = 0
     raw_mean: float
     z_bar: float
     display: float

@@ -60,8 +60,9 @@ def test_judge_who_scores_everything_the_same_contributes_zero():
 
 def test_submission_scored_by_only_one_judge():
     z_bar = normalize_scores({1: {101: 2.0, 102: 6.0}, 2: {101: 9.0}})
-    # 101 averages judge 1's -1.0 with judge 2's 0.0 (single assignment guard).
-    assert z_bar[101] == pytest.approx(-0.5)
+    # Judge 2 scored one entry, so has no spread and says nothing about order:
+    # 101 takes judge 1's -1.0 alone, not diluted to -0.5 by a 0 from judge 2.
+    assert z_bar[101] == pytest.approx(-1.0)
     assert z_bar[102] == pytest.approx(1.0)
 
 
@@ -108,3 +109,56 @@ def test_full_fixture_dataset_normalises():
     assert all(0.0 <= r["display"] <= 100.0 for r in table)
     # All three judges agree 102 is weakest, so it must rank last.
     assert table[-1]["submission_id"] == ids[1]
+
+
+# ---------------------------------------------------------------------------
+# Logic fixes from the normalization audit (JUDGING.md, docs/SECURITY-AUDIT.md)
+# ---------------------------------------------------------------------------
+
+def test_an_uninformative_judge_does_not_change_a_projects_rank():
+    """Two projects with identical informative evidence must tie, however many
+    zero-spread judges one of them also drew."""
+    informative = {1: {101: 8.0, 102: 8.0, 103: 4.0}}
+    flat_judges = {9: {101: 5.0, 104: 5.0}, 10: {101: 7.0}}
+    with_flat = normalize_scores({**informative, **flat_judges})
+    without = normalize_scores(informative)
+    assert with_flat[101] == pytest.approx(without[101])
+    assert with_flat[101] == pytest.approx(with_flat[102])
+
+
+def test_a_project_seen_only_by_uninformative_judges_sits_at_zero():
+    z_bar = normalize_scores({1: {101: 9.0, 102: 3.0}, 2: {103: 10.0}})
+    assert z_bar[103] == 0.0
+    rows = {r["submission_id"]: r for r in normalized_table({1: {101: 9.0, 102: 3.0}, 2: {103: 10.0}})}
+    assert rows[103]["informative_judges"] == 0 and rows[101]["informative_judges"] == 1
+
+
+def test_float_noise_is_not_mistaken_for_spread():
+    """0.1 * 3 and 0.3 differ in the last bit; that must not become z = +/-1."""
+    z = judge_z_scores({1: {101: 0.1 * 3, 102: 0.3, 103: 0.30000000000000004}})
+    assert z == {1: {101: 0.0, 102: 0.0, 103: 0.0}}
+
+
+def test_weighted_total_respects_weights_across_different_max_scores():
+    from app.scoring.router import _weighted_total
+
+    criteria = [
+        {"key": "tech", "weight": 0.7, "max_score": 10},
+        {"key": "pitch", "weight": 0.3, "max_score": 100},
+    ]
+    # Perfect tech, zero pitch must beat zero tech, perfect pitch: 70% vs 30%.
+    strong_tech = _weighted_total(criteria, {"tech": 10, "pitch": 0})
+    strong_pitch = _weighted_total(criteria, {"tech": 0, "pitch": 100})
+    assert strong_tech == pytest.approx(70.0) and strong_pitch == pytest.approx(30.0)
+
+
+def test_weighted_total_is_unchanged_for_a_single_scale_rubric():
+    from app.scoring.router import _weighted_total
+
+    criteria = [
+        {"key": "a", "weight": 0.5, "max_score": 5},
+        {"key": "b", "weight": 0.25, "max_score": 5},
+        {"key": "c", "weight": 0.25, "max_score": 5},
+    ]
+    values = {"a": 4, "b": 3, "c": 5}
+    assert _weighted_total(criteria, values) == pytest.approx(0.5 * 4 + 0.25 * 3 + 0.25 * 5)

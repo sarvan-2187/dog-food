@@ -36,8 +36,25 @@ ORGANIZER = (Role.organizer, Role.admin)
 
 
 def _weighted_total(criteria: list[dict], values: dict[str, float]) -> float:
-    """Raw total = sum(weight * value). Callers validate completeness first."""
-    return round(sum(float(c["weight"]) * float(values[c["key"]]) for c in criteria), 6)
+    """Raw total = sum(w_i * v_i / max_i) / sum(w_i) * M, with M the largest
+    max_score in the rubric. Callers validate completeness first.
+
+    Each value is taken as a fraction of its own criterion's maximum before it
+    is weighted, so a weight means what the organizer set: with Technical (0-10,
+    70%) and Presentation (0-100, 30%), a plain sum(w * v) would let
+    Presentation carry ~81% of the total just because its numbers are bigger.
+    Dividing by sum(w) keeps the total right while a rubric set is still being
+    built and its weights don't yet add to 1. When every criterion shares one
+    max_score and the weights add to 1 - every rubric the fixtures ship - this
+    is exactly sum(w * v), so existing totals and exports don't change."""
+    total_weight = sum(float(c["weight"]) for c in criteria)
+    if total_weight <= 0:
+        return 0.0
+    scale = max(float(c.get("max_score", 10)) for c in criteria)
+    fraction = sum(
+        float(c["weight"]) * float(values[c["key"]]) / float(c.get("max_score", 10)) for c in criteria
+    ) / total_weight
+    return round(fraction * scale, 6)
 
 
 def _rubrics_for_event_or_empty(session: Session, event_id: int) -> list[Rubric]:
@@ -215,6 +232,12 @@ def _raw_by_judge(session: Session, event_id: int) -> dict[int, dict[int, float]
 def _result_rows(session: Session, event_id: int) -> list[ResultRow]:
     """Shared by the JSON and CSV endpoints so the two can never disagree."""
     rows = normalized_table(_raw_by_judge(session, event_id))
+    # Normalization is recomputed on every read from whatever scores exist, so
+    # standings are live while judging is under way. assigned_judges beside
+    # judges says how complete each row is (JUDGING.md, "Partial data").
+    assigned: dict[int, int] = {}
+    for a in session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id)):
+        assigned[a.submission_id] = assigned.get(a.submission_id, 0) + 1
     out: list[ResultRow] = []
     for row in rows:
         submission = session.get(Submission, int(row["submission_id"]))
@@ -226,6 +249,8 @@ def _result_rows(session: Session, event_id: int) -> list[ResultRow]:
                 submission_title=(submission.title if submission else "") or "Untitled submission",
                 team_name=team.name if team else "",
                 judges=int(row["judges"]),
+                informative_judges=int(row["informative_judges"]),
+                assigned_judges=max(assigned.get(int(row["submission_id"]), 0), int(row["judges"])),
                 raw_mean=float(row["raw_mean"]),
                 z_bar=float(row["z_bar"]),
                 display=float(row["display"]),
@@ -311,7 +336,11 @@ def export_assignments(
     assignments = session.exec(
         select(JudgeAssignment).where(JudgeAssignment.event_id == event_id).order_by(JudgeAssignment.id)
     ).all()
-    scored = {s.assignment_id for s in session.exec(select(Score))}
+    scored = (
+        {s.assignment_id for s in session.exec(select(Score).where(Score.assignment_id.in_([a.id for a in assignments])))}
+        if assignments
+        else set()
+    )
     rows = []
     for a in assignments:
         judge = session.get(User, a.judge_id)
@@ -344,9 +373,12 @@ def export_scores(
         a.id: a for a in session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id))
     }
     rows = []
-    for score in session.exec(select(Score).order_by(Score.id)):
-        if score.assignment_id not in assignments:
-            continue
+    scores = (
+        session.exec(select(Score).where(Score.assignment_id.in_(list(assignments))).order_by(Score.id))
+        if assignments
+        else []
+    )
+    for score in scores:
         judge = session.get(User, score.judge_id)
         submission = session.get(Submission, score.submission_id)
         rows.append(
@@ -373,8 +405,10 @@ def export_results(
     rows = _result_rows(session, event_id)
     return _csv_response(
         f"event-{event_id}-results.csv",
-        ["rank", "submission_id", "submission_title", "team", "judges", "raw_mean", "z_bar", "display"],
-        [[r.rank, r.submission_id, r.submission_title, r.team_name, r.judges, r.raw_mean, r.z_bar, r.display]
+        ["rank", "submission_id", "submission_title", "team", "judges", "raw_mean", "z_bar", "display",
+         "informative_judges", "assigned_judges"],
+        [[r.rank, r.submission_id, r.submission_title, r.team_name, r.judges, r.raw_mean, r.z_bar, r.display,
+          r.informative_judges, r.assigned_judges]
          for r in rows],
     )
 
@@ -572,10 +606,21 @@ def _check_people(session: Session, payload: EventImportPayload) -> tuple[dict[s
     for r in payload.rubrics:
         for c in r.criteria:
             well_formed = isinstance(c, dict) and {"key", "weight", "max_score"} <= set(c)
-            if well_formed and all(isinstance(c[k], (int, float)) for k in ("weight", "max_score")):
+            # Positive and finite: a zero max_score would divide by zero in the
+            # weighted total, and NaN would poison every judge's normalization.
+            if well_formed and all(
+                isinstance(c[k], (int, float)) and not isinstance(c[k], bool) and 0 < c[k] < float("inf")
+                for k in ("weight", "max_score")
+            ):
                 criteria[c["key"]] = c
-            elif payload.scores:
-                problems.append(f"Rubric {r.name!r} has a criterion without a key, weight and max_score.")
+            elif payload.scores or (
+                isinstance(c, dict)
+                and any(k in c and not (isinstance(c[k], (int, float)) and 0 < c[k] < float("inf"))
+                        for k in ("weight", "max_score"))
+            ):
+                problems.append(
+                    f"Rubric {r.name!r} has a criterion without a key and a positive weight and max_score."
+                )
     submitted_teams = {s.team_name for s in payload.submissions}
     tracks = set(payload.tracks)
 
