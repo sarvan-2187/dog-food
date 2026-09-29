@@ -14,6 +14,7 @@ from ..ratelimit import (
     forgot_ip_limiter,
     login_account_limiter,
     login_ip_limiter,
+    register_ip_limiter,
     verify_email_limiter,
 )
 from ..timeutil import utcnow
@@ -73,9 +74,18 @@ def set_session_cookie(response: Response, user: User) -> None:
 
 
 @router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, session: Session = Depends(get_session)) -> UserPublic:
+def register(
+    payload: RegisterRequest, request: Request, response: Response, session: Session = Depends(get_session)
+) -> UserPublic:
     """Public sign-up always creates a participant. Judge/organizer/admin accounts
     are seeded from fixtures only (PLAN.md Open Questions)."""
+    allowed, retry_after = register_ip_limiter.check(f"register-ip:{request.client.host if request.client else 'unknown'}")
+    if not allowed:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many sign-ups from this network. Try again in about {max(1, round(retry_after / 60))} minutes.",
+            headers={"Retry-After": str(max(1, round(retry_after)))},
+        )
     existing = session.exec(select(User).where(User.email == payload.email)).first()
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists.")
