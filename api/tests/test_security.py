@@ -238,3 +238,33 @@ def test_passwords_beyond_bcrypts_72_bytes_are_refused(client):
     assert r.status_code == 422
     r = client.post("/api/auth/register", json={"email": "okpw@example.com", "password": "x" * 72, "name": "Ok"})
     assert r.status_code == 201
+
+
+# --- S9 client address behind a proxy -------------------------------------------
+
+def _client_seen(hops, xff):
+    import asyncio
+
+    from app.protection import TrustedProxyMiddleware
+
+    seen = {}
+
+    async def app(scope, receive, send):
+        seen["client"] = scope["client"][0]
+
+    headers = [(b"x-forwarded-for", xff.encode())] if xff is not None else []
+    scope = {"type": "http", "path": "/", "headers": headers, "client": ("10.0.0.1", 1234)}
+    asyncio.run(TrustedProxyMiddleware(app, hops=hops)(scope, None, None))
+    return seen["client"]
+
+
+def test_forwarded_for_is_ignored_by_default():
+    assert _client_seen(0, "1.2.3.4") == "10.0.0.1"
+
+
+def test_only_the_trusted_hop_counts_not_a_spoofed_leftmost_entry():
+    # The client sent "6.6.6.6"; Render appended the real address 203.0.113.9.
+    assert _client_seen(1, "6.6.6.6, 203.0.113.9") == "203.0.113.9"
+    assert _client_seen(1, "203.0.113.9") == "203.0.113.9"
+    assert _client_seen(2, "6.6.6.6, 198.51.100.7, 203.0.113.9") == "198.51.100.7"
+    assert _client_seen(1, None) == "10.0.0.1"

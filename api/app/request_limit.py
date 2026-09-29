@@ -19,8 +19,9 @@ A per-IP ceiling (PER_IP_CEILING, default 3000/min) sits over all of that, so
 an attacker who signs up many accounts still cannot multiply their allowance
 without bound.
 
-Uvicorn's --proxy-headers sets request.client from X-Forwarded-For only for
-FORWARDED_ALLOW_IPS, so a client cannot pick its own key by sending the header.
+request.client comes from protection.TrustedProxyMiddleware: X-Forwarded-For is
+ignored unless TRUST_PROXY_HOPS is set, and then only the entry the trusted
+proxy appended is used, so a client cannot pick its own key by sending it.
 
 Set RATE_LIMIT_PER_MINUTE=0 to switch the global limit off (for example, a
 load test from a single machine).
