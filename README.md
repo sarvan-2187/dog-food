@@ -1,9 +1,9 @@
 # HackFlow by Hackathon Raptors
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-3ddc84?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-588%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
+[![Tests](https://img.shields.io/badge/tests-660%20passing%20%C2%B7%2048%20failing-e0a030?style=flat-square)](acceptance-report.txt)
 [![Python](https://img.shields.io/badge/python-3.12-1F2426?style=flat-square&logo=python&logoColor=white)](src/api/requirements.txt)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-1F2426?style=flat-square&logo=fastapi&logoColor=white)](src/api/requirements.txt)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.141-1F2426?style=flat-square&logo=fastapi&logoColor=white)](src/api/requirements.txt)
 [![React](https://img.shields.io/badge/React-18-1F2426?style=flat-square&logo=react&logoColor=white)](src/web/package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-1F2426?style=flat-square&logo=typescript&logoColor=white)](src/web/package.json)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-1F2426?style=flat-square&logo=postgresql&logoColor=white)](docker-compose.yml)
@@ -286,7 +286,7 @@ How the loader handles the fixture's awkward cases:
 - **A judge who gave the same score to everything.** Kept as is. Normalisation gives that
   judge zero influence (`JUDGING.md`).
 - **Unfinished batches, uneven review counts.** The fixture has scores but no
-  assignments, so each score becomes one assignment. Projects end up with 2 to 5 reviews
+  assignments, so each score becomes one assignment. Projects end up with 2 to 6 reviews
   and nothing assumes a fixed number.
 
 ### Acceptance checker
@@ -500,27 +500,32 @@ that lives only in the frontend.
 
 ## Status
 
-588 tests passing across three suites, run live against this exact stack (plus 5 in the
-Raptor Relay repo; see [docs/ACCEPTANCE-REPORT.md](docs/ACCEPTANCE-REPORT.md)):
+Measured on 2026-09-30 against a fresh stack built from this commit
+([docs/ACCEPTANCE-REPORT.md](docs/ACCEPTANCE-REPORT.md) has the earlier full run):
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 457 passed |
-715 tests passing across three suites (2026-09-28, [docs/ACCEPTANCE-REPORT.md](docs/ACCEPTANCE-REPORT.md)):
+| Official checker | `python run.py .dogfood.toml` | **7 of 7 pass** |
+| Backend | `docker compose exec api pytest tests/ -q` | **597 passed, 1 failed** |
+| Frontend unit | `cd src/web && npm test` | **10 passed** |
+| Browser E2E | `cd src/web && NODE_PATH=$PWD/node_modules npx playwright test` (stack started with `RATE_LIMIT_PER_MINUTE=0`) | **53 passed, 47 failed, 21 did not run, 1 skipped** |
 
-| Suite | Command | Result |
-|---|---|---|
-| Backend | `docker compose exec api pytest tests/ -v` | 584 passed |
-| Frontend unit | `cd src/web && npm test` | 10 passed |
-| Browser E2E | `cd src/web && npx playwright test` (stack started with `RATE_LIMIT_PER_MINUTE=0`) | 121 passed, 1 skipped |
+The failures are one cause, stated plainly rather than hidden: the demo data was trimmed
+to the official fixtures plus two staff accounts (see "Quickstart"), but some tests still
+expect the old demo events and accounts.
+
+- The one backend failure, `test_full_fixture_dataset_normalises`, reads
+  `fixtures/submissions.json`, which no longer exists.
+- The browser specs sign in as demo judges and participants (`sam@example.com`,
+  `jordan@example.com`, ...) and open the demo events `dogfood-2026` and
+  `judging-showcase-2026`. With those gone, most of them stop at the login page. With the
+  demo data in place, the same specs passed 121 of 122 on 2026-09-29 (the one skip is
+  below).
 
 The skipped spec is the emailed password-reset flow. It needs the local test inbox, so
 it runs only when the stack is started with `docker-compose.mail.yml` (see "Email"
-above), and skips itself otherwise.
-
-The browser suite changes the same database it reads. Against a fresh stack it passes in
-full with Playwright's default parallel workers. After many runs on one volume, one or two
-specs can time out; each passes on its own, and `--workers=1` or a fresh volume avoids it.
+above), and skips itself otherwise. The browser specs live in `tests/e2e/`, outside the
+web package, so `NODE_PATH` tells them where `@playwright/test` is installed.
 
 `acceptance-report.txt` is the unedited output of the official DOGFOOD checker
 (`run.py`): 7 of 7 checks pass, and T1 and T2 are verified. T3 is claimed too. The
@@ -547,11 +552,11 @@ cd src/web && npm ci && npm test
 # that, so start the stack with the global limit off for it:
 #   RATE_LIMIT_PER_MINUTE=0 docker compose up -d
 cd src/web && npx playwright install --with-deps chromium
-npx playwright test
+NODE_PATH=$PWD/node_modules npx playwright test
 
 # ...including the emailed password-reset flow, against the local test inbox
 docker compose -f docker-compose.yml -f docker-compose.mail.yml up -d
-npx playwright test recovery.spec.ts
+NODE_PATH=$PWD/node_modules npx playwright test recovery.spec.ts
 ```
 
 ## Tech stack

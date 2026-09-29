@@ -59,13 +59,13 @@ with `0.5 × score − 1`, which makes the judge far harsher and compresses thei
 
 - normalized z̄ for all 40 projects: **max change 0.000000** (z-scores are invariant to any
   positive linear rescaling of one judge);
-- plain raw-mean ranking: **40 of 40 projects change rank**.
+- plain raw-mean ranking: **35 of 40 projects change rank**.
 
 This is the property the method exists for, and it holds exactly, not approximately.
 
 **It disagrees with the raw mean, as intended.** The Spearman correlation between the
-raw-mean order and the normalized order is 0.821. Only 2 of 40 projects keep their raw rank,
-and the largest move is 22 places (Dry Harbour). Every large move traces back to a judge
+raw-mean order and the normalized order is 0.825 (tied raw means share a rank). Only 4 of
+40 projects keep their raw rank, and the largest move is 22 places (Dry Harbour). Every large move traces back to a judge
 whose scale differs from the others (JUDGING.md, "Worked on the official DOGFOOD fixtures").
 
 **It is stable against any single judge.** Recompute the standings 30 times, each time
@@ -104,6 +104,6 @@ mean more noise), seen from the other side.
 
 ```bash
 docker compose up --build
-curl -s -H "Cookie: session=demo-org-7f2a" localhost:8000/api/events/10/export/results.csv
+curl -s -H "Cookie: session=demo-org-7f2a" localhost:8000/api/events/1/export/results.csv
 docker compose exec api pytest tests/test_scoring.py -v
 ```
