@@ -274,10 +274,10 @@ The full topic list, by area:
 
 | Area | Topics |
 |---|---|
-| Event | `event.updated`, `event.published`, `event.unpublished`, `event.deleted`, `event.imported`, `event.results_revealed` |
+| Event | `event.updated`, `event.questions_updated`, `event.published`, `event.unpublished`, `event.deleted`, `event.imported`, `event.results_revealed` |
 | Announcements | `announcement.posted`, `announcement.edited`, `announcement.deleted` |
 | Teams | `team.created`, `team.renamed`, `team.captain_changed`, `team.invite_code_changed`, `team.invite_redeemed`, `team.member_removed`, `team.left` |
-| Submissions | `submission.submitted`, `submission.image_uploaded`, `submission.disqualified`, `submission.reinstated` |
+| Submissions | `submission.submitted`, `submission.image_uploaded`, `submission.image_removed`, `submission.images_reordered`, `submission.disqualified`, `submission.reinstated` |
 | Judging setup | `rubric.created`, `rubric.updated`, `rubric.deleted`, `judge_invite.created`, `judge_invite.revoked`, `judge_invite.redeemed`, `event_judge.added`, `event_judge.removed`, `event_judge.reminded`, `event_judge.track_set`, `assignments.run` |
 | Judging | `judge.conflict_declared`, `score.submitted` |
 | Awards | `award.set`, `award.cleared` |

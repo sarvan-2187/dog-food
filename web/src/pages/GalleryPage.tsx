@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ProjectLinks } from '../components/EventSections';
+import { TechTags } from '../components/ProjectExtras';
 import { Link, useParams } from 'react-router-dom';
 import { ResultsHiddenNotice } from '../components/ResultsHiddenNotice';
 import { EmailVoteGate, VoteControl, canVote, useVoter } from '../components/VoteButton';
@@ -12,6 +13,9 @@ import { gallerySeed } from '../lib/gallery-seed';
 import type { EventRecord, GalleryItem, VoteResult } from '../types';
 
 type Order = 'recent' | 'random' | 'votes';
+
+// Radix Select can't hold an empty value, so "no filter" gets a sentinel.
+const ALL = '__all__';
 
 const ORDERS: { value: Order; label: string }[] = [
   { value: 'recent', label: 'Most recent' },
@@ -36,6 +40,9 @@ export function GalleryPage() {
   const [debouncedQ, setDebouncedQ] = useState('');
   // null until the visitor picks an order themselves; see `order` below.
   const [chosenOrder, setChosenOrder] = useState<Order | null>(null);
+  const [track, setTrack] = useState(ALL);
+  const [tag, setTag] = useState(ALL);
+  const [tags, setTags] = useState<string[]>([]);
   const [items, setItems] = useState<GalleryItem[] | null>(null);
   const [events, setEvents] = useState<EventRecord[] | null>(null);
   const [scopedEvent, setScopedEvent] = useState<EventRecord | null>(null);
@@ -59,6 +66,8 @@ export function GalleryPage() {
 
   useEffect(() => {
     setChosenOrder(null);
+    setTrack(ALL);
+    setTag(ALL);
     if (slug) {
       api.get<EventRecord>(`/api/events/${slug}`).then(setScopedEvent).catch(() => setScopedEvent(null));
     } else {
@@ -76,12 +85,26 @@ export function GalleryPage() {
     setError(null);
     const params = new URLSearchParams({ order, event_id: String(scopedEvent.id) });
     if (debouncedQ) params.set('q', debouncedQ);
+    // Filtered on the server, like search, so a filter never hides an entry
+    // the page merely hasn't loaded.
+    if (track !== ALL) params.set('track', track);
+    if (tag !== ALL) params.set('tag', tag);
     if (order === 'random') params.set('seed', String(seed));
     api
       .get<GalleryItem[]>(`/api/gallery?${params}`)
       .then(setItems)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load the gallery.'));
-  }, [debouncedQ, order, seed, retryToken, slug, scopedEvent]);
+  }, [debouncedQ, order, track, tag, seed, retryToken, slug, scopedEvent]);
+
+  useEffect(() => {
+    if (!scopedEvent) return;
+    api
+      .get<string[]>(`/api/gallery/tags?event_id=${scopedEvent.id}`)
+      .then(setTags)
+      .catch(() => setTags([]));
+  }, [scopedEvent]);
+
+  const filtered = debouncedQ !== '' || track !== ALL || tag !== ALL;
 
   const applyVote = useCallback((result: VoteResult) => {
     setItems((current) =>
@@ -125,14 +148,14 @@ export function GalleryPage() {
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-section md:px-6">
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Link to={`/events/${slug}`} className="text-meta text-brand-500">
             ← {scopedEvent?.name ?? 'Back to event'}
           </Link>
           <h1 className="text-h1 text-ink-900">{scopedEvent ? `${scopedEvent.name} gallery` : 'Gallery'}</h1>
         </div>
-        <div className="flex flex-col gap-3 md:flex-row md:items-end">
+        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:flex-wrap md:items-end lg:justify-end">
           <SimpleSelect
             label="Order"
             value={order}
@@ -140,6 +163,24 @@ export function GalleryPage() {
             options={ORDERS}
             triggerClassName="md:w-44"
           />
+          {scopedEvent && scopedEvent.tracks.length > 0 && (
+            <SimpleSelect
+              label="Track"
+              value={track}
+              onChange={setTrack}
+              options={[{ value: ALL, label: 'All tracks' }, ...scopedEvent.tracks.map((t) => ({ value: t, label: t }))]}
+              triggerClassName="md:w-44"
+            />
+          )}
+          {tags.length > 0 && (
+            <SimpleSelect
+              label="Tech tag"
+              value={tag}
+              onChange={setTag}
+              options={[{ value: ALL, label: 'All tags' }, ...tags.map((t) => ({ value: t, label: t }))]}
+              triggerClassName="md:w-40"
+            />
+          )}
           <Input
             label="Search"
             placeholder="Search submissions"
@@ -165,11 +206,18 @@ export function GalleryPage() {
       {items === null && !error && <SkeletonRows rows={5} cols={3} />}
       {error && <ErrorState description={error} onRetry={() => setRetryToken((v) => v + 1)} />}
 
-      {items && items.length === 0 && debouncedQ === '' && (
+      {items && items.length === 0 && !filtered && (
         <EmptyState title="No submissions yet" description="Be the first to submit - your draft saves as you type." />
       )}
-      {items && items.length === 0 && debouncedQ !== '' && (
-        <EmptyState title="No matches" description={`Nothing matches "${debouncedQ}". Try a different search.`} />
+      {items && items.length === 0 && filtered && (
+        <EmptyState
+          title="No matches"
+          description={
+            debouncedQ !== ''
+              ? `Nothing matches "${debouncedQ}" with these filters. Try a different search or filter.`
+              : 'Nothing matches these filters. Try a different track or tag.'
+          }
+        />
       )}
 
       {items && items.length > 0 && (
@@ -218,7 +266,13 @@ export function GalleryPage() {
                   ))}
                 </p>
               )}
+              {s.tagline && <p className="mb-2 text-body font-medium text-ink-800">{s.tagline}</p>}
               <p className="line-clamp-4 text-body text-ink-600">{s.description}</p>
+              {s.tech_tags.length > 0 && (
+                <div className="mt-3">
+                  <TechTags tags={s.tech_tags} />
+                </div>
+              )}
               {(s.repo_url || s.demo_url || s.video_url) && (
                 <p className="mt-3">
                   <ProjectLinks repo={s.repo_url} demo={s.demo_url} video={s.video_url} />

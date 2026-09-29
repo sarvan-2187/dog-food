@@ -26,6 +26,20 @@ _EXT_BY_CONTENT_TYPE = {
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
+def _looks_like(data: bytes, content_type: str) -> bool:
+    """The file's own first bytes must match the type it claims. The declared
+    Content-Type is the client's word; these magic numbers are the file's."""
+    if content_type == "image/png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/jpeg":
+        return data.startswith(b"\xff\xd8\xff")
+    if content_type == "image/gif":
+        return data.startswith((b"GIF87a", b"GIF89a"))
+    if content_type == "image/webp":
+        return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    return False
+
+
 class StorageError(Exception):
     """A rejected upload. Callers turn this into a 422 with the message
     as-is -- it is already written for the person uploading, not a log."""
@@ -80,6 +94,8 @@ class LocalStorage(StorageService):
             raise StorageError("The uploaded file is empty.")
         if len(data) > MAX_UPLOAD_BYTES:
             raise StorageError(f"Image must be under {MAX_UPLOAD_BYTES // (1024 * 1024)}MB.")
+        if not _looks_like(data, content_type):
+            raise StorageError("That file isn't a real image of the type it claims to be.")
         key = f"{uuid.uuid4().hex}{_EXT_BY_CONTENT_TYPE[content_type]}"
         self._resolve(key).write_bytes(data)
         return key

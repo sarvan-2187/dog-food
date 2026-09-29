@@ -83,6 +83,7 @@ A request authenticates with `Authorization: Bearer hf_...` instead of the sessi
 | `rules` | str | Plain text shown on the event page, never rendered as HTML (Phase 10.8) |
 | `stages` | JSON list | Named rounds shown as a timeline on the event page: `[{"name", "description", "starts_at", "ends_at"}]`, ISO-8601 UTC, at most 10, sorted by start. Informational: the server's gates are still `start_at` / `end_at` / `results_hidden_until`. Included in event export/import |
 | `certificate_template` | str, default `classic` | Which certificate design the event's certificates use: a key of `TEMPLATES` in `api/app/scoring/certificate.py`. Included in event export/import |
+| `questions` | JSON list, default `[]` | Organizer-defined custom questions (DOGFOOD T1), at most 10: `[{"id", "prompt", "required", "hidden", "public"}]`. `id` is server-generated and never changes. Set with `PUT /api/events/{id}/questions` (`api/app/events/questions.py`). A question someone has answered can't be deleted, only hidden. Included in event export/import with ids kept |
 
 ### `announcements` (`api/app/events/models.py`)
 
@@ -136,6 +137,9 @@ the duplicates.
 | `team_id` | int, FK → `teams.id`, **unique** | Enforces the one-per-team rule at the DB level |
 | `event_id` | int, FK → `events.id` | Denormalized for query convenience |
 | `title`, `description`, `track` | str | |
+| `tagline` | str, default `''` | Optional one line, at most 140 characters. On gallery cards, the project page and the score sheet, and searched by the gallery (DOGFOOD T1) |
+| `tech_tags` | JSON list, default `[]` | Optional free-text tags, at most 10 of 30 characters each. Trimmed and deduplicated case-insensitively on save; matched lowercased by the gallery's `tag` filter and search |
+| `answers` | JSON object, default `{}` | Answers to the event's `questions`, keyed by question id, at most 1000 characters each. Autosaved one at a time; required ones block Submit, not autosave. Judges see them on the score sheet; the project page shows only public ones. In `submissions.csv` (one `Q: <prompt>` column each) and the event backup |
 | `repo_url`, `demo_url`, `video_url` | str | Optional; `http`/`https` only, at most 500 characters, validated on save and on import. Shown as links, never embedded (Phase 10.5) |
 | `status` | enum | `draft` \| `submitted`. Only `submitted` rows appear in the public gallery |
 | `disqualified_at` | timestamptz, nullable | Set by an organizer's eligibility ruling. A disqualified entry leaves the gallery, voting, assignment, awards and standings (`in_competition()` in `submissions/models.py`); its scores are kept so reinstating restores it. A column, not a status value, so reinstating never loses `draft`/`submitted` |
@@ -279,8 +283,11 @@ request could race past.
 
 ### `stored_files` (`api/app/storage/models.py`)
 
-Polymorphic ownership: `(owner_type, owner_id)` is unique, so an owner (a submission or a
-user) has at most one current file — uploading a replacement deletes the old one. Content
+Polymorphic ownership, ordered by `position`: `(owner_type, owner_id, position)` is unique.
+A user has one avatar at position 0. A submission has an image gallery of up to five
+(DOGFOOD T1) at positions 0 to 4, kept dense on every remove or reorder, and position 0 is
+its thumbnail. Replacing position 0 (the avatar, or `POST .../submission/image`, the
+original single-screenshot endpoint) deletes the old file. Content
 lives on local disk behind the `StorageService` interface (`api/app/storage/service.py`);
 this table only tracks metadata. Keys are server-generated (`uuid4().hex` + an extension
 derived from the validated content-type), never taken from the client's filename, so a
@@ -291,11 +298,14 @@ client can't path-traverse or overwrite an arbitrary key (see docs/THREAT-MODEL.
 | `id` | int, PK | |
 | `owner_type` | str | `"submission"` \| `"user"` |
 | `owner_id` | int | The submission or user id |
+| `position` | int, default 0 | Order in the owner's gallery; 0 is the thumbnail. Added at boot via `_ADDED_COLUMNS` |
 | `key` | str | Server-generated storage key; also the on-disk filename |
-| `content_type` | str | Validated at upload time against an image allow-list |
+| `content_type` | str | Validated at upload time against an image allow-list, and against the file's own magic bytes (PNG, JPEG, GIF, WebP signatures) |
 | `created_at` | timestamptz | |
 
-Unique constraint: `(owner_type, owner_id)`.
+Unique constraint: `(owner_type, owner_id, position)`. A volume from before image galleries
+had `(owner_type, owner_id)`; `widen_stored_file_key()` in `api/app/db.py` swaps it at boot
+(every existing row is at position 0, so it can't fail) and does nothing once done.
 
 ### `webhook_subscriptions` (`api/app/webhooks/models.py`)
 
@@ -374,11 +384,14 @@ events ──< webhook_subscriptions
   by a lookup on the row's natural key, so re-running on an already-seeded database is a
   no-op.
 - **CSV export** (`api/app/scoring/router.py`, stdlib `csv` only): `users.csv`,
-  `submissions.csv` (including `repo_url`, `demo_url`, `video_url`), `assignments.csv`,
+  `submissions.csv` (including `tagline`, `tech_tags`, `repo_url`, `demo_url`, `video_url`,
+  and one `Q: <prompt>` column per custom question, hidden ones included), `assignments.csv`,
   `scores.csv`, `results.csv` per event, organizer/admin only (see
   `test_role_isolation.py`).
 - **Event backup** (`GET /api/events/{id}/export.json` / `POST /api/events/import`): the
-  event's config (including `rules`), rubrics, teams and submissions (including links).
+  event's config (including `rules` and custom `questions`, ids kept), rubrics, teams and
+  submissions (including links, `tagline`, `tech_tags` and `answers`; answers to a question
+  the backup doesn't have are dropped).
   Imports arrive as drafts, and links are validated with the same http(s)-only rule as the
   submission form. Judge panels, assignments, scores and awards are deliberately not
   carried over: they belong to specific judge accounts.

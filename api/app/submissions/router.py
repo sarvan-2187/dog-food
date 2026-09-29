@@ -2,7 +2,7 @@ import random
 from collections import Counter
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
-from sqlalchemy import or_
+from sqlalchemy import String, cast, or_
 from sqlmodel import Session, select
 
 from ..audit.log import record
@@ -12,7 +12,8 @@ from ..scoring.models import Score
 from ..db import get_session
 from ..events.models import Event
 from ..events.visibility import may_see_results
-from ..storage.lookup import image_url_for, image_urls_for
+from ..events.questions import answer_rows, missing_required
+from ..storage.lookup import image_list_for, image_url_for, image_urls_for
 from ..teams.deps import require_team_member
 from ..teams.models import Team, TeamMembership
 from ..timeutil import utcnow
@@ -49,12 +50,16 @@ def _public(session: Session, sub: Submission) -> SubmissionPublic:
         team_id=sub.team_id,
         event_id=sub.event_id,
         title=sub.title,
+        tagline=sub.tagline,
         description=sub.description,
         track=sub.track,
+        tech_tags=sub.tech_tags or [],
         status=sub.status.value,
         created_at=sub.created_at,
         updated_at=sub.updated_at,
         image_url=image_url_for(session, "submission", sub.id),
+        images=image_list_for(session, "submission", sub.id),
+        answers=sub.answers or {},
         repo_url=sub.repo_url,
         demo_url=sub.demo_url,
         video_url=sub.video_url,
@@ -179,13 +184,23 @@ def upsert_submission(
     team: Team = Depends(require_team_member),
     session: Session = Depends(get_session),
 ) -> SubmissionPublic:
-    _load_open_event(session, team.event_id)
+    event = _load_open_event(session, team.event_id)
     sub = session.exec(select(Submission).where(Submission.team_id == team_id)).first()
     if not sub:
         sub = Submission(team_id=team_id, event_id=team.event_id)
     # exclude_none as well as exclude_unset: {"title": null} means "no change",
     # never "write NULL" into a non-nullable column.
-    for key, value in payload.model_dump(exclude_unset=True, exclude_none=True).items():
+    changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "answers" in changes:
+        known = {q["id"] for q in (event.questions or [])}
+        if unknown := set(changes["answers"]) - known:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"This event has no question called: {', '.join(sorted(unknown))}.",
+            )
+        # Merged, and a new dict so the JSON column sees the change.
+        changes["answers"] = {**(sub.answers or {}), **changes["answers"]}
+    for key, value in changes.items():
         setattr(sub, key, value)
     sub.updated_at = utcnow()
     session.add(sub)
@@ -202,10 +217,15 @@ def submit_submission(
     _member: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> SubmissionPublic:
-    _load_open_event(session, team.event_id)
+    event = _load_open_event(session, team.event_id)
     sub = session.exec(select(Submission).where(Submission.team_id == team_id)).first()
     if not sub or not sub.title.strip() or not sub.description.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Add a title and description before submitting.")
+    # Required custom questions block Submit, never autosave (DOGFOOD T1).
+    if missing := missing_required(event, sub):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"Answer every required question before submitting: {'; '.join(missing)}."
+        )
     sub.status = SubmissionStatus.submitted
     sub.updated_at = utcnow()
     session.add(sub)
@@ -221,6 +241,8 @@ def gallery(
     request: Request,
     event_id: "int | None" = None,
     q: "str | None" = Query(default=None),
+    track: "str | None" = Query(default=None, description="Only entries in this track."),
+    tag: "str | None" = Query(default=None, description="Only entries with this tech tag (any case)."),
     order: str = Query(default="recent", pattern="^(recent|random|votes)$"),
     seed: "int | None" = Query(
         default=None,
@@ -238,12 +260,20 @@ def gallery(
         stmt = stmt.where(
             or_(
                 Submission.title.ilike(like, escape="\\"),
+                Submission.tagline.ilike(like, escape="\\"),
                 Submission.description.ilike(like, escape="\\"),
+                # The tag list as JSON text: a search for "postgres" finds the tag.
+                cast(Submission.tech_tags, String).ilike(like, escape="\\"),
             )
         )
+    if track:
+        stmt = stmt.where(Submission.track == track)
     # PLAN.md 10.12: nothing from a draft event is public.
     stmt = stmt.join(Event, Event.id == Submission.event_id).where(Event.status == "published")
     rows = list(session.exec(stmt.order_by(Submission.updated_at.desc())))
+    if tag and tag.strip():
+        wanted = " ".join(tag.split()).lower()
+        rows = [r for r in rows if wanted in {t.lower() for t in (r.tech_tags or [])}]
     if not rows:
         return []
 
@@ -287,8 +317,10 @@ def gallery(
             event_id=r.event_id,
             team_id=r.team_id,
             title=r.title,
+            tagline=r.tagline,
             description=r.description,
             track=r.track,
+            tech_tags=r.tech_tags or [],
             updated_at=r.updated_at,
             comment_count=comments.get(r.id, 0),
             votes=votes.get(r.id, 0) if visible.get(r.event_id, False) else None,
@@ -301,6 +333,21 @@ def gallery(
         )
         for r in rows
     ]
+
+
+@router.get("/api/gallery/tags", response_model=list[str])
+def gallery_tags(event_id: int, session: Session = Depends(get_session)) -> list[str]:
+    """Every tech tag used by an entry in this event's public gallery, lowercased
+    and sorted, for the gallery's tag filter."""
+    event = session.get(Event, event_id)
+    if event is None or event.status != "published":
+        return []
+    tags: set[str] = set()
+    for row in session.exec(
+        select(Submission.tech_tags).where(Submission.event_id == event_id, in_competition())
+    ):
+        tags.update(t.lower() for t in (row or []))
+    return sorted(tags)
 
 
 @router.get("/api/submissions/{submission_id}", response_model=GalleryItem)
@@ -327,8 +374,10 @@ def get_public_submission(
         event_id=submission.event_id,
         team_id=submission.team_id,
         title=submission.title,
+        tagline=submission.tagline,
         description=submission.description,
         track=submission.track,
+        tech_tags=submission.tech_tags or [],
         updated_at=submission.updated_at,
         comment_count=comment_count,
         votes=len(vote_rows) if visible else None,
@@ -337,6 +386,8 @@ def get_public_submission(
             for v in vote_rows
         ),
         image_url=image_url_for(session, "submission", submission.id),
+        images=image_list_for(session, "submission", submission.id),
+        answers=answer_rows(event, submission, public_only=True) if event else [],
         repo_url=submission.repo_url,
         demo_url=submission.demo_url,
         video_url=submission.video_url,

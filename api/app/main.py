@@ -35,6 +35,7 @@ from .auth.router import router as auth_router
 from .auth.recovery import router as recovery_router
 from .auth.admin_users import router as admin_users_router
 from .events.announcements import router as announcements_router
+from .events.questions import router as questions_router
 from .judging.event_judges import router as event_judges_router
 from .scoring.awards import router as awards_router
 from .events.router import router as events_router
@@ -112,6 +113,7 @@ app.include_router(auth_router)
 app.include_router(recovery_router)
 app.include_router(admin_users_router)
 app.include_router(announcements_router)
+app.include_router(questions_router)
 app.include_router(event_judges_router)
 app.include_router(awards_router)
 app.include_router(events_router)

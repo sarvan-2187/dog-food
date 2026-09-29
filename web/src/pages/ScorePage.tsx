@@ -5,6 +5,7 @@ import { ErrorState, SkeletonRows, Toast, ToastRegion } from '../components/feed
 import { Badge, Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { ProjectLinks } from '../components/EventSections';
+import { Answers, ProjectGallery, TechTags } from '../components/ProjectExtras';
 import type { Criterion, Score, ScoringSheet } from '../types';
 
 export function ScorePage() {
@@ -131,15 +132,17 @@ function ScoreForm() {
       <Card title={sheet.submission_title} meta={sheet.rubrics.map((r) => r.rubric_name).join(' + ')}>
         {/* PLAN.md 10.5: what the judge is actually scoring - not just a paragraph. */}
         <div className="mb-6 flex flex-col gap-4 border-b border-border-subtle pb-4">
-          {sheet.submission_image_url && (
-            <div className="max-h-80 overflow-hidden rounded-md bg-surface-100">
-              <img src={sheet.submission_image_url} alt={`Screenshot of ${sheet.submission_title}`} className="w-full object-cover" />
-            </div>
+          <ProjectGallery images={sheet.submission_images} title={sheet.submission_title} />
+          {sheet.submission_tagline && (
+            <p className="text-body font-medium text-ink-800">{sheet.submission_tagline}</p>
           )}
           {sheet.submission_description && (
             <p className="whitespace-pre-wrap text-body text-ink-600">{sheet.submission_description}</p>
           )}
+          <TechTags tags={sheet.submission_tech_tags} />
           <ProjectLinks repo={sheet.repo_url} demo={sheet.demo_url} video={sheet.video_url} />
+          {/* Read-only: what the team told the organizers, to judge alongside the rubric. */}
+          <Answers answers={sheet.answers} heading="The team's answers to the organizers' questions" />
         </div>
 
         <form className="flex flex-col gap-6" onSubmit={onSubmit} noValidate>

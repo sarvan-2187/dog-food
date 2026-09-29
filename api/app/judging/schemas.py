@@ -134,6 +134,12 @@ class ScoringSheet(BaseModel):
     submission_description: str
     submission_track: str
     submission_image_url: Optional[str] = None
+    submission_tagline: str = ""
+    submission_tech_tags: List[str] = []
+    # The whole image gallery in order, and the team's answers to the event's
+    # custom questions (read-only here), both DOGFOOD T1.
+    submission_images: List[dict] = []
+    answers: List[dict] = []
     repo_url: str = ""
     demo_url: str = ""
     video_url: str = ""

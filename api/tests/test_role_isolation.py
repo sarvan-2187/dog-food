@@ -185,6 +185,7 @@ MATRIX = [
     ("delete", "/api/events/{event_id}/judges/{judge_id}", None, [Role.participant, Role.judge]),
     ("post", "/api/events/{event_id}/judges/{judge_id}/remind", None, [Role.participant, Role.judge]),
     ("put", "/api/events/{event_id}/judges/{judge_id}/track", {"track": None}, [Role.participant, Role.judge]),
+    ("put", "/api/events/{event_id}/questions", {"questions": []}, [Role.participant, Role.judge]),
     # Another judge declaring a conflict on someone else's assignment is refused too.
     ("post", "/api/assignments/{assignment_id}/conflict", {"reason": ""},
      [Role.participant, Role.organizer, Role.admin, Role.judge]),
