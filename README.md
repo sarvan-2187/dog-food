@@ -69,6 +69,46 @@ Every stage below is a screen in the running app, captured from `docker compose 
 seeded data (regenerate with `cd web && node scripts/readme-walkthrough.mjs`). Each stage
 feeds the next, and each hands the next one data it can trust.
 
+```mermaid
+flowchart TD
+    subgraph P["Participants"]
+        S1["1. Registration<br/>account, bcrypt, rate limits"]
+        S2["2. Team formation<br/>invite link, size cap"]
+        S3["3. Project submissions<br/>autosave, server deadline"]
+    end
+    subgraph O["Organizers"]
+        S4["4. Eligibility verification<br/>auto checks, disqualify or reinstate"]
+        S5["5. Judge assignment<br/>3 per entry, conflict-aware"]
+    end
+    subgraph J["Judges"]
+        S6["6. Scoring<br/>weighted rubric sliders"]
+    end
+    subgraph H["HackFlow"]
+        S7["7. Score normalization<br/>per-judge z-scores"]
+        S8["8. Results<br/>hidden until reveal time"]
+        S9["9. Certificates<br/>PDF with verifiable serial"]
+        S10["10. Archive and retrieval<br/>past events, JSON backup, CSV"]
+    end
+    S1 --> S2 --> S3
+    S3 -- "submissions close" --> S4
+    S4 -- "competing entries only" --> S5
+    S5 -- "judging opens" --> S6
+    S6 -- "raw scores" --> S7
+    S7 -- "standings" --> S8
+    S8 -- "winners and ranks" --> S9
+    S9 --> S10
+    S8 --> S10
+    S4 -. "disqualified: kept, not ranked" .-> S10
+```
+
+How to read it: each box is one stage, grouped by who does the work. The labels on the arrows
+are the gates between stages, and the server enforces each one. A save after the deadline is
+refused, so eligibility only ever sees final entries. Only competing entries get judges.
+Judges only score what they were assigned. Normalization only sees raw rubric totals, and
+results stay hidden until the reveal time. Certificates and the archive are built from those
+revealed results. A disqualified entry drops out of judging and standings, but it is kept (the
+dotted line), so an organizer can reinstate it and the record stays complete.
+
 An event can also show its own **stages** (Stage 1: Registration, Stage 2: Build sprint, and so
 on), the way Unstop shows a competition's rounds. The current stage is highlighted.
 
