@@ -319,6 +319,7 @@ function EmbedPanel({ slug, onToast }: { slug: string; onToast: (t: { message: s
 const STATUS_BADGE: Record<WebhookRecord['last_status'], 'success' | 'danger' | 'info'> = {
   delivered: 'success',
   failed: 'danger',
+  blocked: 'danger',
   'never fired': 'info',
 };
 
@@ -357,6 +358,25 @@ function WebhookPanel({ eventId, onToast }: { eventId: number; onToast: (t: { me
     }
   }
 
+  async function onTest(id: number) {
+    try {
+      const result = await api.post<{ last_status: WebhookRecord['last_status'] }>(
+        `/api/events/${eventId}/webhooks/${id}/test`,
+        {},
+      );
+      load();
+      onToast({
+        message:
+          result.last_status === 'delivered'
+            ? 'Test ping delivered.'
+            : `Test ping ${result.last_status}. Check the URL is reachable and answers with a 2xx.`,
+        ok: result.last_status === 'delivered',
+      });
+    } catch (err) {
+      onToast({ message: err instanceof ApiError ? err.message : 'Could not send a test ping.', ok: false });
+    }
+  }
+
   async function onDelete(id: number) {
     try {
       await api.del(`/api/events/${eventId}/webhooks/${id}`);
@@ -391,9 +411,14 @@ function WebhookPanel({ eventId, onToast }: { eventId: number; onToast: (t: { me
                   <span className="text-body text-ink-800">{w.url}</span>
                   <Badge status={STATUS_BADGE[w.last_status]}>{w.last_status}</Badge>
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => onDelete(w.id)}>
-                  Remove
-                </Button>
+                <div className="flex gap-1">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => onTest(w.id)}>
+                    Send test
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => onDelete(w.id)}>
+                    Remove
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>

@@ -30,6 +30,10 @@ class TokenBucketLimiter:
 
     capacity: int
     per_seconds: float
+    # A flood of distinct keys (spoofed addresses, invented emails) must not
+    # grow memory without bound. Past this many buckets, full ones - which
+    # carry no state worth keeping - are dropped, then the stalest.
+    max_keys: int = 50_000
     _buckets: dict[str, Bucket] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -45,6 +49,8 @@ class TokenBucketLimiter:
         with self._lock:
             bucket = self._buckets.get(key)
             if bucket is None:
+                if len(self._buckets) >= self.max_keys:
+                    self._prune(current)
                 bucket = Bucket(
                     capacity=float(self.capacity),
                     refill_rate=self.capacity / self.per_seconds,
@@ -63,6 +69,18 @@ class TokenBucketLimiter:
 
             missing = 1.0 - bucket.tokens
             return False, missing / bucket.refill_rate
+
+    def _prune(self, now: float) -> None:
+        """Caller holds the lock. Drop every bucket that has refilled to full
+        (indistinguishable from a new one), then, if still over, the stalest
+        half. Dropping a bucket only ever errs towards allowing a request."""
+        for key, b in list(self._buckets.items()):
+            if b.tokens + (now - b.updated_at) * b.refill_rate >= b.capacity:
+                del self._buckets[key]
+        if len(self._buckets) >= self.max_keys:
+            stale = sorted(self._buckets, key=lambda k: self._buckets[k].updated_at)
+            for key in stale[: len(stale) // 2 + 1]:
+                del self._buckets[key]
 
     def peek(self, key: str, *, now: float | None = None) -> tuple[bool, float]:
         """Would `check` allow `key` right now? Spends nothing. Login uses it to
@@ -114,6 +132,12 @@ login_ip_limiter = TokenBucketLimiter(capacity=30, per_seconds=900.0)
 judge_reminder_limiter = TokenBucketLimiter(capacity=1, per_seconds=3600.0)
 verify_email_limiter = TokenBucketLimiter(capacity=3, per_seconds=3600.0)
 announcement_email_limiter = TokenBucketLimiter(capacity=1, per_seconds=600.0)
+# Sign-ups per client address: bcrypt makes each one cost real CPU, and a
+# script creating thousands of accounts is how sybil voting starts. Twenty an
+# hour still covers a room of people registering from one venue network.
+register_ip_limiter = TokenBucketLimiter(capacity=20, per_seconds=3600.0)
+# Webhook test pings, per organizer: each one is an outbound request.
+webhook_test_limiter = TokenBucketLimiter(capacity=10, per_seconds=600.0)
 
 
 def reset_all() -> None:
@@ -129,5 +153,10 @@ def reset_all() -> None:
         judge_reminder_limiter,
         verify_email_limiter,
         announcement_email_limiter,
+        register_ip_limiter,
+        webhook_test_limiter,
     ):
         limiter.reset()
+    from .protection import reset as reset_protection  # local: protection imports us
+
+    reset_protection()
