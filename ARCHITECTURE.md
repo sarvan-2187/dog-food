@@ -284,8 +284,8 @@ The full topic list, by area:
 | Voting and comments | `vote.cast`, `vote.withdrawn`, `vote.voided`, `vote.duplicate_fingerprint_flagged`, `voter.email_link_sent`, `comment.added`, `comment.deleted` |
 | Webhooks | `webhook.created`, `webhook.deleted` |
 
-`event.created` is audited too, but an event has no subscriptions at the moment it is
-created, so it never reaches one. A new `record()` call gets its webhook with no extra code,
+`event.created` (and `user.created_by_import`, for an account an event import creates) is
+audited too, but the event has no subscriptions at that moment, so it never reaches one. A new `record()` call gets its webhook with no extra code,
 so this table is the list as of this build, not a limit.
 
 Delivery is single-attempt with no retry queue, a deliberate scope cut, since a durable

@@ -177,7 +177,7 @@ def test_export_then_import_recreates_the_events_shape(client, session):
     _login_as(client, session, organizer.email, Role.organizer)
     exported = client.get(f"/api/events/{event.id}/export.json").json()
     assert exported["event"]["slug"] == "p4-export"
-    assert exported["teams"] == [{"name": "Team Phase4"}]
+    assert [t["name"] for t in exported["teams"]] == ["Team Phase4"]
     assert exported["submissions"][0]["title"] == "Widget"
 
     payload = {

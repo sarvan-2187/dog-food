@@ -68,6 +68,10 @@ export function EventImportPanel({ onToast }: { onToast: (message: string, ok: b
         rubrics: backup.rubrics,
         teams: backup.teams,
         submissions: backup.submissions,
+        // Absent from backups made before people and scores were exported.
+        judges: backup.judges ?? [],
+        assignments: backup.assignments ?? [],
+        scores: backup.scores ?? [],
       });
       onToast(`Imported "${created.name}".`, true);
       reset();
@@ -85,8 +89,11 @@ export function EventImportPanel({ onToast }: { onToast: (message: string, ok: b
     <Card title="Import an event" meta="From a backup file">
       <div className="flex flex-col gap-4">
         <p className="text-body text-ink-600">
-          Restores an event backup as a brand new event, with its tracks, prizes, rubrics, teams and submissions.
-          Judge assignments and scores are not restored - run assignment again on the new event.
+          Restores an event backup as a brand new event: its tracks, prizes, rubrics, questions, teams and their
+          members, submissions, judge panel, assignments and scores. Members are matched to accounts by email; anyone
+          without one gets a new participant account, and you send them a password reset link. Judges must already
+          have a judge account here. If any judge or rubric criterion doesn't match, nothing is imported and you are
+          told what to fix.
         </p>
 
         <label className="flex flex-col gap-1.5">
@@ -104,7 +111,9 @@ export function EventImportPanel({ onToast }: { onToast: (message: string, ok: b
           {filename && (
             <span className="text-meta text-ink-500">
               {filename} - {backup?.teams.length ?? 0} team{backup?.teams.length === 1 ? '' : 's'},{' '}
-              {backup?.submissions.length ?? 0} submission{backup?.submissions.length === 1 ? '' : 's'}
+              {backup?.submissions.length ?? 0} submission{backup?.submissions.length === 1 ? '' : 's'},{' '}
+              {backup?.judges?.length ?? 0} judge{backup?.judges?.length === 1 ? '' : 's'},{' '}
+              {backup?.scores?.length ?? 0} score{backup?.scores?.length === 1 ? '' : 's'}
             </span>
           )}
         </label>

@@ -391,10 +391,25 @@ events ──< webhook_subscriptions
 - **Event backup** (`GET /api/events/{id}/export.json` / `POST /api/events/import`): the
   event's config (including `rules` and custom `questions`, ids kept), rubrics, teams and
   submissions (including links, `tagline`, `tech_tags` and `answers`; answers to a question
-  the backup doesn't have are dropped).
+  the backup doesn't have are dropped), and since DOGFOOD T4 also the people and the judging:
+  - **team members** (`teams[].members`, `captain_email`), matched to accounts by email
+    (case-insensitive). An existing account is linked as it is: its password and role are
+    never changed. An email with no account gets a new `participant` account with a random
+    password nobody knows (audited as `user.created_by_import`), and the organizer sends it
+    a reset link (`POST /api/password-resets`);
+  - the **judge panel** (`judges[]`, with each judge's track), matched by email to accounts
+    that already hold the `judge` role. Import never creates or promotes a judge, since the
+    role is only granted by invitation;
+  - **assignments** and **scores** (`assignments[]`, `scores[]`, keyed by team name and
+    judge email). `raw_total` is recomputed from the imported rubrics.
+
+  All or nothing: if any judge, track or rubric criterion a panel row, assignment or score
+  refers to doesn't match (or a score is out of range), the import is refused with a 422
+  listing what to fix, and nothing is written. Organizer or admin only; `event.imported` is
+  audited with counts of teams, created accounts, judges, assignments and scores. Backups
+  from before these sections existed still import. Awards are not carried over.
   Imports arrive as drafts, and links are validated with the same http(s)-only rule as the
-  submission form. Judge panels, assignments, scores and awards are deliberately not
-  carried over: they belong to specific judge accounts.
+  submission form.
 - **Uploaded images**: not part of bulk event export/import — a `stored_files` row's
   content lives only on the API container's local disk, so restoring an export into a
   different environment restores data, not the accompanying images (see ARCHITECTURE.md).
