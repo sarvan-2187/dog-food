@@ -13,7 +13,8 @@ from ..submissions.models import Submission, in_competition
 from ..teams.models import TeamMembership
 from ..timeutil import utcnow
 from ..webhooks.service import notify
-from .assignment import assign_judges, coverage_report
+from .assignment import assign_judges, coverage_report, outside_track
+from .event_judges import assert_in_track, assignment_outside_track
 from .models import EventJudge, JudgeAssignment, JudgeConflict, Rubric
 from .schemas import (
     WEIGHT_SUM_TOLERANCE,
@@ -223,6 +224,31 @@ def run_assignment(
     team_ids = {s.team_id for s in submissions}
     memberships = list(session.exec(select(TeamMembership).where(TeamMembership.team_id.in_(team_ids))))
     existing_rows = list(session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id)))
+    tracks = {
+        m.user_id: m.track for m in session.exec(select(EventJudge).where(EventJudge.event_id == event_id))
+    }
+    # A judge given a track after assignment may hold entries outside it. Scored
+    # ones stand (a real judgement), unscored ones are released here so the run
+    # below refills the gap from judges who may see them.
+    track_of = {s.id: s.track for s in submissions}
+    scored_ids = (
+        {
+            sc.assignment_id
+            for sc in session.exec(select(Score).where(Score.assignment_id.in_([a.id for a in existing_rows])))
+        }
+        if existing_rows
+        else set()
+    )
+    released = 0
+    for row in list(existing_rows):
+        if (
+            row.id not in scored_ids
+            and row.submission_id in track_of
+            and outside_track(tracks.get(row.judge_id), track_of[row.submission_id])
+        ):
+            session.delete(row)
+            existing_rows.remove(row)
+            released += 1
     declared = {
         (c.judge_id, c.submission_id)
         for c in session.exec(select(JudgeConflict).where(JudgeConflict.event_id == event_id))
@@ -235,6 +261,7 @@ def run_assignment(
         k=payload.judges_per_submission,
         existing=[(a.submission_id, a.judge_id) for a in existing_rows],
         extra_conflicts=declared,
+        judge_tracks=tracks,
     )
     for assignment in proposed:
         session.add(assignment)
@@ -246,6 +273,7 @@ def run_assignment(
         entity_type="event",
         entity_id=event_id,
         created=created,
+        released_outside_track=released,
         judges_per_submission=payload.judges_per_submission,
     )
     session.commit()
@@ -326,6 +354,9 @@ def my_progress(
             .where(JudgeAssignment.judge_id == user.id, Event.end_at <= utcnow())
         )
     )
+    # A scored entry kept from before this judge got a track stays on record for
+    # the organizer, but the judge never sees an entry outside their track.
+    assignments = [a for a in assignments if not assignment_outside_track(session, a)]
     rows = _to_public(session, assignments)
     done = [r for r in rows if r.scored]
     return JudgeProgress(completed=len(done), total=len(rows), pending=[r for r in rows if not r.scored], done=done)
@@ -344,6 +375,7 @@ def scoring_sheet(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found.")
     if assignment.judge_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This submission is assigned to a different judge.")
+    assert_in_track(session, assignment)
 
     submission = session.get(Submission, assignment.submission_id)
     if not submission:

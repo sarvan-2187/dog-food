@@ -188,6 +188,7 @@ judge on the platform.
 | `user_id` | int, FK → `users.id` | Must hold the `judge` role to be assigned |
 | `added_by_id` | int, FK → `users.id`, nullable | |
 | `added_at` | timestamptz | |
+| `track` | varchar, nullable, default NULL | One of `events.tracks`, or NULL for a judge who takes any track (DOGFOOD T2). Added at boot via `_ADDED_COLUMNS` |
 
 Unique constraint: `(event_id, user_id)`. Backfilled at boot from existing assignments.
 

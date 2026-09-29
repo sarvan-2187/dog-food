@@ -8,7 +8,7 @@ Kept free of session/ORM access so it can be exercised on plain objects.
 """
 from __future__ import annotations
 
-from typing import Iterable, Protocol, Sequence
+from typing import Iterable, Mapping, Optional, Protocol, Sequence
 
 from .models import JudgeAssignment
 
@@ -28,6 +28,14 @@ class _HasId(Protocol):
 class _Membership(Protocol):
     team_id: int
     user_id: int
+
+
+def outside_track(judge_track: Optional[str], submission_track: str) -> bool:
+    """True when a track judge may not see this entry (DOGFOOD T2: a track judge
+    must never see another track). A judge with no track takes any entry; a
+    track judge takes only entries in exactly their track, so an entry with no
+    track goes to untracked judges only."""
+    return bool(judge_track) and judge_track != (submission_track or "")
 
 
 def build_conflict_set(
@@ -55,6 +63,7 @@ def assign_judges(
     *,
     existing: Iterable[tuple[int, int]] = (),
     extra_conflicts: Iterable[tuple[int, int]] = (),
+    judge_tracks: Mapping[int, Optional[str]] = {},
 ) -> list[JudgeAssignment]:
     """Assign up to `k` non-conflicted judges to each submission, returning only
     the NEW assignments.
@@ -68,7 +77,11 @@ def assign_judges(
     after a judge is removed only fills the gap (PLAN.md Phase 10.7) instead of
     stacking a fresh k judges on top. `extra_conflicts` is (judge_id,
     submission_id) pairs a judge has declared, treated exactly like a same-team
-    conflict. With both empty this is the original algorithm, unchanged.
+    conflict. `judge_tracks` maps judge id to that judge's track (None or
+    missing means untracked): a track judge is never given an entry outside
+    their track (`outside_track`), and for an entry in their track they are
+    preferred over untracked judges, who fill whatever is left. With all three
+    empty this is the original algorithm, unchanged.
 
     Fewer than `k` judges are assigned when conflicts leave too few eligible --
     that is reported honestly rather than papered over by relaxing a conflict.
@@ -91,10 +104,18 @@ def assign_judges(
         needed = k - len(have)
         if needed <= 0:
             continue
-        eligible = [j for j in judge_ids if (j, submission.id) not in conflicts and j not in have]
-        # Fewest assignments first, then judge id -- both keys are total, so the
-        # ordering is fully determined and the run is reproducible.
-        eligible.sort(key=lambda j: (load[j], j))
+        track = getattr(submission, "track", "") or ""
+        eligible = [
+            j
+            for j in judge_ids
+            if (j, submission.id) not in conflicts
+            and j not in have
+            and not outside_track(judge_tracks.get(j), track)
+        ]
+        # This track's own judges first, then fewest assignments, then judge id:
+        # every key is total, so the ordering is fully determined and the run
+        # is reproducible.
+        eligible.sort(key=lambda j: (0 if judge_tracks.get(j) else 1, load[j], j))
         for judge_id in eligible[:needed]:
             assignments.append(
                 JudgeAssignment(

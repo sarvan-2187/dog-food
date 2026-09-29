@@ -23,11 +23,36 @@ from ..scoring.models import Score
 from ..submissions.models import Submission
 from ..timeutil import utcnow
 from ..ratelimit import judge_reminder_limiter
+from .assignment import outside_track
 from .models import EventJudge, JudgeAssignment, JudgeConflict
 
 router = APIRouter(tags=["event-judges"])
 
 ORGANIZER = (Role.organizer, Role.admin)
+
+
+def judge_track(session: Session, event_id: int, judge_id: int) -> Optional[str]:
+    """This judge's track on this event, or None when they take any track."""
+    member = session.exec(
+        select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.user_id == judge_id)
+    ).first()
+    return member.track if member else None
+
+
+def assignment_outside_track(session: Session, assignment: JudgeAssignment) -> bool:
+    submission = session.get(Submission, assignment.submission_id)
+    return outside_track(
+        judge_track(session, assignment.event_id, assignment.judge_id), submission.track if submission else ""
+    )
+
+
+def assert_in_track(session: Session, assignment: JudgeAssignment) -> None:
+    """DOGFOOD T2: a track judge must never see another track. Checked on every
+    judge read or write of an assignment, not only when assigning, so a row left
+    over from before the judge got a track (or written by hand) still can't be
+    used to read or score an entry outside it."""
+    if assignment_outside_track(session, assignment):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This submission is outside the track you are judging.")
 
 
 def _event_or_404(session: Session, event_id: int) -> Event:
@@ -48,6 +73,7 @@ class EventJudgePublic(BaseModel):
     user_id: int
     name: str
     email: str
+    track: Optional[str] = None
     assigned: int
     scored: int
     last_activity: Optional[datetime]
@@ -97,6 +123,7 @@ def list_event_judges(
                 user_id=user.id,
                 name=user.name,
                 email=user.email,
+                track=member.track,
                 assigned=len(mine),
                 scored=len(my_scores),
                 last_activity=max((s.updated_at for s in my_scores), default=None),
@@ -155,8 +182,53 @@ def add_existing_judge(
         record(session, "event_judge.added", actor=user, entity_type="event", entity_id=event_id, judge_id=judge.id)
         session.commit()
     return EventJudgePublic(
-        user_id=judge.id, name=judge.name, email=judge.email, assigned=0, scored=0, last_activity=None, conflicts=[]
+        user_id=judge.id,
+        name=judge.name,
+        email=judge.email,
+        track=existing.track if existing else None,
+        assigned=0,
+        scored=0,
+        last_activity=None,
+        conflicts=[],
     )
+
+
+class JudgeTrack(BaseModel):
+    # None (or "") means the judge takes any track.
+    track: Optional[str] = None
+
+
+@router.put("/api/events/{event_id}/judges/{user_id}/track", response_model=JudgeTrack)
+def set_judge_track(
+    event_id: int,
+    user_id: int,
+    payload: JudgeTrack,
+    user: User = Depends(require_role(*ORGANIZER)),
+    session: Session = Depends(get_session),
+) -> JudgeTrack:
+    """Give a judge on this event's panel one track, or clear it. Takes effect on
+    reads at once (assert_in_track); unscored assignments outside the new track
+    are released the next time assignment runs, and scores already given stand."""
+    event = _event_or_404(session, event_id)
+    member = session.exec(
+        select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.user_id == user_id)
+    ).first()
+    if member is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person isn't judging this event.")
+    track = (payload.track or "").strip() or None
+    if track is not None and track not in (event.tracks or []):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, f"This event has no track called {track!r}."
+        )
+    if member.track != track:
+        member.track = track
+        session.add(member)
+        record(
+            session, "event_judge.track_set", actor=user, entity_type="event", entity_id=event_id,
+            judge_id=user_id, track=track,
+        )
+        session.commit()
+    return JudgeTrack(track=track)
 
 
 class RemovalResult(BaseModel):

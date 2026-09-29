@@ -388,6 +388,8 @@ export interface EventJudgeRow {
   user_id: number;
   name: string;
   email: string;
+  /** One of the event's tracks, or null for a judge who takes any track. */
+  track: string | null;
   assigned: number;
   scored: number;
   last_activity: string | null;

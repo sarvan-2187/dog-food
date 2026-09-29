@@ -14,6 +14,7 @@ from ..db import get_session
 from ..events.models import Event
 from ..events.schemas import stages_to_json
 from ..events.visibility import may_see_results, results_are_public
+from ..judging.event_judges import assert_in_track, assignment_outside_track
 from ..judging.models import JudgeAssignment, Rubric
 from ..submissions.models import Submission, SubmissionStatus, in_competition
 from ..teams.models import Team, TeamMembership
@@ -74,6 +75,7 @@ def submit_score(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found.")
     if assignment.judge_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This submission is assigned to a different judge.")
+    assert_in_track(session, assignment)
     event = session.get(Event, assignment.event_id)
     if event is not None and utcnow() < event.end_at:
         # PLAN.md 10.3: covers assignments made before judging was gated on the deadline.
@@ -144,6 +146,7 @@ def get_my_score(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found.")
     if assignment.judge_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This submission is assigned to a different judge.")
+    assert_in_track(session, assignment)
     score = session.exec(select(Score).where(Score.assignment_id == assignment_id)).first()
     if not score:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "You have not scored this submission yet.")
@@ -169,7 +172,14 @@ def judge_scores(
         record(session, "score.peer_read_refused", actor=user, entity_type="user", entity_id=judge_id)
         session.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Judges can only read their own scores.")
-    scores = session.exec(select(Score).where(Score.judge_id == judge_id).order_by(Score.id))
+    scores = list(session.exec(select(Score).where(Score.judge_id == judge_id).order_by(Score.id)))
+    if user.role == Role.judge:
+        # A track judge never sees an entry outside their track, even their own
+        # score from before the track was set (DOGFOOD T2).
+        scores = [
+            s for s in scores
+            if (a := session.get(JudgeAssignment, s.assignment_id)) is None or not assignment_outside_track(session, a)
+        ]
     return [ScorePublic(**s.model_dump()) for s in scores]
 
 
