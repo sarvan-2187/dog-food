@@ -18,6 +18,13 @@ DEMO_SESSION_TOKENS: dict[str, str] = dict(
 
 
 def _user_from_cookie(request: Request, session: Session) -> "User | None":
+    # Integrations send an API key instead of a cookie (auth/api_keys.py).
+    # Imported here, not at module top: api_keys imports require_role from us.
+    scheme, _, credential = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() == "bearer" and credential:
+        from .api_keys import user_for_key
+
+        return user_for_key(session, credential.strip())
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if token in DEMO_SESSION_TOKENS:
         user = session.exec(select(User).where(User.email == DEMO_SESSION_TOKENS[token])).first()

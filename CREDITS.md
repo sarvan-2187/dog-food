@@ -46,6 +46,38 @@ The HackFlow raptor mark (`web/public/logo.png`, and `web/public/images/raptor.p
 derived from it by trimming and removing a faint watermark from the alpha
 channel) is the project's own asset and is not covered by the table above.
 
+# Hackathon Raptors
+
+HackFlow is built for [Hackathon Raptors](https://www.raptors.dev) and their DOGFOOD 2026
+hackathon, whose brief is to build the submission and judging platform they will run.
+"HackFlow by Hackathon Raptors" names who the platform is built for. It is a DOGFOOD entry by
+Team CodeHawk, not an official Hackathon Raptors product, until and unless they adopt it.
+
+**Organization** (from the contact section of [raptors.dev](https://www.raptors.dev)):
+
+> Hackathon Raptors, Community Interest Company 15557917
+> Office 2131, 182-184 High Street North, East Ham, London E6 2JA, United Kingdom
+> hello@raptors.dev · +44 1733 833019
+
+**Event posters.** The posters in `web/public/images/raptors/` are Hackathon Raptors' own
+artwork, downloaded from their website's image host (`cdn.prod.website-files.com`) on
+27 September 2026 and resized to 600 px wide. They appear on the landing page's "From the
+Raptors calendar" section, each linking back to its event page. They remain © Hackathon
+Raptors and are not covered by this repository's MIT licence. Remove them, and that landing
+section, if you deploy HackFlow for anyone else.
+
+| File | Event page |
+|---|---|
+| `images/raptors/dogfood-2026.jpg` | [DOGFOOD 2026: Build the Platform That Will Judge You](https://www.raptors.dev/project/dogfood-2026-build-the-platform-that-will-judge-you) |
+| `images/raptors/speed-demon-2026.jpg` | [Speed Demon 2026: Every Millisecond Is a Soul](https://www.raptors.dev/project/speed-demon-2026-every-millisecond-is-a-soul) |
+| `images/raptors/zero-dependency-2026.jpg` | [Zero Dependency 2026: Ship Something Useful With an Empty Manifest](https://www.raptors.dev/project/zero-dependency-2026-stdlib-only) |
+| `images/raptors/port-mortem-2026.jpg` | [Code Resurrection 2026: Port Mortem](https://www.raptors.dev/project/code-resurrection-2026-port-mortem) |
+| `images/raptors/ai-slop-scan.jpg` | [AI Slop Scan Hackathon](https://www.raptors.dev/project/ai-slop-scan-hackathon----catch-low-effort-ai-content) |
+| `images/raptors/mindcode-2026.jpg` | [Mindcode 2026: Software for Human Health](https://www.raptors.dev/project/mindcode-2026----software-for-human-health) |
+
+The figures quoted on the landing page (35+ hackathons, 3,500+ participants, 30+ countries)
+are from raptors.dev.
+
 # Software
 
 Everything the running app depends on is pinned in `api/requirements.txt` and

@@ -9,7 +9,7 @@ from ..submissions.models import Submission
 from ..teams.models import Team
 from ..judging.models import Rubric
 from .models import Event
-from .schemas import EventCreate, EventUpdate
+from .schemas import EventCreate, EventUpdate, stages_to_json
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -189,6 +189,8 @@ def update_event(
             status.HTTP_409_CONFLICT,
             "Email-confirmed voting needs email set up first (SMTP_HOST), or guests could never get a link.",
         )
+    if "stages" in changes:
+        changes["stages"] = stages_to_json(payload.stages or [])
     for key, value in changes.items():
         setattr(event, key, value)
     session.add(event)

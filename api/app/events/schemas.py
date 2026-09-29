@@ -61,6 +61,52 @@ class EventCreate(BaseModel):
         return v
 
 
+class Stage(BaseModel):
+    """One round of an event (Stage 1, Stage 2, ...). Shown, not enforced."""
+
+    name: str
+    description: str = ""
+    starts_at: datetime
+    ends_at: datetime
+
+    @field_validator("name")
+    @classmethod
+    def name_len(cls, v: str) -> str:
+        v = v.strip()
+        if not (1 <= len(v) <= 60):
+            raise ValueError("A stage name must be 1-60 characters.")
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def description_len(cls, v: str) -> str:
+        if len(v) > 300:
+            raise ValueError("A stage description must be 300 characters or fewer.")
+        return v.strip()
+
+    @field_validator("starts_at", "ends_at")
+    @classmethod
+    def as_utc(cls, v: datetime) -> datetime:
+        return ensure_utc(v)
+
+    @model_validator(mode="after")
+    def ordered(self) -> "Stage":
+        if self.ends_at <= self.starts_at:
+            raise ValueError(f"Stage \"{self.name}\" must end after it starts.")
+        return self
+
+
+MAX_STAGES = 10
+
+
+def stages_to_json(stages: List[Stage]) -> List[Dict[str, Any]]:
+    """Chronological, JSON-ready. Overlaps are allowed (a judging round can
+    start while a showcase runs); the order is by start time."""
+    if len(stages) > MAX_STAGES:
+        raise ValueError(f"An event can have at most {MAX_STAGES} stages.")
+    return [s.model_dump(mode="json") for s in sorted(stages, key=lambda s: s.starts_at)]
+
+
 class EventUpdate(BaseModel):
     """PATCH must not be a way around EventCreate's rules, so it revalidates the
     same ones on whichever fields are present."""
@@ -80,11 +126,19 @@ class EventUpdate(BaseModel):
     voting_requires_verified: Optional[bool] = None
     voting_account_cutoff: Optional[datetime] = None
     rules: Optional[str] = None
+    stages: Optional[List[Stage]] = None
 
     @field_validator("name")
     @classmethod
     def name_len(cls, v: Optional[str]) -> Optional[str]:
         return v if v is None else _name_len(v)
+
+    @field_validator("stages")
+    @classmethod
+    def stage_count(cls, v: Optional[List[Stage]]) -> Optional[List[Stage]]:
+        if v is not None and len(v) > MAX_STAGES:
+            raise ValueError(f"An event can have at most {MAX_STAGES} stages.")
+        return v
 
     @field_validator("rules")
     @classmethod

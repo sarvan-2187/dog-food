@@ -89,7 +89,9 @@ if (progress.pending.length && !progress.done.length) {
   const values = Object.fromEntries(sheet.rubrics.flatMap((r) => r.criteria).map((c) => [c.key, Math.round((c.max_score ?? 10) * 0.8)]));
   await json(await judge.api.put(`${BASE}/api/assignments/${first.id}/score`, { data: { values, comment: 'Clear demo, solid tests.' } }));
 }
-const unscored = (await json(await judge.api.get(`${BASE}/api/judge/assignments`))).pending[0];
+const after = await json(await judge.api.get(`${BASE}/api/judge/assignments`));
+// Any assignment shows the form; an unscored one just shows it empty.
+const unscored = after.pending[0] ?? after.done[0];
 
 // --- signed out -------------------------------------------------------------
 {

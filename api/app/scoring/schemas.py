@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, field_validator
 
+from ..events.schemas import Stage
 from ..submissions.schemas import safe_link
 
 
@@ -87,6 +88,7 @@ class EventImportPayload(BaseModel):
     voting_access: Literal["authenticated", "email", "open"] = "authenticated"
     results_hidden_until: Optional[str] = None
     rules: str = ""
+    stages: List[Stage] = []
     rubrics: List[RubricImport] = []
     teams: List[TeamImport] = []
     submissions: List[SubmissionImport] = []

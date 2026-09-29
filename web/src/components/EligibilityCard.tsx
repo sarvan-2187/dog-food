@@ -55,11 +55,16 @@ export function EligibilityCard({
   }
 
   const out = rows?.filter((r) => r.disqualified_at).length ?? 0;
+  const flagged = rows?.filter((r) => !r.disqualified_at && r.flags.length > 0).length ?? 0;
 
   return (
     <Card
       title="Eligibility"
-      meta={rows ? `${rows.length} submitted${out ? ` · ${out} disqualified` : ''}` : undefined}
+      meta={
+        rows
+          ? `${rows.length} submitted${flagged ? ` · ${flagged} to check` : ''}${out ? ` · ${out} disqualified` : ''}`
+          : undefined
+      }
       footer="Disqualified entries leave the gallery, voting, judging and standings. Scores are kept for a reinstatement."
     >
       {error && <ErrorState description={error} onRetry={load} />}
@@ -75,9 +80,19 @@ export function EligibilityCard({
                   {r.team_name}
                   {r.disqualified_at ? ` · ${r.disqualified_reason}` : ''}
                 </span>
+                {!r.disqualified_at && r.flags.length > 0 && (
+                  <ul className="mt-1 flex flex-col gap-0.5" aria-label={`Checks for ${r.title}`}>
+                    {r.flags.map((f) => (
+                      <li key={f} className="text-meta text-warning-fg">
+                        ⚠ {f}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </span>
               <span className="flex items-center gap-2">
                 {r.disqualified_at && <Badge status="danger">Disqualified</Badge>}
+                {!r.disqualified_at && r.flags.length === 0 && <Badge status="success">Checks pass</Badge>}
                 <Button
                   variant={r.disqualified_at ? 'secondary' : 'ghost'}
                   size="sm"

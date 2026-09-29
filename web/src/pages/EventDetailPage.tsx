@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Announcements, EventRules, JudgingCriteria, WinnersSection } from '../components/EventSections';
 import { EventTimeline, eventPhase } from '../components/EventTimeline';
+import { StageTimeline } from '../components/EventStages';
 import { TeamManager } from '../components/TeamManager';
 import { ErrorState, SkeletonRows } from '../components/feedback';
 import { Button, Card, Input } from '../components/ui';
@@ -96,6 +97,8 @@ export function EventDetailPage() {
           </ul>
         )}
       </div>
+
+      <StageTimeline stages={event.stages ?? []} />
 
       <WinnersSection eventId={event.id} />
 
