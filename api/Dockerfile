@@ -25,10 +25,7 @@ COPY fixtures.json ./fixtures/dogfood.json
 COPY --from=web /web/dist ./static
 
 EXPOSE 8000
-# Transport-level DoS limits (app/protection.py covers the application level):
-# refuse connections past 200 concurrent, drop idle keep-alive sockets after 5s,
-# cap the accept backlog, and cap a request's headers at 16 KB so a slow-loris
-# client trickling an endless header block is cut off.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
-     "--limit-concurrency", "200", "--timeout-keep-alive", "5", "--backlog", "512", \
-     "--h11-max-incomplete-event-size", "16384"]
+# app/serve.py runs uvicorn with its transport-level DoS limits (concurrency,
+# keep-alive, backlog, 16 KB request head) and a 10 s header timeout against
+# slow-loris; app/protection.py covers the application level.
+CMD ["python", "-m", "app.serve"]

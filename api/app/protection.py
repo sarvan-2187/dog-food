@@ -122,19 +122,29 @@ class ProtectionMiddleware:
             return
 
         received = 0
+        too_large = False
 
         async def limited_receive():
-            nonlocal received
+            nonlocal received, too_large
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > limit:
+                    too_large = True
                     raise BodyTooLarge()
             return message
 
         started = asyncio.Event()
 
         async def tracking_send(message):
+            # A framework may catch BodyTooLarge while reading the body and
+            # answer with its own error (FastAPI: a 400 "error parsing the
+            # body"). The real reason is the size, so the client gets the 413.
+            if too_large:
+                if message["type"] == "http.response.start" and not started.is_set():
+                    started.set()
+                    await send_json_error(send, 413, f"Request body too large (limit {limit // 1024} KB).")
+                return
             if message["type"] == "http.response.start":
                 started.set()
             await send(message)

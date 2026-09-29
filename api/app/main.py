@@ -120,6 +120,30 @@ async def frame_policy(request: Request, call_next):
     return response
 
 
+# Browser caching for static files. Without it every page load re-requested
+# every font, image and script, ~30 requests, each counting towards the
+# 200/minute limit (found in acceptance testing). Vite names /assets/ files by
+# content hash, so they never change under the same URL; public/ files
+# (fonts, images) keep their names, so they get a day; index.html is always
+# revalidated so a deploy is picked up at once.
+_IMMUTABLE = "public, max-age=31536000, immutable"
+_STATIC_PREFIXES = ("/fonts/", "/images/", "/favicon")
+
+
+@app.middleware("http")
+async def cache_policy(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if response.status_code == 200 and "cache-control" not in response.headers:
+        if path.startswith("/assets/"):
+            response.headers["Cache-Control"] = _IMMUTABLE
+        elif path.startswith(_STATIC_PREFIXES):
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        elif not path.startswith(("/api/", "/embed/", "/media/", "/healthz", "/docs", "/redoc", "/openapi.json")):
+            response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
