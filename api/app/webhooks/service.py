@@ -27,6 +27,7 @@ from sqlmodel import Session, select
 from .. import crypto
 from ..timeutil import utcnow
 from .models import WebhookSubscription
+from .targets import refusal
 
 TIMEOUT_SECONDS = 5.0
 
@@ -52,6 +53,9 @@ def _deliver(url: str, subscription_id: int, signed_payload: dict, *, session: "
     own transaction pass their own session directly instead."""
     status_text = "failed"
     try:
+        # Checked again at delivery, not only at creation: DNS may have changed.
+        if problem := refusal(url):
+            raise ValueError(problem)
         # httpx.post does not follow redirects by default: a 3xx is a failed
         # delivery, never a hop to another host (tests pin this).
         response = httpx.post(url, json=signed_payload, timeout=TIMEOUT_SECONDS)

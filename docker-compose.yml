@@ -22,7 +22,9 @@ services:
       dockerfile: api/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg2://dogfood:dogfood@db:5432/dogfood
-      SESSION_SECRET: dev-only-not-a-real-secret
+      # Empty by default: a random secret is generated on first boot and kept
+      # in the keys volume. Set your own in .env to pin it.
+      SESSION_SECRET: ${SESSION_SECRET:-}
       FIXTURES_DIR: /app/fixtures
       STATIC_DIR: /app/static
       KEYS_DIR: /app/keys
@@ -42,6 +44,11 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-}
       # Global limit per client (api/app/request_limit.py). 0 switches it off.
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-200}
+      # Webhooks may only target public addresses (SSRF guard). 1 allows
+      # receivers on the local network.
+      WEBHOOK_ALLOW_PRIVATE: ${WEBHOOK_ALLOW_PRIVATE:-}
+      # Secure cookies follow APP_BASE_URL (https => secure); 1/0 overrides.
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
     ports:
       - "8000:8000"
     volumes:

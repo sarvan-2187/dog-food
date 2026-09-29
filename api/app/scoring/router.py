@@ -259,11 +259,26 @@ def results(
 # CSV exports -- organizer/admin only, Python csv stdlib only (PLAN.md section 5)
 # --------------------------------------------------------------------------
 
+# A cell starting with one of these is run as a formula when the CSV is opened
+# in Excel, LibreOffice or Google Sheets. Titles, team names, answers, comments
+# and user names are typed by participants, so "=HYPERLINK(...)" in a project
+# title would otherwise execute on the organizer's machine (CSV injection).
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """OWASP's advice: prefix such a text cell with a single quote so it is read
+    as text. Numbers are left alone, so a negative score stays a number."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def _csv_response(filename: str, header: list[str], rows: Iterable[list]) -> Response:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(header)
-    writer.writerows(rows)
+    writer.writerow([_csv_safe(h) for h in header])
+    writer.writerows([_csv_safe(v) for v in row] for row in rows)
     return Response(
         content=buffer.getvalue(),
         media_type="text/csv",
@@ -278,7 +293,18 @@ def export_users(
     session: Session = Depends(get_session),
 ) -> Response:
     _existing_event(session, event_id)
-    users = session.exec(select(User).order_by(User.id)).all()
+    # The people of THIS event: its team members and its judges. It used to
+    # list every account on the platform, so any organizer could download the
+    # names and emails of people in other organizers' events.
+    team_ids = select(Team.id).where(Team.event_id == event_id)
+    member_ids = select(TeamMembership.user_id).where(TeamMembership.team_id.in_(team_ids))
+    panel_ids = select(EventJudge.user_id).where(EventJudge.event_id == event_id)
+    assigned_ids = select(JudgeAssignment.judge_id).where(JudgeAssignment.event_id == event_id)
+    users = session.exec(
+        select(User)
+        .where(User.id.in_(member_ids) | User.id.in_(panel_ids) | User.id.in_(assigned_ids))
+        .order_by(User.id)
+    ).all()
     return _csv_response(
         f"event-{event_id}-users.csv",
         ["id", "email", "name", "role", "created_at"],

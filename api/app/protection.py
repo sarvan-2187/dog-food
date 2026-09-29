@@ -180,10 +180,21 @@ class SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # HSTS only on HTTPS (as seen after --proxy-headers): browsers ignore it
+        # over plain HTTP anyway, and localhost must stay reachable over http.
+        https = scope.get("scheme") == "https"
+        framable = scope.get("path", "").startswith("/embed/")
+
         async def with_headers(message):
             if message["type"] == "http.response.start":
                 present = {name.lower() for name, _ in message.get("headers", [])}
                 extra = [(n, v) for n, v in self.HEADERS if n not in present]
+                # Refusals sent before a route runs (413/429/503) skip main.py's
+                # frame_policy; they are never framable either. The widget is.
+                if not framable and b"x-frame-options" not in present:
+                    extra.append((b"x-frame-options", b"DENY"))
+                if https and b"strict-transport-security" not in present:
+                    extra.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains"))
                 message = {**message, "headers": [*message.get("headers", []), *extra]}
             await send(message)
 

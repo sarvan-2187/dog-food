@@ -13,6 +13,7 @@ from ..auth import Role, User, require_role
 from ..db import get_session
 from ..events.models import Event
 from .models import WebhookSubscription
+from .targets import refusal
 
 router = APIRouter(tags=["webhooks"])
 
@@ -66,6 +67,8 @@ def create_webhook(
     session: Session = Depends(get_session),
 ) -> WebhookSubscription:
     _event_or_404(session, event_id)
+    if problem := refusal(payload.url):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
     webhook = WebhookSubscription(event_id=event_id, url=payload.url, created_by_id=user.id)
     session.add(webhook)
     session.flush()

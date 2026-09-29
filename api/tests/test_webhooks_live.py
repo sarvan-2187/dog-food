@@ -44,6 +44,13 @@ class _Receiver:
         self.server.shutdown()
 
 
+@pytest.fixture(autouse=True)
+def _local_receivers_allowed(monkeypatch):
+    """These tests deliver to a server on 127.0.0.1, which the SSRF guard
+    refuses unless the install opts in (tests/test_security.py covers that)."""
+    monkeypatch.setenv("WEBHOOK_ALLOW_PRIVATE", "1")
+
+
 @pytest.fixture()
 def receiver():
     r = _Receiver()

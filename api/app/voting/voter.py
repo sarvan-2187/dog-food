@@ -20,7 +20,7 @@ from fastapi import HTTPException, Request, Response, status
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from ..auth.models import User
-from ..auth.session import SESSION_SECRET
+from ..auth.session import COOKIE_SECURE, SESSION_SECRET
 from ..events.models import Event
 
 VOTER_COOKIE = "voter"
@@ -50,7 +50,8 @@ def read_voter_key(request: Request) -> Optional[str]:
 
 def set_voter_cookie(response: Response, key: str) -> None:
     response.set_cookie(
-        VOTER_COOKIE, _cookie.dumps(key), max_age=VOTER_MAX_AGE, httponly=True, samesite="lax"
+        VOTER_COOKIE, _cookie.dumps(key), max_age=VOTER_MAX_AGE, httponly=True, samesite="lax",
+        secure=COOKIE_SECURE,
     )
 
 
