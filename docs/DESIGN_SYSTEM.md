@@ -1,19 +1,18 @@
 # DESIGN_SYSTEM.md — HackFlow (Team CodeHawk)
 
 **Rebuilt in Phase 5 from a live self-check of [raptors.dev](https://www.raptors.dev/)** —
-Hackathon Raptors' actual site, referenced by `hackraptors.pdf`. This supersedes the system
-originally derived from `reference_design.pdf` (RiskSentinel X), per an explicit later decision
-to make the reference the actual design-system source, not positioning/copy only (see
-`PLAN.md`'s Open Questions for both the original decision and this reversal).
+Hackathon Raptors' actual site. This supersedes the system originally derived from an
+unrelated reference design (RiskSentinel X), per an explicit later decision to make Raptors'
+own site the design-system source, not positioning/copy only.
 
-**Method:** rather than eyeballing `hackraptors.pdf`'s poster imagery, the live site's DOM was
+**Method:** rather than eyeballing poster imagery, the live site's DOM was
 inspected directly — `getComputedStyle()` on real elements, and every `:root` custom property —
 so every value below is a real, measured number, not an estimate. Where the reference has no
 equivalent (it's a marketing site with no dense data UI), that's stated explicitly rather than
 silently invented.
 
-**This file is the single source of truth for tokens.** Per `PLAN.md` §3, mirror everything in
-Sections 2–6 into `web/tailwind.config.ts` (`theme.extend`) and/or `web/src/styles/tokens.ts`,
+**This file is the single source of truth for tokens.** Mirror everything in
+Sections 2–6 into `src/web/tailwind.config.ts` (`theme.extend`) and/or `src/web/src/styles/tokens.ts`,
 then re-skin existing components. Where the reference's layout implies a token that conflicts
 with this file, **this file wins**.
 
@@ -37,7 +36,7 @@ poster artwork, which is the *content*, not the *chrome*). Applied to a hackatho
   ink-border, ink-text — filled colour is the exception, reserved for the one primary CTA per
   view and for semantic status.
 - **Status still needs colour + a label.** The reference has no functional status UI to sample
-  (it's a portfolio, not a workflow app) — `PLAN.md` §4.5 still requires status never be colour
+  (it's a portfolio, not a workflow app) — status must never be colour
   alone, so §2.5's tints are a necessary, disclosed adaptation, kept close to the reference's
   editorial, slightly muted tone rather than bright SaaS hues.
 - **Tight, confident type.** Real measured headings carry noticeably negative letter-spacing
@@ -122,7 +121,7 @@ Roles use ink + border, **not** the status palette (a role is not a state):
 
 Confirmed by reading the live site's `:root` custom properties directly: `--sans:
 "Satoshi Variable"`, `--serif: "Playfair Display"`. Both are self-hosted under
-`web/public/fonts/` — `PLAN.md` §1 forbids CDN font requests in the served app, so this
+`src/web/public/fonts/` — the app makes no CDN font requests in the served app, so this
 supersedes the earlier "system stacks are canonical" decision (Phase 5.1) now that a request
 explicitly asked for these named fonts.
 
@@ -188,7 +187,7 @@ Headline metrics (`94 / 100`, `43 of 51 scored`) use `h1`/`h2` size at weight 70
 - Landing sections use an asymmetric split (label/heading left, content right) — a 12-col grid with
   a `4 / 8` split on desktop, stacking to one column below `768px`.
 
-**Breakpoints** (must all be verified per `PLAN.md` §4.5)
+**Breakpoints** (all must be verified)
 
 | Name | Width |
 |---|---|
@@ -251,7 +250,7 @@ Real raptors.dev buttons are all outline (`secondary`/`ghost` above); `primary` 
 the one addition a functional app needs for a clear single call-to-action per view, per §1.
 
 **One `primary` per view.** In-flight state: disable the control, swap the label to a spinner +
-`Saving…` — required by `PLAN.md` §4.1 to block double-submits.
+`Saving…`, which blocks double-submits.
 
 ### 7.2 Inputs
 
@@ -261,7 +260,7 @@ padding. Label above at `label` type / `ink-800`, `6px` gap. Helper/error text b
 - Focus: `border-color: brand-500` + `box-shadow: 0 0 0 3px rgba(31,36,38,0.18)`.
 - Error: `border-color: #B3271E`, error message in `#B3271E` at `meta`, `aria-invalid` +
   `aria-describedby` set. Validation fires on blur and on change after first blur
-  (`PLAN.md` §4.3).
+ .
 - Never remove the focus ring. Never signal error with colour alone — always the message text.
 
 ### 7.3 Cards & panels
@@ -293,11 +292,11 @@ tracking), `2px 12px` padding, tint + text from §2.5 or §2.6, always with a te
 wordmark-plus-hamburger this section described in an earlier revision):**
 
 - A centred, `rounded-full` bar in `ink-700` sitting on `surface-200`, `p-1.5` padding, at every
-  breakpoint (`web/src/components/layout/NavBar.tsx`). Contents: a circular home icon first, then
+  breakpoint (`src/web/src/components/layout/NavBar.tsx`). Contents: a circular home icon first, then
   one tab per link.
 - The active tab (matched by route, via `NavLink`) is a `surface-0` bg / `ink-900` text pill inside
   the dark bar; inactive tabs are `surface-0/90` text, `label` type, uppercase.
-- Role-aware: links the current role can't use are **absent**, not disabled (`PLAN.md` §4.4).
+- Role-aware: links the current role can't use are **absent**, not disabled.
   Logged out, `Log in` and `Sign up` appear as ordinary trailing tabs; logged in, a single
   `Profile` tab replaces them.
 - **No post-login account controls in the header at all** — role badge, name, log out live on
@@ -309,9 +308,9 @@ wordmark-plus-hamburger this section described in an earlier revision):**
 
 Superseded: the wordmark/hamburger/full-screen-overlay pattern earlier in Phase 5 (itself a live
 self-check of raptors.dev's actual collapsed nav) is no longer what's built. Both were real,
-deliberate iterations — logged in `PLAN.md`'s Open Questions rather than silently overwritten.
+deliberate iterations, recorded here rather than silently overwritten.
 
-### 7.7 Feedback states (build once in `web/src/components/feedback/`)
+### 7.7 Feedback states (build once in `src/web/src/components/feedback/`)
 
 | State | Spec |
 |---|---|
@@ -324,7 +323,7 @@ deliberate iterations — logged in `PLAN.md`'s Open Questions rather than silen
 
 ### 7.8 Metric tiles
 
-Dashboard headline numbers (`PLAN.md` §4.4 — lead with what matters). `surface-0`, `radius-lg`,
+Dashboard headline numbers. `surface-0`, `radius-lg`,
 `border-default`, `p-6`: `eyebrow` label in `ink-400`, value at `h1` / weight 700 / `tabular-nums` /
 `ink-800`, optional `meta` sub-line in `ink-500`. A tile's value turns `brand-500` only when it's
 *the* number the page is about.
@@ -353,7 +352,7 @@ and freeze the skeleton pulse.
 
 ---
 
-## 9. Accessibility floor (non-negotiable, per `PLAN.md` §4.5)
+## 9. Accessibility floor (non-negotiable)
 
 - Body text ≥ 4.5:1 contrast, ≥ 15px. `meta`/`eyebrow` greys are for supporting text only.
 - Visible focus on every interactive element: `2px brand-500` outline, `2px` offset. Never
@@ -369,8 +368,7 @@ and freeze the skeleton pulse.
 
 ## 10. Landing page composition
 
-Built in Phase 5 (`web/src/pages/LandingPage.tsx` — no landing page existed before that; see
-`PLAN.md`'s Open Questions). Composition, using the tokens above:
+Built in Phase 5 (`src/web/src/pages/LandingPage.tsx` — no landing page existed before that). Composition, using the tokens above:
 
 1. **Nav** — wordmark, section links, `ghost` log-in + `primary` CTA (§7.6). Reuses the app's
    real functional nav rather than a separate marketing nav.
@@ -404,19 +402,18 @@ State what the system does and who is accountable — e.g. "Judges score. Normal
 
 ## 11. Implementation checklist
 
-- [x] `web/tailwind.config.ts` → `theme.extend` carries §2–§6 verbatim (colours, fontFamily,
+- [x] `src/web/tailwind.config.ts` → `theme.extend` carries §2–§6 verbatim (colours, fontFamily,
       fontSize, spacing, borderRadius, boxShadow, transitionDuration) — unchanged mechanism,
       just re-derived values in `tokens.ts`.
-- [x] `web/src/styles/tokens.ts` exports the same values for TS consumers; nothing hardcodes a hex.
-- [x] Self-hosted `@font-face` rules under `web/public/fonts/` — Satoshi (400/500/700) and
+- [x] `src/web/src/styles/tokens.ts` exports the same values for TS consumers; nothing hardcodes a hex.
+- [x] Self-hosted `@font-face` rules under `src/web/public/fonts/` — Satoshi (400/500/700) and
       Playfair Display (700 normal, 600 italic), zero external font requests.
-- [x] `web/src/components/ui/` (Button, Input, Card, Badge, MetricTile) matches §7 — Badge
+- [x] `src/web/src/components/ui/` (Button, Input, Card, Badge, MetricTile) matches §7 — Badge
       switched to a true pill (`rounded-full`) to match the real measured radius.
-- [x] `web/src/components/feedback/` (Toast, Skeleton, EmptyState, ErrorState, InlineStatus)
+- [x] `src/web/src/components/feedback/` (Toast, Skeleton, EmptyState, ErrorState, InlineStatus)
       matches §7.7. `ConfirmDialog` and a dedicated `Table` primitive are not yet built —
       pages that need confirmation or tabular layout currently compose their own; flag if a
       screen needs either and neither exists.
-- [x] Landing page built per §10 (Phase 5 — see `PLAN.md`'s Open Questions for why this was a
-      correction, not a re-check).
-- [x] `grep` for raw hex values in `web/src/` returns only `tokens.ts` (the only real hits found
+- [x] Landing page built per §10 (Phase 5, a correction, not a re-check).
+- [x] `grep` for raw hex values in `src/web/src/` returns only `tokens.ts` (the only real hits found
       were HTML entity codes like `&#10003;`, not colours).

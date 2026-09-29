@@ -6,20 +6,20 @@ __pycache__/
 
 # node
 node_modules/
-web/dist/
+src/web/dist/
 
 # local
 .env
 
 # playwright
-web/test-results/
-web/playwright-report/
+src/web/test-results/
+src/web/playwright-report/
 
-# Scratch output of web/scripts/readme-walkthrough.mjs (the README uses the PNG)
+# Scratch output of src/web/scripts/readme-walkthrough.mjs (the README uses the PNG)
 docs/screenshots/walkthrough/certificate.pdf
 
 # runtime state: generated signing key and session secret, uploaded images
 keys/
-api/keys/
+src/api/keys/
 uploads/
-api/uploads/
+src/api/uploads/

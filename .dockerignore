@@ -2,5 +2,5 @@
 .gitignore
 **/__pycache__
 **/node_modules
-web/dist
+src/web/dist
 *.pdf

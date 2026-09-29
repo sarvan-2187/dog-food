@@ -1,8 +1,8 @@
 # Compliance check against the DOGFOOD 2026 brief
 
 Each requirement of the brief's tier ladder (T1–T4) and its deliverables is checked here
-against the running code, as of 2026-09-29. Where the brief's own words are known (quoted
-in `docs/PLAN.md` and the commit history), they are quoted. **Status** is one of:
+against the running code, as of 2026-09-29. Where the brief's own words are known, they are
+quoted. **Status** is one of:
 
 - **Met**: implemented, enforced on the server, and covered by a test;
 - **Met (manual)**: implemented, but the official checker doesn't probe it, so it rests on
@@ -71,11 +71,11 @@ evidence column below is what an evaluator can check.
 | Signed judge participation records (offline keypair) | Met (manual) | `crypto.py` (Ed25519, local key), `/participation-record`, `/api/public-key` |
 | Embeddable gallery widget | Met (manual) | `/embed/events/{slug}`: the only frameable path |
 
-## PLAN.md constraints that are easy to break while hardening
+## Build constraints that are easy to break while hardening
 
 | Constraint | Status after this change |
 |---|---|
-| Exact dependency pins (PLAN.md §5) | No new Python dependency. The middleware uses Starlette, already pinned. The frontend change adds none. |
+| Exact dependency pins | No new Python dependency. The middleware uses Starlette, already pinned. The frontend change adds none. |
 | Single process, no external services | The rate limiter and body caps are in-process. Redis was deliberately not added (SECURITY-AUDIT residual #2). |
 | The acceptance checker still passes against a fresh volume | Yes, 7/7, output identical to the committed report. |
 | Role isolation enforced in the API, never by the UI | Unchanged, and extended: draft events' rubrics now 404 (#18). |

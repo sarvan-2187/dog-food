@@ -8,12 +8,19 @@ found are marked **Fixed** and cross-referenced to
 [`SECURITY-AUDIT.md`](SECURITY-AUDIT.md) (S#) or
 [`NORMALIZATION-ANALYSIS.md`](NORMALIZATION-ANALYSIS.md) (L#).
 
-```text
- 1 Registration ─► 2 Teams ─► 3 Submissions ═(deadline)═► 4 Eligibility ═(competing only)═►
- 5 Assignment ═(judging opens)═► 6 Scoring ─(raw totals)─► 7 Normalization ─(standings)─►
- 8 Results ═(reveal time)═► 9 Certificates ─► 10 Archive
- ═ = a gate the server enforces; a request that ignores the UI still meets it
+```mermaid
+flowchart TD
+    S1["1. Registration"] --> S2["2. Teams"] --> S3["3. Submissions"]
+    S3 == "deadline" ==> S4["4. Eligibility"]
+    S4 == "competing only" ==> S5["5. Assignment"]
+    S5 == "judging opens" ==> S6["6. Scoring"]
+    S6 -- "raw totals" --> S7["7. Normalization"]
+    S7 -- "standings" --> S8["8. Results"]
+    S8 == "reveal time" ==> S9["9. Certificates"]
+    S9 --> S10["10. Archive"]
 ```
+
+A thick arrow is a gate the server enforces: a request that ignores the UI still meets it.
 
 Every stage was exercised live on a seeded stack. The backend has 457 tests, the browser
 has 121 (all passing), and the DOGFOOD checker reports 7/7
@@ -105,7 +112,7 @@ has 121 (all passing), and the DOGFOOD checker reports 7/7
 | **Who / how** | Organizers pick winners (`PUT /api/events/{id}/awards`, suggested from standings). Everyone sees winners and public results after `results_hidden_until` |
 | **Server gates** | `may_see_results()` is one predicate used by the gallery, the public results, awards and certificates. During the hidden window the *API response* withholds counts and standings (`425 Too Early` with the reveal time). The UI merely reflects that. Sorting by votes is refused while hidden. |
 | **Hands on** | Revealed ranks and awards |
-| **Failure modes checked** | Leaking counts through an unauthenticated API call (PLAN.md's named pitfall); judges seeing standings early |
+| **Failure modes checked** | Leaking counts through an unauthenticated API call; judges seeing standings early |
 | **Found in this audit** | No defects. The `event.results_revealed` webhook fires lazily on the first read after the reveal. That is documented, and it means "at first read", not "at the exact second". |
 | **Tests** | `test_voting.py` (36), `test_vote_integrity.py`, browser `voting.spec.ts` |
 

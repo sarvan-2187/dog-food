@@ -2,26 +2,29 @@
 
 ## Shape: a modular monolith, two runtime containers
 
-Everything runs from `docker compose up`, no manual steps, no `.env` to hand-fill (PLAN.md
-§1). At runtime there are exactly two containers. An optional third, a local Mailpit test
+Everything runs from `docker compose up`, no manual steps, no `.env` to hand-fill. At runtime there are exactly two containers. An optional third, a local Mailpit test
 inbox, is added only by `docker-compose.mail.yml` (see "Password recovery and email"):
 
-```
-┌──────────────┐        ┌──────────────────────────────────────────┐
-│  db           │◄──────►│  api                                       │
-│  postgres:16   │        │  FastAPI + Uvicorn, serving:                │
-│  named volume  │        │   - /api/*  (all backend routes)            │
-└──────────────┘        │   - /*      (the built React SPA, as static  │
-                          │              files — no separate web        │
-                          │              container at runtime)          │
-                          └──────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    browser(["Browser"])
+    subgraph compose["docker compose up"]
+        api["<b>api</b><br/>FastAPI + Uvicorn<br/>/api/* : every backend route<br/>/* : the built React SPA, as static files"]
+        db[("<b>db</b><br/>postgres:16<br/>named volume")]
+        mail["<b>mailpit</b> (optional)<br/>docker-compose.mail.yml"]
+    end
+    browser -- "HTTP :8000" --> api
+    api <-- "SQL" --> db
+    api -. "SMTP, opt-in" .-> mail
 ```
 
-There is no `web` service in `docker-compose.yml`. `api/Dockerfile` is a two-stage build:
-stage 1 (`node:20-slim`) runs `npm ci && npm run build` to produce `web/dist`; stage 2
+There is no separate web container at runtime: the api container serves the SPA too.
+
+There is no `web` service in `docker-compose.yml`. `src/api/Dockerfile` is a two-stage build:
+stage 1 (`node:20-slim`) runs `npm ci && npm run build` to produce `src/web/dist`; stage 2
 (`python:3.12-slim`) copies that build output in as static files and discards Node
 entirely. One image, one process, serving both the API and the SPA shell — the SPA's
-catch-all route (`api/app/main.py`) returns `index.html` for any non-API path so client-
+catch-all route (`src/api/app/main.py`) returns `index.html` for any non-API path so client-
 side routing survives a hard refresh.
 
 **Why a monolith, not microservices.** There are four roles and roughly a dozen closely
@@ -33,12 +36,12 @@ services would mean either distributed transactions or eventual consistency for
 guarantees that matter (nobody should be able to score after a rubric changes because two
 services disagreed about ordering). A single Postgres database and a single FastAPI
 process keep those guarantees cheap and the whole system simple enough to fully audit
-(see the Phase 0/1 Audit in PLAN.md) in the time a hackathon actually allows.
+in the time a hackathon actually allows.
 
 ## Backend: one Python package per domain
 
 ```
-api/app/
+src/api/app/
 ├── main.py          # FastAPI app entry: lifespan (schema + upgrades + seed), mounts
 │                     #   every router, then the SPA static mount + catch-all
 ├── db.py            # the one engine + get_session(); create_db_and_tables() also runs
@@ -87,7 +90,7 @@ to trust, not N copies that could each drift.
 ## Frontend: pages consume shared primitives, never re-invent them
 
 ```
-web/src/
+src/web/src/
 ├── components/
 │   ├── ui/         # Button, Input, Card, Badge — built once in Phase 0, before any
 │   │                #   feature page existed
@@ -95,7 +98,7 @@ web/src/
 │   ├── EventSections.tsx  # rules, public criteria, winners, announcements, project links
 │   ├── TeamManager.tsx    # leave / rename / remove / captaincy / new invite link
 │   ├── JudgePanelCard.tsx # an event's judges and their progress (organizer view)
-│   └── AccountRecoveryPanels.tsx # "Help someone sign in" + admin "Email delivery"
+│   ├── AccountRecoveryPanels.tsx # "Help someone sign in" + admin "Email delivery"
 │   ├── feedback/    # Toast, Skeleton, EmptyState, ErrorState, InlineStatus — the
 │   │                #   loading/empty/error states every screen reuses
 │   ├── auth/        # RequireAuth / RequireRole route guards
@@ -108,8 +111,8 @@ web/src/
 └── pages/            # one file per screen, each built from the primitives above
 ```
 
-Design tokens flow one direction: `docs/DESIGN_SYSTEM.md` (derived from `reference_design.pdf`)
-→ `web/src/styles/tokens.ts` → `web/tailwind.config.ts`'s `theme.extend`. A component
+Design tokens flow one direction: `docs/DESIGN_SYSTEM.md`
+→ `src/web/src/styles/tokens.ts` → `src/web/tailwind.config.ts`'s `theme.extend`. A component
 reaching for a raw hex or an ad-hoc spacing value instead of a token is the one thing the
 Phase 5 audit specifically checks for.
 
@@ -136,7 +139,7 @@ successful login clears that account's count.
 `postgres:16-alpine` and `node:20-slim`/`python:3.12-slim` from the standard registries at
 build time. Once running, the api container makes no *required* outbound network calls —
 no cloud database, no auth-as-a-service, no external API, no CDN-fetched font or script in
-the served app (PLAN.md §1). This is why fonts fall back to the system stack (see
+the served app. This is why fonts fall back to the system stack (see
 `docs/DESIGN_SYSTEM.md` §3.1) rather than a Google Fonts `<link>`, and why CSV export uses the
 Python stdlib `csv` module instead of a hosted export service. There are exactly two
 exceptions, both opt-in: outbound webhooks (below), configured per event, and
@@ -147,12 +150,12 @@ SMTP connection is attempted with email off.
 ## Uploaded images: local disk, no CDN
 
 Submission screenshots and profile avatars are stored on the api container's local disk
-behind a `StorageService` interface (`api/app/storage/service.py`), not a cloud bucket —
+behind a `StorageService` interface (`src/api/app/storage/service.py`), not a cloud bucket —
 the same self-hostable/offline constraint that governs everything else in this document.
 `save()`/`read()`/`url_for()`/`delete()`/`exists()` is the whole interface; `LocalStorage`
 is the only implementation. Keys are server-generated (`uuid4().hex` plus an extension
 derived from the validated content-type), never taken from a client-supplied filename, so
-there is no path-traversal surface. `StoredFile` (`api/app/storage/models.py`, see
+there is no path-traversal surface. `StoredFile` (`src/api/app/storage/models.py`, see
 DATA-MODEL.md) tracks ownership; a submission or user has at most one current file, and
 uploading a new one deletes the old one rather than accumulating orphans on disk. There is
 no CDN: images are served straight from the api container, which is consistent with the
@@ -165,7 +168,7 @@ Every reset link, whether emailed, organizer-issued, or printed by the break-gla
 one `PasswordReset` row (DATA-MODEL.md) holding only the SHA-256 of a
 `secrets.token_urlsafe(32)` token. Links are redeemed through the same two endpoints
 (`GET …/preview`, which never consumes the link, and `POST …/redeem`) and the same
-`/reset/:token` page (`api/app/auth/recovery.py`). Emailed links expire in 30 minutes;
+`/reset/:token` page (`src/api/app/auth/recovery.py`). Emailed links expire in 30 minutes;
 organizer and CLI links, handed over live, expire in 60. Issuing a new link retires any
 earlier unused one for that account.
 
@@ -174,7 +177,7 @@ rejects any cookie whose `v` isn't the account's current `session_version`. Ever
 change or reset increments it, which signs the account out everywhere at once. Cookies
 signed before this existed have no `v` and read as 0, so the upgrade signed nobody out.
 
-Email is sent by `api/app/auth/mailer.py` using stdlib `smtplib` and `email.message`, with
+Email is sent by `src/api/app/auth/mailer.py` using stdlib `smtplib` and `email.message`, with
 no SDK and no new dependency. It is read from `SMTP_*` environment variables once at
 startup; with `SMTP_HOST` empty it is off, and nothing in the module opens a socket. Reset
 and "your password was changed" emails go out through FastAPI `BackgroundTasks`, one
@@ -222,7 +225,7 @@ so the page and the API can't disagree.
 ## Upgrading an existing database without a migration tool
 
 There is still no migration framework. `create_all()` creates missing tables, and three
-idempotent steps run after it on every boot (`api/app/db.py`):
+idempotent steps run after it on every boot (`src/api/app/db.py`):
 
 1. **`add_missing_columns()`** adds each new column on an existing table, but only after
    `information_schema` confirms it's absent. `ADD COLUMN IF NOT EXISTS` alone takes an
@@ -258,7 +261,6 @@ by every consequential action, in the same transaction. It now also calls
 - skips the topics `notify()` sends itself (below);
 - signs a payload with the topic set to the audit action string exactly, plus ids only:
   `{topic, event_id, issued_at, entity_type, entity_id, delivery_id}` and any integer `*_id` from the
-  `{topic, event_id, issued_at, delivery_id, entity_type, entity_id}` and any integer `*_id` from the
   audit detail. Never scores, emails, names, free text or vote details (`vote_id`,
   `voter_user_id`, voter keys and fingerprints are dropped). A receiver that wants more
   fetches it through the API with a key;
@@ -294,7 +296,7 @@ so this table is the list as of this build, not a limit.
 Delivery is single-attempt with no retry queue, a deliberate scope cut, since a durable
 retry system is real infrastructure a hackathon-scale platform does not need. Every
 payload is signed with the same Ed25519 key already built for judge participation records
-(`api/app/crypto.py`), so a receiver can verify authenticity offline against
+(`src/api/app/crypto.py`), so a receiver can verify authenticity offline against
 `GET /api/public-key` without trusting the network path. The `event.results_revealed`
 topic fires exactly once per event, guarded by a one-shot flag checked lazily the next
 time results are actually read (not by a background scheduler), and gated on results
@@ -338,12 +340,12 @@ entry the proxy appended (counted from the right), never the client-chosen left 
 
 ## Testing architecture
 
-- **Backend** (`api/tests/`, pytest): a dedicated `dogfood_test` database, with each test
+- **Backend** (`tests/api/`, pytest): a dedicated `dogfood_test` database, with each test
   wrapped in a SQLAlchemy `SAVEPOINT` so a route handler's own `session.commit()` calls
   don't end the outer transaction — the whole test still rolls back cleanly at the end.
-- **Frontend unit** (`web/src/**/*.test.ts(x)`, Vitest): pure functions and small
+- **Frontend unit** (`src/web/src/**/*.test.ts(x)`, Vitest): pure functions and small
   components, mocking `fetch` rather than hitting a real backend.
-- **Browser end-to-end** (`web/tests/*.spec.ts`, Playwright): runs against the actual
+- **Browser end-to-end** (`tests/e2e/*.spec.ts`, Playwright): runs against the actual
   `docker compose` stack on `localhost:8000` (or `BASE_URL`), the same way a judge would
   use it — no mocks, real Postgres, real cookies. `lifecycle.spec.ts` is deliberately the
   rehearsed path a demo video narrates. `phase10.spec.ts` and `recovery.spec.ts` register

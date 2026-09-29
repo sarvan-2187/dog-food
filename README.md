@@ -2,10 +2,10 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-3ddc84?style=flat-square)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-588%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
-[![Python](https://img.shields.io/badge/python-3.12-1F2426?style=flat-square&logo=python&logoColor=white)](api/requirements.txt)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-1F2426?style=flat-square&logo=fastapi&logoColor=white)](api/requirements.txt)
-[![React](https://img.shields.io/badge/React-18-1F2426?style=flat-square&logo=react&logoColor=white)](web/package.json)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-1F2426?style=flat-square&logo=typescript&logoColor=white)](web/package.json)
+[![Python](https://img.shields.io/badge/python-3.12-1F2426?style=flat-square&logo=python&logoColor=white)](src/api/requirements.txt)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-1F2426?style=flat-square&logo=fastapi&logoColor=white)](src/api/requirements.txt)
+[![React](https://img.shields.io/badge/React-18-1F2426?style=flat-square&logo=react&logoColor=white)](src/web/package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-1F2426?style=flat-square&logo=typescript&logoColor=white)](src/web/package.json)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-1F2426?style=flat-square&logo=postgresql&logoColor=white)](docker-compose.yml)
 [![Docker Compose](https://img.shields.io/badge/docker%20compose-up-1F2426?style=flat-square&logo=docker&logoColor=white)](docker-compose.yml)
 
@@ -15,9 +15,10 @@ normalization, results, verifiable certificates and a searchable archive. Built 
 [Hackathon Raptors](https://www.raptors.dev), who run a dozen events a year and asked, with
 DOGFOOD 2026, for the platform they will run them on.
 
-Built by Team CodeHawk against [`docs/PLAN.md`](docs/PLAN.md), the execution spec for this
-build. HackFlow is a DOGFOOD entry, not an official Hackathon Raptors product; see
-[`docs/CREDITS.md`](docs/CREDITS.md).
+Built by Team CodeHawk. HackFlow is a DOGFOOD entry, not an official Hackathon Raptors
+product; see [`docs/CREDITS.md`](docs/CREDITS.md).
+
+**AI disclosure:** this project was built by seeking assistance from [Claude Code](https://claude.com/claude-code), Anthropic's AI coding agent.
 
 ## For evaluators
 
@@ -35,8 +36,12 @@ dog-food/
 ├── DATA-MODEL.md            ← the schema, and the ways data gets in and out
 ├── JUDGING.md               ← assignment, weighted scoring, normalization, defended
 ├── LICENSE                  ← MIT
-├── api/                     ← our backend: FastAPI + SQLModel, with api/tests/ (457 tests)
-├── web/                     ← our frontend: React + TypeScript, with web/tests/ (121 browser tests)
+├── src/
+│   ├── api/                 ← our backend: FastAPI + SQLModel
+│   └── web/                 ← our frontend: React + TypeScript
+├── tests/
+│   ├── api/                 ← backend suite, pytest (457 tests)
+│   └── e2e/                 ← browser suite, Playwright (121 tests)
 ├── docs/                    ← everything else: manual, threat model, credits, screenshots
 ├── fixtures.json, run.py    ← the organizers' dataset and checker, unchanged
 └── fixtures/                ← our extra demo events, users and teams
@@ -59,7 +64,6 @@ Every document, and what it is for:
 | [docs/USER-MANUAL.md](docs/USER-MANUAL.md) | Illustrated, plain-language guide for participants, judges, organizers and admins |
 | [docs/CREDITS.md](docs/CREDITS.md) | Hackathon Raptors' details and posters, photo licences, third-party software, contributors |
 | [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Design tokens and component rules the UI is built from |
-| [docs/PLAN.md](docs/PLAN.md) | The execution spec, phase by phase, with every judgment call (`## Open Questions`) |
 
 **Verify it in three commands:**
 
@@ -88,7 +92,7 @@ assignment rule 8); "Other judge" is a judge the entry is not assigned to.
 ## From registration to archive: the ten stages
 
 Every stage below is a screen in the running app, captured from `docker compose up` on the
-seeded data (regenerate with `cd web && node scripts/readme-walkthrough.mjs`). Each stage
+seeded data (regenerate with `cd src/web && node scripts/readme-walkthrough.mjs`). Each stage
 feeds the next, and each hands the next one data it can trust.
 
 ```mermaid
@@ -266,7 +270,7 @@ Seeded accounts (see `fixtures/users.json`); the password is the value shown:
 Anyone can also register a new account from the app. Public sign-up always creates a
 `participant`. Judges join by an event's invitation link, and organizers by an admin's
 invitation link or an admin changing their role on **Users**. Admins exist only in the seed
-data (see [docs/PLAN.md](docs/PLAN.md)'s Open Questions for why).
+data.
 
 Two seeded events are worth knowing for a demo:
 
@@ -474,7 +478,7 @@ prints a one-time reset link for any account.
   name, theme or track.
 - **Request protection**: every request passes a generous rate limit (per signed-in account,
   or per address when anonymous; separate budgets for writes and API keys), a body-size
-  cap and security headers before any route runs (`api/app/protection.py`).
+  cap and security headers before any route runs (`src/api/app/protection.py`).
 - **Outbound webhooks**: organizers opt an event into signed HTTP callbacks for every
   action taken in that event (private and internal addresses refused, at most 10 per event,
   each delivery with a unique `delivery_id` against replays, plus a **Send test** button), 47 topics named after the audit action
@@ -483,7 +487,7 @@ prints a one-time reset link for any account.
   participation records, so a receiver can verify it without trusting the network.
 
 Role-based access control is enforced at the endpoint level throughout: `require_role()`
-is written once (`api/app/auth/deps.py`) and imported everywhere; there is no role check
+is written once (`src/api/app/auth/deps.py`) and imported everywhere; there is no role check
 that lives only in the frontend.
 
 ## Known limits
@@ -509,13 +513,13 @@ Raptor Relay repo; see [docs/ACCEPTANCE-REPORT.md](docs/ACCEPTANCE-REPORT.md)):
 | Suite | Command | Result |
 |---|---|---|
 | Backend | `docker compose exec api pytest tests/ -v` | 457 passed |
-715 tests passing across three suites (2026-09-28, [docs/audit/ACCEPTANCE-REPORT.md](docs/audit/ACCEPTANCE-REPORT.md)):
+715 tests passing across three suites (2026-09-28, [docs/ACCEPTANCE-REPORT.md](docs/ACCEPTANCE-REPORT.md)):
 
 | Suite | Command | Result |
 |---|---|---|
 | Backend | `docker compose exec api pytest tests/ -v` | 584 passed |
-| Frontend unit | `cd web && npm test` | 10 passed |
-| Browser E2E | `cd web && npx playwright test` (stack started with `RATE_LIMIT_PER_MINUTE=0`) | 121 passed, 1 skipped |
+| Frontend unit | `cd src/web && npm test` | 10 passed |
+| Browser E2E | `cd src/web && npx playwright test` (stack started with `RATE_LIMIT_PER_MINUTE=0`) | 121 passed, 1 skipped |
 
 The skipped spec is the emailed password-reset flow. It needs the local test inbox, so
 it runs only when the stack is started with `docker-compose.mail.yml` (see "Email"
@@ -523,16 +527,14 @@ above), and skips itself otherwise.
 
 The browser suite changes the same database it reads. Against a fresh stack it passes in
 full with Playwright's default parallel workers. After many runs on one volume, one or two
-specs can time out; each passes on its own, and `--workers=1` or a fresh volume avoids it
-(see [docs/PLAN.md](docs/PLAN.md)'s Open Questions).
+specs can time out; each passes on its own, and `--workers=1` or a fresh volume avoids it.
 
 `acceptance-report.txt` is the unedited output of the official DOGFOOD checker
 (`run.py`): 7 of 7 checks pass, and T1 and T2 are verified. T3 is claimed too. The
 organisers judge T3 and T4 by hand because `run.py` has no checks for them, so the
 report's "claimed but not verified: T3, T4" line is expected. T4 is claimed now that the
 embeddable gallery widget exists (`/embed/events/{slug}`, copy the snippet from **Event
-settings → Embed on your site**). The earlier self-issued report, written
-before the checker was published, is kept at `docs/self-test-report.txt`.
+settings → Embed on your site**).
 
 ## Documentation
 
@@ -545,13 +547,13 @@ The full list, with what each document is for, is under [For evaluators](#for-ev
 docker compose exec api pytest tests/ -v
 
 # Frontend unit tests
-cd web && npm ci && npm test
+cd src/web && npm ci && npm test
 
 # Browser end-to-end tests (needs the stack up). Every client is limited to
 # 200 requests a minute; a parallel Playwright run from one machine can exceed
 # that, so start the stack with the global limit off for it:
 #   RATE_LIMIT_PER_MINUTE=0 docker compose up -d
-cd web && npx playwright install --with-deps chromium
+cd src/web && npx playwright install --with-deps chromium
 npx playwright test
 
 # ...including the emailed password-reset flow, against the local test inbox
@@ -566,7 +568,7 @@ cookies signed with `itsdangerous`, passwords hashed with `passlib[bcrypt]` · R
 TypeScript + Vite · Tailwind CSS · driver.js (guided tour, bundled) · optional email over
 Python's standard-library `smtplib` · pytest + httpx (backend) · Vitest (frontend unit) ·
 Playwright (browser E2E). Every dependency is pinned to an exact version
-(`api/requirements.txt`, `web/package.json` + `package-lock.json`); nothing in the runtime
+(`src/api/requirements.txt`, `src/web/package.json` + `package-lock.json`); nothing in the runtime
 image reaches the network beyond the standard package registries at build time.
 
 ## License

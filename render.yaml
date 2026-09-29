@@ -7,7 +7,7 @@ services:
     runtime: docker
     plan: free
     region: virginia
-    dockerfilePath: ./api/Dockerfile
+    dockerfilePath: ./src/api/Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
     envVars:

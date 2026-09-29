@@ -3,7 +3,7 @@
 This manual walks through HackFlow one screen at a time, in the order you will actually
 meet them. Every screenshot in it was taken from a real running copy of the software on
 its built-in sample data. Nothing here is a mock-up or a drawing. (They are regenerated
-with `cd web && node scripts/manual-screenshots.mjs` against a running `docker compose up`.)
+with `cd src/web && node scripts/manual-screenshots.mjs` against a running `docker compose up`.)
 
 You do not need to be technical to use this manual. If you can use a website, you can use
 HackFlow.

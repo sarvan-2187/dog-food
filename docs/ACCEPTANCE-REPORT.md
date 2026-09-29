@@ -35,9 +35,9 @@ T3 and T4 have no machine checks in `run.py`. Their evidence is sections 2–4 a
 | Suite | Command | Result | Before this change |
 |---|---|---|---|
 | Backend (pytest, real Postgres) | `docker compose exec api pytest tests/ -q` | **457 passed**, 0 failed | 428 passed |
-| Frontend unit (Vitest) | `cd web && npm test` | **10 passed** | 10 passed |
-| Frontend typecheck | `cd web && npx tsc --noEmit` | **clean** | clean |
-| Browser E2E (Playwright, Chromium) | `cd web && npx playwright test` | **121 passed, 1 skipped** | 121 passed, 1 skipped |
+| Frontend unit (Vitest) | `cd src/web && npm test` | **10 passed** | 10 passed |
+| Frontend typecheck | `cd src/web && npx tsc --noEmit` | **clean** | clean |
+| Browser E2E (Playwright, Chromium) | `cd src/web && npx playwright test` | **121 passed, 1 skipped** | 121 passed, 1 skipped |
 | Raptor Relay (node:test) | `npm test` in hackflow-third-party | **5 passed** | n/a (new) |
 
 The skipped browser spec is the emailed password-reset flow. It needs the Mailpit inbox

@@ -1,7 +1,7 @@
 # Security audit: DDoS resistance, rate limiting, vulnerabilities
 
-**Scope:** the whole backend (`api/app`, about 9,300 lines, every router read), the deploy
-configuration (`docker-compose.yml`, `render.yaml`, `api/Dockerfile`) and the webhook and API
+**Scope:** the whole backend (`src/api/app`, about 9,300 lines, every router read), the deploy
+configuration (`docker-compose.yml`, `render.yaml`, `src/api/Dockerfile`) and the webhook and API
 key integration surface. **Date:** 2026-09-29. **Method:** manual code review of every
 endpoint's authentication, authorization, input bounds and side effects. Each finding was
 reproduced or covered by a failing test before it was fixed, and the fixes were re-measured
@@ -98,15 +98,15 @@ available as a burst.
 2. **Limits are per process.** Like every limiter here, the buckets live in memory. HackFlow
    runs one worker, so that is the whole site. A multi-worker deployment would multiply each
    limit by the worker count until it moves to a shared store (Redis), which is out of scope
-   by PLAN.md's no-external-services constraint.
+   by the no-external-services constraint.
 3. **`DEMO_SESSION_TOKENS` in `docker-compose.yml`.** It is required by the DOGFOOD checker,
    which never logs in. The README's deploy checklist says to delete it first. It is kept
    because removing it breaks the official acceptance run.
 4. **Organizers are platform-wide.** Any organizer can manage any event, including its
-   webhooks and exports. That is the documented role model (PLAN.md Open Questions), not a
+   webhooks and exports. That is the documented role model, not a
    bug, but a multi-tenant host would want per-event organizers.
-5. **Participants can vote for their own team's entry.** Neither the brief nor PLAN.md
-   forbids it, and community votes never affect judging (JUDGING.md). A one-line rule in
+5. **Participants can vote for their own team's entry.** The brief doesn't
+   forbid it, and community votes never affect judging (JUDGING.md). A one-line rule in
    `cast_vote` would add it if an event wants it.
 6. **An organizer can reset a judge's password.** This is intentional (the help desk
    fallback when email is off), rate-limited and audited. It does mean a compromised

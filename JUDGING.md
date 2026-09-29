@@ -31,13 +31,13 @@ safeguard for the legitimate overlap case — a mentor who also entered a side p
 judge who joined a team late — not a hint that judges are drawn from the participant pool.
 
 **How judges join.** Through a single-use, expiring invitation that an organizer issues
-for one event (`api/app/judging/invites.py`). Redeeming it adds the judge to that event's
+for one event (`src/api/app/judging/invites.py`). Redeeming it adds the judge to that event's
 panel only. Judges can't sign themselves up: self-service judge signup would let anyone
 give themselves access to every score.
 
 ## Assignment algorithm
 
-Implemented in `api/app/judging/assignment.py` as a pure, DB-free function:
+Implemented in `src/api/app/judging/assignment.py` as a pure, DB-free function:
 
 ```python
 assign_judges(submissions, judges, team_memberships, k, *,
@@ -105,7 +105,7 @@ the same visibility rule as standings (`may_see_results`).
 
 ## Normalization
 
-Implemented in `api/app/scoring/normalization.py` as a pure function:
+Implemented in `src/api/app/scoring/normalization.py` as a pure function:
 
 ```python
 normalize_scores(raw_scores_by_judge) -> dict[submission_id, float]
@@ -177,7 +177,7 @@ three columns. Results stay hidden from everyone but organizers until the reveal
 (below), so nobody outside the organizing team ever sees provisional standings. The judging
 progress card says who is behind.
 
-Edge cases, each with a dedicated unit test in `api/tests/test_scoring.py`:
+Edge cases, each with a dedicated unit test in `tests/api/test_scoring.py`:
 - A judge with only one assignment → uninformative, left out of z̄, never a division error.
 - A submission scored by only one informative judge → takes that judge's z.
 - A submission scored only by uninformative judges → z̄ = 0, `informative_judges = 0`.
@@ -194,9 +194,9 @@ orders the same rows by plain raw mean (ties by id). *Move* is raw rank minus no
 rank, so a positive number means normalizing moved the project up.
 orders the same rows by plain raw mean; equal raw means share a rank (`=`), the best one
 of the tie. *Move* is raw rank minus normalized rank, so a positive number means
-normalizing moved the project up. `api/tests/test_normalization_properties.py` recomputes
+normalizing moved the project up. `tests/api/test_normalization_properties.py` recomputes
 this table from `fixtures.json` with an independent implementation of the formula and
-checks the live `/results` endpoint against it; `docs/audit/NORMALIZATION-ANALYSIS.md`
+checks the live `/results` endpoint against it; `docs/NORMALIZATION-ANALYSIS.md`
 has the full 40 rows.
 
 | Normalized rank | Raw rank | Move | Project | Judges (informative) | Raw mean | z̄ | Display |
@@ -240,8 +240,8 @@ judge to count should assign at least two projects each. The assignment run's
 
 ## Role isolation
 
-`require_role()` is implemented once in `api/app/auth/deps.py` and imported everywhere —
-no route handler duplicates a role check inline. `api/tests/test_role_isolation.py` is a
+`require_role()` is implemented once in `src/api/app/auth/deps.py` and imported everywhere —
+no route handler duplicates a role check inline. `tests/api/test_role_isolation.py` is a
 table-driven 403/401 matrix: every mutating or sensitive-read endpoint, crossed with every
 role that must be refused, plus the anonymous case. As of this build that's 66 parametrized
 cases, all passing.
@@ -315,13 +315,13 @@ judging input and shouldn't color a judge's own scoring.
   several votes that look like they came from one client, without ever blocking on it —
   anyone behind one office NAT or mobile network shares a fingerprint, so blocking on it
   would lock out legitimate voters. Treat a flag as "worth a look," never as proof.
-- **Rate limiting:** an in-process token bucket (`api/app/voting/ratelimit.py`), time-
+- **Rate limiting:** an in-process token bucket (`src/api/app/voting/ratelimit.py`), time-
   injectable so refill behavior is unit-tested without sleeping. A limit hit returns a
   friendly, specific message ("try again in about N seconds") with `Retry-After` set for
   well-behaved clients — never a raw `429`.
 
 ## Fallback not taken
 
-PLAN.md's Phase 3 offered a smaller "community interest" thumbs-up fallback if time ran
+The original plan offered a smaller "community interest" thumbs-up fallback if time ran
 short. It wasn't needed — full voting (with hidden-results windowing, duplicate
 detection, rate limiting, and comments) shipped as specified.

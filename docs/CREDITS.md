@@ -1,6 +1,6 @@
 # Image credits
 
-The photographs bundled under `web/public/images/` are real hackathon
+The photographs bundled under `src/web/public/images/` are real hackathon
 photographs, not stock illustration. Every one was retrieved through
 [Openverse](https://openverse.org) filtered to licences that permit commercial
 use, and each is listed below with its creator, its source page, and its
@@ -40,9 +40,9 @@ worse than none.
 | `images/covers/cover-campus-48h.jpg` | [Hackathon, Workshop & Edit-a-thon at WikiConference India 2016](https://commons.wikimedia.org/w/index.php?curid=50502428) | Hasive | BY-SA 3.0 |
 | `images/covers/cover-quantum.jpg` | [Fall 2010 hackNY Student Hackathon](https://www.flickr.com/photos/61623410@N08/5685366097) | hackNY | BY-SA 2.0 |
 
-Machine-readable form of the same data: `web/public/images/attribution.json`.
+Machine-readable form of the same data: `src/web/public/images/attribution.json`.
 
-The HackFlow raptor mark (`web/public/logo.png`, and `web/public/images/raptor.png`
+The HackFlow raptor mark (`src/web/public/logo.png`, and `src/web/public/images/raptor.png`
 derived from it by trimming and removing a faint watermark from the alpha
 channel) is the project's own asset and is not covered by the table above.
 
@@ -59,7 +59,7 @@ Team CodeHawk, not an official Hackathon Raptors product, until and unless they 
 > Office 2131, 182-184 High Street North, East Ham, London E6 2JA, United Kingdom
 > hello@raptors.dev · +44 1733 833019
 
-**Event posters.** The posters in `web/public/images/raptors/` are Hackathon Raptors' own
+**Event posters.** The posters in `src/web/public/images/raptors/` are Hackathon Raptors' own
 artwork, downloaded from their website's image host (`cdn.prod.website-files.com`) on
 27 September 2026 and resized to 600 px wide. They appear on the landing page's "From the
 Raptors calendar" section, each linking back to its event page. They remain © Hackathon
@@ -81,9 +81,9 @@ are from raptors.dev.
 # Certificate designs
 
 Seven certificate backgrounds were designed by Team CodeHawk on 27 September 2026, exported
-at 2200 × 1700 and saved as JPEG in `api/app/scoring/certificate_templates/`. HackFlow draws
+at 2200 × 1700 and saved as JPEG in `src/api/app/scoring/certificate_templates/`. HackFlow draws
 each team's text over them on its own server; nothing calls an external service at runtime.
-The thumbnails in `web/public/images/certificates/` are HackFlow's own renders of sample
+The thumbnails in `src/web/public/images/certificates/` are HackFlow's own renders of sample
 certificates on those backgrounds.
 
 | Design | File |
@@ -103,19 +103,11 @@ others.
 
 # Software
 
-Everything the running app depends on is pinned in `api/requirements.txt` and
-`web/package.json` (with `package-lock.json`) and installed at build time; each package
+Everything the running app depends on is pinned in `src/api/requirements.txt` and
+`src/web/package.json` (with `package-lock.json`) and installed at build time; each package
 keeps its own licence. Two are worth naming because they're easy to miss:
 
 | Component | Used for | Licence |
 |---|---|---|
 | [driver.js](https://driverjs.com) | The guided tour, bundled into the app (no network calls) | MIT |
 | [Mailpit](https://mailpit.axllent.org) (`axllent/mailpit:v1.31.1`) | *Optional* local test inbox for password-reset email, started only by `docker-compose.mail.yml`. Not part of the default stack | MIT |
-
-# Contributors
-
-Built by Team CodeHawk. The commits in this repository are by Sarvan Kumar
-([@sarvan-2187](https://github.com/sarvan-2187)) and
-[@pranavneelu06](https://github.com/pranavneelu06), who independently built the first
-version of Phase 10.1, 10.2 and 10.4 and fixed the login/register `banner` landmark.
-Commits co-written with Claude (Anthropic) carry a `Co-Authored-By` trailer.

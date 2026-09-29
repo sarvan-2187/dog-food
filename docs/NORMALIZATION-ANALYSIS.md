@@ -5,27 +5,21 @@ fixture event (`sample-hack-2026`: 40 projects, 30 judges, 123 scores). It cover
 logic errors found in the audit and fixed on 2026-09-29, and measures whether the method
 does what [`JUDGING.md`](../JUDGING.md) claims. Every number here was produced from the
 running app's own `/export/scores.csv` and `/export/results.csv`, using the functions in
-`api/app/scoring/normalization.py`.
+`src/api/app/scoring/normalization.py`.
 
 ## 1. The pipeline, step by step
 
-```text
-judge moves sliders ──► values {criterion: 0..max_score}          PUT /api/assignments/{id}/score
-                         │  every criterion present, each 0 ≤ v ≤ max (else 422)
-                         ▼
-                   raw_total = (Σ w·v/max) / Σw × M                 scoring/router.py _weighted_total
-                         │  stored on the score row
-                         ▼
-     per judge j:  μ_j, σ_j over the entries j scored              normalization.judge_z_scores
-                   informative ⇔ σ_j > 1e-9·max(1,|μ_j|)
-                         ▼
-     per entry i:  z̄_i = mean z_{j,i} over informative judges      normalization.normalize_scores
-                   (0 when there are none)
-                         ▼
-     rank by z̄ (ties: submission id), display = clamp(50+10·z̄)   normalization.normalized_table
-                         ▼
-     disqualified entries removed BEFORE μ/σ are computed           scoring/router.py _raw_by_judge
-     results hidden from all but organizers until reveal            events/visibility.py
+```mermaid
+flowchart TD
+    A["<b>1. Judge submits the sliders</b><br/>one value per criterion, 0 to max_score<br/><i>PUT /api/assignments/{id}/score</i>"]
+    B["<b>2. Weighted raw total</b><br/>raw_total = (Σ w·v/max) / Σw × M, stored on the score row<br/><i>scoring/router.py: _weighted_total</i>"]
+    C["<b>3. Drop disqualified entries</b><br/>before any mean or spread is computed<br/><i>scoring/router.py: _raw_by_judge</i>"]
+    D["<b>4. Per judge j</b><br/>μ_j and σ_j over the entries j scored<br/>informative only when σ_j exceeds 1e-9 · max(1, abs(μ_j))<br/><i>normalization.judge_z_scores</i>"]
+    E["<b>5. Per entry i</b><br/>z̄_i = mean of z_j,i over informative judges, 0 when there are none<br/><i>normalization.normalize_scores</i>"]
+    F["<b>6. Rank</b><br/>by z̄, ties broken by submission id; display = clamp(50 + 10·z̄)<br/><i>normalization.normalized_table</i>"]
+    G["<b>7. Reveal gate</b><br/>hidden from all but organizers until the reveal time<br/><i>events/visibility.py</i>"]
+    A -- "every criterion present, each within 0..max, else 422" --> B
+    B --> C --> D --> E --> F --> G
 ```
 
 Each step is enforced on the server. Nothing depends on the browser.

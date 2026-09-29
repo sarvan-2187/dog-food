@@ -1,13 +1,13 @@
 # DATA-MODEL.md — HackFlow
 
-Schema documentation for the tables SQLModel creates from `api/app/*/models.py`. All
-timestamps are `TIMESTAMP WITH TIME ZONE` (see `api/app/timeutil.py`'s `utcnow()`) so a
+Schema documentation for the tables SQLModel creates from `src/api/app/*/models.py`. All
+timestamps are `TIMESTAMP WITH TIME ZONE` (see `src/api/app/timeutil.py`'s `utcnow()`) so a
 client's local offset never drifts against the server's enforcement of a deadline — this
-was a real bug (audit finding #1 in PLAN.md) before it was fixed.
+was a real bug before it was fixed.
 
-There is no migration tool in this build (see PLAN.md Open Questions). `SQLModel.metadata.
+There is no migration tool in this build. `SQLModel.metadata.
 create_all()` only creates missing tables, so three idempotent boot steps in
-`api/app/db.py` upgrade an existing volume in place:
+`src/api/app/db.py` upgrade an existing volume in place:
 - `add_missing_columns()` adds new columns, only when `information_schema` says they're
   absent.
 - `add_guarded_indexes()` creates the one-team-per-event index once the data allows it.
@@ -17,7 +17,7 @@ See ARCHITECTURE.md. `docker compose down -v` is only needed for a clean slate.
 
 ## Entities
 
-### `users` (`api/app/auth/models.py`)
+### `users` (`src/api/app/auth/models.py`)
 
 | Column | Type | Notes |
 |---|---|---|
@@ -28,13 +28,13 @@ See ARCHITECTURE.md. `docker compose down -v` is only needed for a clean slate.
 | `role` | enum | `participant` \| `judge` \| `organizer` \| `admin`. Public registration always creates `participant`; the other three roles exist only via `fixtures/users.json` seeding |
 | `avatar_url` | str, nullable | Set via the `stored_files` upload flow below; `null` until the user uploads one |
 | `created_at` | timestamptz | |
-| `session_version` | int, default 0 | Signed into every session cookie; incremented on each password change or reset, which invalidates every older cookie at once (PLAN.md Phase 9.1) |
+| `session_version` | int, default 0 | Signed into every session cookie; incremented on each password change or reset, which invalidates every older cookie at once |
 | `is_active` | bool, default true | False blocks sign-in and, with a `session_version` bump, ends every session at once. Admin accounts can't be deactivated (Phase 10.10) |
 | `email_verified_at` | timestamptz, nullable | Set when the owner follows a signed 24-hour link from `POST /api/auth/verify-email`; fixture accounts are seeded verified. An event can require it to vote (docs/THREAT-MODEL.md entry 25) |
 
-### `password_resets` (`api/app/auth/models.py`)
+### `password_resets` (`src/api/app/auth/models.py`)
 
-One row per reset link, whichever way it was issued (PLAN.md Phase 9).
+One row per reset link, whichever way it was issued.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -46,7 +46,7 @@ One row per reset link, whichever way it was issued (PLAN.md Phase 9).
 | `created_at`, `expires_at` | timestamptz | Issuing a new link sets any earlier unused link's `expires_at` to now |
 | `used_at` | timestamptz, nullable | Set on redeem; a link with `used_at` set is dead. Previewing a link never sets it |
 
-### `api_keys` (`api/app/auth/api_keys.py`)
+### `api_keys` (`src/api/app/auth/api_keys.py`)
 
 | Column | Type | Notes |
 |---|---|---|
@@ -59,7 +59,7 @@ One row per reset link, whichever way it was issued (PLAN.md Phase 9).
 
 A request authenticates with `Authorization: Bearer hf_...` instead of the session cookie. The key's owner must still be active and an organizer or admin.
 
-### `events` (`api/app/events/models.py`)
+### `events` (`src/api/app/events/models.py`)
 
 | Column | Type | Notes |
 |---|---|---|
@@ -68,24 +68,24 @@ A request authenticates with `Authorization: Bearer hf_...` instead of the sessi
 | `name`, `description` | str | |
 | `start_at`, `end_at` | timestamptz | `end_at` is the hard submission/team-formation deadline, enforced server-side on every write |
 | `tracks` | JSON list[str] | |
-| `prize_config` | JSON dict | Shape: `{"prizes": [{"rank": "1st Place", "reward": "$500"}, ...]}`. A product convention, not a schema constraint — the column is a free-form `JSON` and nothing validates the inner shape server-side, so this is documented here rather than in a migration (PLAN.md Phase 7.1) |
-| `max_team_size` | int | Default `4`, matching the hackathon's own "Team Size: 1–4" rule; enforced server-side in `teams/router.py`'s `join_team` (PLAN.md Phase 7.2) |
+| `prize_config` | JSON dict | Shape: `{"prizes": [{"rank": "1st Place", "reward": "$500"}, ...]}`. A product convention, not a schema constraint — the column is a free-form `JSON` and nothing validates the inner shape server-side, so this is documented here rather than in a migration |
+| `max_team_size` | int | Default `4`, matching the hackathon's own "Team Size: 1–4" rule; enforced server-side in `teams/router.py`'s `join_team` |
 | `voting_enabled` | bool | Gates the Phase 3 vote/comment endpoints |
 | `voting_access` | str | `authenticated` (default), `email` or `open` - who may vote; see `voting/voter.py` and docs/THREAT-MODEL.md entry 25. `email` is refused while SMTP is off |
 | `voting_requires_verified` | bool, default false | Account voters need `users.email_verified_at`. Refused (409) while SMTP is off, since nobody could verify |
 | `voting_account_cutoff` | timestamptz, nullable | Accounts created at or after this can't vote. Needs no email |
 | `results_hidden_until` | timestamptz, nullable | Gates who may see vote counts and standings — enforced in the API response itself, not just hidden in the UI |
-| `results_revealed_notified` | bool | One-shot guard so the `event.results_revealed` webhook topic fires exactly once, flipped the first time `public_results` is read after `results_are_public()` goes true (PLAN.md Phase 7.3) |
+| `results_revealed_notified` | bool | One-shot guard so the `event.results_revealed` webhook topic fires exactly once, flipped the first time `public_results` is read after `results_are_public()` goes true |
 | `judging_deadline` | timestamptz, nullable | Soft: shown to judges and organizers, must be after `end_at`. A score saved after it is recorded with `late: true` in the audit log, never refused |
 | `created_by_id` | int, FK → `users.id` | Must be `organizer` or `admin` |
 | `created_at` | timestamptz | |
 | `status` | str | `draft` \| `published`. New and imported events start as drafts, which are hidden (404) from everyone but organizers; existing events were backfilled as published (Phase 10.12) |
 | `rules` | str | Plain text shown on the event page, never rendered as HTML (Phase 10.8) |
 | `stages` | JSON list | Named rounds shown as a timeline on the event page: `[{"name", "description", "starts_at", "ends_at"}]`, ISO-8601 UTC, at most 10, sorted by start. Informational: the server's gates are still `start_at` / `end_at` / `results_hidden_until`. Included in event export/import |
-| `certificate_template` | str, default `classic` | Which certificate design the event's certificates use: a key of `TEMPLATES` in `api/app/scoring/certificate.py`. Included in event export/import |
-| `questions` | JSON list, default `[]` | Organizer-defined custom questions (DOGFOOD T1), at most 10: `[{"id", "prompt", "required", "hidden", "public"}]`. `id` is server-generated and never changes. Set with `PUT /api/events/{id}/questions` (`api/app/events/questions.py`). A question someone has answered can't be deleted, only hidden. Included in event export/import with ids kept |
+| `certificate_template` | str, default `classic` | Which certificate design the event's certificates use: a key of `TEMPLATES` in `src/api/app/scoring/certificate.py`. Included in event export/import |
+| `questions` | JSON list, default `[]` | Organizer-defined custom questions (DOGFOOD T1), at most 10: `[{"id", "prompt", "required", "hidden", "public"}]`. `id` is server-generated and never changes. Set with `PUT /api/events/{id}/questions` (`src/api/app/events/questions.py`). A question someone has answered can't be deleted, only hidden. Included in event export/import with ids kept |
 
-### `announcements` (`api/app/events/models.py`)
+### `announcements` (`src/api/app/events/models.py`)
 
 An organizer's message to an event's participants (Phase 10.11). Plain text, never
 rendered as HTML.
@@ -99,7 +99,7 @@ rendered as HTML.
 | `emailed_count` | int | How many participants it was emailed to (0 when email is off) |
 | `created_at`, `updated_at` | timestamptz | |
 
-### `teams` / `team_memberships` (`api/app/teams/models.py`)
+### `teams` / `team_memberships` (`src/api/app/teams/models.py`)
 
 One event has many teams; one team has many members via the join table.
 
@@ -126,10 +126,10 @@ Unique constraints: `(team_id, user_id)` — a user can't join the same team twi
 boot only when existing data already satisfies it; until then the admin Users page lists
 the duplicates.
 
-### `submissions` (`api/app/submissions/models.py`)
+### `submissions` (`src/api/app/submissions/models.py`)
 
-**One submission per team**, not per user — see PLAN.md Open Questions for the rationale
-(matches how a hackathon typically judges a team's single entry).
+**One submission per team**, not per user
+(matching how a hackathon typically judges a team's single entry).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -146,7 +146,7 @@ the duplicates.
 | `disqualified_reason` | str | Shown to the team. Required to disqualify |
 | `created_at`, `updated_at` | timestamptz | `updated_at` bumps on every autosave `PATCH` |
 
-### `rubrics` (`api/app/judging/models.py`)
+### `rubrics` (`src/api/app/judging/models.py`)
 
 **An event holds a *set* of named rubrics** (e.g. "Technical" + "Presentation"), combined
 into one flat criteria list at scoring time — not the one-rubric-per-event model this
@@ -163,7 +163,7 @@ per-rubric at save time.
 | `criteria` | JSON list[dict] | Each item: `{key, label, weight, max_score, description?}`; `description` (Phase 10.8) is shown to judges and, with the weight, to entrants. The rubric **locks** (`PUT`/`DELETE` return `409`) once any score exists for the event — see JUDGING.md |
 | `created_at`, `updated_at` | timestamptz | |
 
-### `judge_invites` (`api/app/judging/models.py`)
+### `judge_invites` (`src/api/app/judging/models.py`)
 
 The only routes into the `judge` and `organizer` roles besides the seed data.
 Single-use, expiring and revocable.
@@ -180,7 +180,7 @@ Single-use, expiring and revocable.
 | `grants_role` | str | `judge` \| `organizer` (Phase 10.10) |
 | `created_at` | timestamptz | |
 
-### `event_judges` (`api/app/judging/models.py`)
+### `event_judges` (`src/api/app/judging/models.py`)
 
 An event's judge panel (Phase 10.1). Assignment draws only from here, never from every
 judge on the platform.
@@ -196,7 +196,7 @@ judge on the platform.
 
 Unique constraint: `(event_id, user_id)`. Backfilled at boot from existing assignments.
 
-### `judge_conflicts` (`api/app/judging/models.py`)
+### `judge_conflicts` (`src/api/app/judging/models.py`)
 
 A judge's declared conflict of interest with one submission (Phase 10.7). Assignment treats
 it exactly like a same-team conflict, so the submission is never handed back to them.
@@ -210,10 +210,10 @@ it exactly like a same-team conflict, so the submission is never handed back to 
 
 Unique constraint: `(judge_id, submission_id)`.
 
-### `judge_assignments` (`api/app/judging/models.py`)
+### `judge_assignments` (`src/api/app/judging/models.py`)
 
 A judge's mandate to score one submission — the output of the assignment algorithm
-(Section 8 of PLAN.md, `api/app/judging/assignment.py`).
+(`src/api/app/judging/assignment.py`).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -227,7 +227,7 @@ Unique constraint: `(submission_id, judge_id)` — makes re-running the assignme
 idempotent and blocks double-assignment. Removing a judge from an event deletes their
 *unscored* assignments; scored ones stay (Phase 10.7).
 
-### `scores` (`api/app/scoring/models.py`)
+### `scores` (`src/api/app/scoring/models.py`)
 
 At most one score per assignment — re-submitting **edits** rather than stacking
 duplicates.
@@ -242,7 +242,7 @@ duplicates.
 | `raw_total` | float | `sum(weight × value)` across criteria — see JUDGING.md for why this formula was chosen |
 | `created_at`, `updated_at` | timestamptz | |
 
-### `awards` (`api/app/scoring/models.py`)
+### `awards` (`src/api/app/scoring/models.py`)
 
 One configured prize given to one submission (Phase 10.6). Hidden until results are
 visible, through the same `may_see_results` gate as the standings.
@@ -259,7 +259,7 @@ visible, through the same `may_see_results` gate as the standings.
 
 Unique constraint: `(event_id, prize_rank)`. A submission may win more than one prize.
 
-### `votes` / `comments` (`api/app/voting/models.py`)
+### `votes` / `comments` (`src/api/app/voting/models.py`)
 
 | `votes` column | Type | Notes |
 |---|---|---|
@@ -281,14 +281,14 @@ request could race past.
 | `body` | str | |
 | `created_at` | timestamptz | |
 
-### `stored_files` (`api/app/storage/models.py`)
+### `stored_files` (`src/api/app/storage/models.py`)
 
 Polymorphic ownership, ordered by `position`: `(owner_type, owner_id, position)` is unique.
 A user has one avatar at position 0. A submission has an image gallery of up to five
 (DOGFOOD T1) at positions 0 to 4, kept dense on every remove or reorder, and position 0 is
 its thumbnail. Replacing position 0 (the avatar, or `POST .../submission/image`, the
 original single-screenshot endpoint) deletes the old file. Content
-lives on local disk behind the `StorageService` interface (`api/app/storage/service.py`);
+lives on local disk behind the `StorageService` interface (`src/api/app/storage/service.py`);
 this table only tracks metadata. Keys are server-generated (`uuid4().hex` + an extension
 derived from the validated content-type), never taken from the client's filename, so a
 client can't path-traverse or overwrite an arbitrary key (see docs/THREAT-MODEL.md).
@@ -304,12 +304,12 @@ client can't path-traverse or overwrite an arbitrary key (see docs/THREAT-MODEL.
 | `created_at` | timestamptz | |
 
 Unique constraint: `(owner_type, owner_id, position)`. A volume from before image galleries
-had `(owner_type, owner_id)`; `widen_stored_file_key()` in `api/app/db.py` swaps it at boot
+had `(owner_type, owner_id)`; `widen_stored_file_key()` in `src/api/app/db.py` swaps it at boot
 (every existing row is at position 0, so it can't fail) and does nothing once done.
 
-### `webhook_subscriptions` (`api/app/webhooks/models.py`)
+### `webhook_subscriptions` (`src/api/app/webhooks/models.py`)
 
-Opt-in per event (PLAN.md Phase 7.3) — zero outbound calls unless an organizer configures
+Opt-in per event — zero outbound calls unless an organizer configures
 one. Delivery is fire-and-forget via FastAPI `BackgroundTasks`, single attempt, no retry
 queue (a deliberate scope cut: "a retry system is real infrastructure this hackathon-scale
 platform does not need").
@@ -327,10 +327,10 @@ platform does not need").
 Payload topics: every audited action that belongs to the event, named exactly as its audit
 action (`event.updated`, `vote.cast`, ...). The full list, and which payloads carry more
 than ids, is in ARCHITECTURE.md ("Outbound webhooks"). Every payload is signed with the same Ed25519 key used for judge
-participation records (`api/app/crypto.py`'s `sign_record()`), verifiable offline against
+participation records (`src/api/app/crypto.py`'s `sign_record()`), verifiable offline against
 `GET /api/public-key`.
 
-### `audit_log` (`api/app/audit/models.py`)
+### `audit_log` (`src/api/app/audit/models.py`)
 
 Append-only **in the database**: a `BEFORE UPDATE OR DELETE` trigger
 (`audit_log_append_only`, created at boot by `db.protect_audit_log()`) refuses any change
@@ -380,13 +380,13 @@ events ──< webhook_subscriptions
 
 ## Import / export paths
 
-- **Fixture seeding** (`api/app/seed.py`): `fixtures/users.json` → `fixtures/events.json`
+- **Fixture seeding** (`src/api/app/seed.py`): `fixtures/users.json` → `fixtures/events.json`
   → `fixtures/teams.json` → `fixtures/submissions.json` → `fixtures/rubrics.json` → event
   judge panels (each event's `judge_emails`), in that order, since each step needs the
   previous step's generated ids. Every insert is guarded
   by a lookup on the row's natural key, so re-running on an already-seeded database is a
   no-op.
-- **CSV export** (`api/app/scoring/router.py`, stdlib `csv` only): `users.csv`,
+- **CSV export** (`src/api/app/scoring/router.py`, stdlib `csv` only): `users.csv`,
   `submissions.csv` (including `tagline`, `tech_tags`, `repo_url`, `demo_url`, `video_url`,
   and one `Q: <prompt>` column per custom question, hidden ones included), `assignments.csv`,
   `scores.csv`, `results.csv` (rank, z̄, display, and `informative_judges` and
