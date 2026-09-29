@@ -89,8 +89,8 @@ kind of account, so you can see how the site changes depending on who you are:
 |---|---|---|
 | Organizer | `alice@example.com` | `organizer-pass1` |
 | Admin | `priya@example.com` | `admin-pass123` |
-| Judge | `sam@example.com` | `judge-pass123` |
-| Participant | `jordan@example.com` | `participant-pass1` |
+| Judge | `tomas.varga@example.org` | `dogfood2026` |
+| Participant | `priya1@example.org` | `dogfood2026` |
 
 ### Creating your own account
 

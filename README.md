@@ -258,34 +258,27 @@ all for going live: `SMTP_*` for self-service password-reset and verification em
 `APP_BASE_URL` for the address used in email links and on certificates. Copy it to `.env`
 only when you want those (see [Email](#email-optional-self-service-password-resets)).
 
-Seeded accounts (see `fixtures/users.json`); the password is the value shown:
+**The only event data is the official DOGFOOD `fixtures.json`** (repo root). It loads as
+one event, `sample-hack-2026`: 8 tracks, 30 judges, 40 teams, 40 submissions and 123
+scores, closed at the fixture's `submissions_close` (2026-03-01), so it refuses new
+submissions. Every account it creates has the password `dogfood2026`.
+
+The fixture has no organizer or admin, and an event needs an owner, so
+`fixtures/users.json` adds just those two staff accounts:
 
 | Role | Email | Password |
 |---|---|---|
 | Organizer | `alice@example.com` | `organizer-pass1` |
 | Admin | `priya@example.com` | `admin-pass123` |
-| Judge | `sam@example.com` (and `mina@`, `omar@`, `dana@`) | `judge-pass123` (see fixture for the others) |
-| Participant | `jordan@example.com` (and 6 others) | `participant-pass1` (see fixture) |
+| Judge (from `fixtures.json`) | `tomas.varga@example.org` (and 29 others) | `dogfood2026` |
+| Participant (from `fixtures.json`) | `priya1@example.org` (and every team member) | `dogfood2026` |
 
 Anyone can also register a new account from the app. Public sign-up always creates a
 `participant`. Judges join by an event's invitation link, and organizers by an admin's
 invitation link or an admin changing their role on **Users**. Admins exist only in the seed
-data.
+data. To show an event from sign-up to results, sign in as the organizer and create one.
 
-Two seeded events are worth knowing for a demo:
-
-| Event | State | Use it to show |
-|---|---|---|
-| `dogfood-2026`: HackFlow Hackathon 2026 | Open for submissions | Teams, submissions, project links, announcements, voting |
-| `judging-showcase-2026`: Raptor Judging Showcase | Submissions closed, results hidden | Judge assignment, scoring, judging progress, conflicts, winners |
-
-Judging opens only once an event's submissions close, which is why the second one exists.
-
-The official DOGFOOD `fixtures.json` (repo root) is loaded as a third event,
-`sample-hack-2026`: 8 tracks, 30 judges, 40 teams, 40 submissions and 123 scores, closed
-at the fixture's `submissions_close` (2026-03-01), so it refuses new submissions. Every
-account it creates (e.g. judge `tomas.varga@example.org`, participant `priya1@example.org`)
-has the password `dogfood2026`. How the loader handles the fixture's awkward cases:
+How the loader handles the fixture's awkward cases:
 
 - **Duplicate submission.** `prj_41` is team `tm_07` submitting the same repo a second
   time. A team has one submission here, so it merges into `prj_07`. Where a judge scored

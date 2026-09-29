@@ -19,8 +19,8 @@ participant = "Cookie: session=demo-prt-2e88"
 
 [routes]
 gallery      = "/api/gallery"
-submit       = "/api/teams/8/submission/submit"
+submit       = "/api/teams/1/submission/submit"
 judge_scores = "/api/judges/me/scores"
 # judge_a's scores; judge_b must be refused.
-peer_scores  = "/api/judges/14/scores"
-csv_export   = "/api/events/10/export/scores.csv"
+peer_scores  = "/api/judges/3/scores"
+csv_export   = "/api/events/1/export/scores.csv"
