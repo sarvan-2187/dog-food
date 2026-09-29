@@ -78,7 +78,10 @@ Every action in the web app is an endpoint here.
 
 **Events out**: organizers subscribe an event to signed webhooks (`submission.submitted`,
 `assignments.run`, `score.submitted`, `event.results_revealed`, `announcement.posted`).
-Payloads are signed with Ed25519; verify against `GET /api/public-key`.
+Payloads are signed with Ed25519. Verify the signature against the key from
+`GET /api/public-key`, fetched once and pinned, never the `public_key` copy inside the payload
+(anyone can sign with their own key and put that key there). Each signed record carries a
+unique `delivery_id` and an `issued_at`, so a receiver can drop duplicates and stale replays.
 """
 
 app = FastAPI(
