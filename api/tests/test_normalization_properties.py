@@ -21,7 +21,9 @@ from app.scoring.normalization import display_score, judge_z_scores, normalize_s
 
 
 def _reference(raw: dict) -> dict:
-    """Straight from the formula, sharing no code with the app."""
+    """Straight from JUDGING.md's formula, sharing no code with the app:
+    uninformative judges (sigma ~ 0) are left out of the mean, and an entry
+    seen only by them sits at 0."""
     zs: dict = {}
     for scores in raw.values():
         xs = list(scores.values())
@@ -30,8 +32,10 @@ def _reference(raw: dict) -> dict:
         mu = sum(xs) / len(xs)
         sigma = math.sqrt(sum((x - mu) ** 2 for x in xs) / len(xs))
         for sid, x in scores.items():
-            zs.setdefault(sid, []).append(0.0 if sigma == 0 else (x - mu) / sigma)
-    return {sid: sum(v) / len(v) for sid, v in zs.items()}
+            zs.setdefault(sid, [])
+            if sigma > 1e-9 * max(1.0, abs(mu)):
+                zs[sid].append((x - mu) / sigma)
+    return {sid: sum(v) / len(v) if v else 0.0 for sid, v in zs.items()}
 
 
 def _random_panel(rng: random.Random, judges: int = 8, subs: int = 20, per_judge: int = 6) -> dict:
@@ -73,11 +77,12 @@ def test_harsh_or_lenient_judge_changes_nothing(scale, shift):
 
 
 def test_flat_judge_contributes_exactly_zero():
+    # Judge 1 gave everything a 4: left out of the mean, not averaged in as 0.
     raw = {1: {1: 4.0, 2: 4.0, 3: 4.0}, 2: {1: 2.0, 2: 6.0}}
     assert judge_z_scores(raw)[1] == {1: 0.0, 2: 0.0, 3: 0.0}
     z = normalize_scores(raw)
     assert z[3] == 0.0
-    assert z[1] == pytest.approx(-0.5) and z[2] == pytest.approx(0.5)
+    assert z[1] == pytest.approx(-1.0) and z[2] == pytest.approx(1.0)
 
 
 def test_rounded_equal_totals_are_exact_ties():
@@ -188,8 +193,8 @@ def test_dogfood_fixture_matches_reference_and_judging_md():
     assert table[0]["submission_id"] == next(k for k, v in titles.items() if v == "Iron Switch")
     assert by_title["Iron Switch"]["z_bar"] == pytest.approx(1.232, abs=5e-4)
     assert by_title["Iron Switch"]["display"] == pytest.approx(62.3, abs=0.05)
-    assert by_title["Small Relay"]["rank"] == 30
-    assert by_title["Dry Harbour"]["rank"] == 10
+    assert by_title["Small Relay"]["rank"] == 32  # 30 before uninformative judges were left out
+    assert by_title["Dry Harbour"]["rank"] == 9  # 10 before uninformative judges were left out
     assert by_title["Dry Harbour"]["judges"] == 6
 
 
