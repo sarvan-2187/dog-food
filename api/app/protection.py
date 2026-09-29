@@ -211,6 +211,13 @@ class SecurityHeadersMiddleware:
         await self.app(scope, receive, with_headers)
 
 
+def client_ip(request) -> str:
+    """The caller's address. TrustedProxyMiddleware has already rewritten
+    request.client to the trusted X-Forwarded-For entry, so this is safe to
+    key rate limits on."""
+    return request.client.host if request.client else "unknown"
+
+
 class TrustedProxyMiddleware:
     """Take the client address from X-Forwarded-For only as far as trusted
     proxies vouch for it.

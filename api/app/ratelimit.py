@@ -171,6 +171,6 @@ def reset_all() -> None:
         webhook_test_limiter,
     ):
         limiter.reset()
-    from .protection import reset as reset_protection  # local: protection imports us
+    from .request_limit import reset as reset_request_limit  # local: avoids an import cycle
 
-    reset_protection()
+    reset_request_limit()

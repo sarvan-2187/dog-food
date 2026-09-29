@@ -14,10 +14,14 @@ from ..db import get_session
 from ..events.models import Event
 from ..ratelimit import webhook_test_limiter
 from .models import WebhookSubscription
+from .. import crypto
+from ..timeutil import utcnow
+from .service import _deliver, _delivery_id, blocked_reason
 from .targets import refusal
 
 router = APIRouter(tags=["webhooks"])
 
+MAX_WEBHOOKS_PER_EVENT = 10
 ORGANIZER = (Role.organizer, Role.admin)
 
 
@@ -71,6 +75,13 @@ def create_webhook(
     session: Session = Depends(get_session),
 ) -> WebhookSubscription:
     _event_or_404(session, event_id)
+    existing = list(session.exec(select(WebhookSubscription).where(WebhookSubscription.event_id == event_id)))
+    if any(w.url == payload.url for w in existing):
+        raise HTTPException(status.HTTP_409_CONFLICT, "This event already sends webhooks to that URL.")
+    if len(existing) >= MAX_WEBHOOKS_PER_EVENT:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"An event can have at most {MAX_WEBHOOKS_PER_EVENT} webhooks. Delete one first."
+        )
     if problem := refusal(payload.url):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
     webhook = WebhookSubscription(event_id=event_id, url=payload.url, created_by_id=user.id)
@@ -131,7 +142,7 @@ def test_webhook(
         "topic": "webhook.test",
         "event_id": event_id,
         "issued_at": utcnow().isoformat(),
-        "delivery_id": uuid.uuid4().hex,
+        "delivery_id": _delivery_id(),
         "webhook_id": webhook_id,
     }
     _deliver(webhook.url, webhook.id, crypto.sign_record(payload), session=session)

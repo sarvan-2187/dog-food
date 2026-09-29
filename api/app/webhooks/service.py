@@ -13,8 +13,11 @@ new code to verify a webhook too.
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
+import os
 import secrets
+import socket
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -113,20 +116,32 @@ def _deliver(url: str, subscription_id: int, signed_payload: dict, *, session: "
     against `engine`. Tests that need to see the status update within their
     own transaction pass their own session directly instead."""
     status_text = "failed"
-    try:
-        # Checked again at delivery, not only at creation: DNS may have changed.
-        if problem := refusal(url):
-            raise ValueError(problem)
-        # httpx.post does not follow redirects by default: a 3xx is a failed
-        # delivery, never a hop to another host (tests pin this).
-        response = httpx.post(url, json=signed_payload, timeout=TIMEOUT_SECONDS)
-        if response.is_success:
-            status_text = "delivered"
-    except Exception:  # noqa: BLE001 - any failure is "failed", never an unhandled error in a worker
-        # Not only httpx.HTTPError: a malformed URL raises httpx.InvalidURL,
-        # which is not one, and used to escape here without recording anything.
-        log.info("webhook %s delivery failed", subscription_id, exc_info=True)
+    # Checked again at delivery, not only at creation: DNS may have changed.
+    # Either way nothing is sent; "blocked" means a private/internal target,
+    # "failed" anything else refusal() rejects (a malformed URL, say).
+    if blocked_reason(url):
+        status_text = "blocked"
+    elif refusal(url):
         status_text = "failed"
+    else:
+        record = signed_payload.get("record") or {}
+        headers = {
+            "User-Agent": USER_AGENT,
+            "X-HackFlow-Topic": str(record.get("topic", "")),
+            "X-HackFlow-Delivery": str(record.get("delivery_id", "")),
+        }
+        try:
+            # Redirects are never followed: a public URL answering 302 to
+            # http://169.254.169.254/ must not work.
+            response = httpx.post(
+                url, json=signed_payload, timeout=TIMEOUT_SECONDS, headers=headers, follow_redirects=False
+            )
+            if response.is_success:
+                status_text = "delivered"
+        except Exception:  # noqa: BLE001 - any failure is "failed", never an unhandled error in a worker
+            # Not only httpx.HTTPError: a malformed URL raises httpx.InvalidURL,
+            # which is not one, and used to escape here without recording anything.
+            log.info("webhook %s delivery failed", subscription_id, exc_info=True)
 
     def _record_status(s: Session) -> None:
         row = s.get(WebhookSubscription, subscription_id)
@@ -169,7 +184,7 @@ def notify(session: Session, background_tasks: BackgroundTasks, event_id: int, t
             "topic": topic,
             "event_id": event_id,
             "issued_at": utcnow().isoformat(),
-            "delivery_id": uuid.uuid4().hex,
+            "delivery_id": _delivery_id(),
             **detail,
         }
         background_tasks.add_task(_deliver, sub.url, sub.id, crypto.sign_record(payload))
@@ -271,7 +286,7 @@ def queue_audited(
             payload[key] = value
     pending = session.info.setdefault(_PENDING, [])
     pending.extend(
-        (sub.url, sub.id, crypto.sign_record({**payload, "delivery_id": uuid.uuid4().hex})) for sub in subscriptions
+        (sub.url, sub.id, crypto.sign_record({**payload, "delivery_id": _delivery_id()})) for sub in subscriptions
     )
 
 
