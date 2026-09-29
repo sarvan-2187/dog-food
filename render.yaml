@@ -19,6 +19,11 @@ services:
           property: connectionString
       - key: SESSION_SECRET
         generateValue: true
+      # Render's edge proxy is the only way in and appends the visitor's address
+      # to X-Forwarded-For; trust that one hop (the rightmost entry), so per-IP
+      # limits key on the real visitor and a client cannot spoof its own.
+      - key: TRUST_PROXY_HOPS
+        value: "1"
       # Set in the dashboard after first deploy, e.g. https://hackflow.onrender.com
       - key: APP_BASE_URL
         sync: false

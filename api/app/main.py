@@ -15,6 +15,8 @@ from fastapi.staticfiles import StaticFiles
 mimetypes.add_type("font/woff2", ".woff2")
 
 from .db import create_db_and_tables
+from .protection import ProtectionMiddleware, SecurityHeadersMiddleware, TrustedProxyMiddleware
+from .request_limit import RateLimitMiddleware
 from .seed import run_seed
 
 # Import every model module before create_db_and_tables() so SQLModel.metadata
@@ -76,7 +78,10 @@ Every action in the web app is an endpoint here.
 
 **Events out**: organizers subscribe an event to signed webhooks (`submission.submitted`,
 `assignments.run`, `score.submitted`, `event.results_revealed`, `announcement.posted`).
-Payloads are signed with Ed25519; verify against `GET /api/public-key`.
+Payloads are signed with Ed25519. Verify the signature against the key from
+`GET /api/public-key`, fetched once and pinned, never the `public_key` copy inside the payload
+(anyone can sign with their own key and put that key there). Each signed record carries a
+unique `delivery_id` and an `issued_at`, so a receiver can drop duplicates and stale replays.
 """
 
 app = FastAPI(
@@ -87,6 +92,17 @@ app = FastAPI(
     license_info={"name": "MIT"},
     lifespan=lifespan,
 )
+
+
+# Added innermost first. A request meets security headers, then the global
+# 200/minute limit (request_limit.py), then ProtectionMiddleware; so a
+# rate-limited request is refused before it takes an in-flight slot, and every
+# cheap 413/429/503/504 refusal still carries the security headers.
+app.add_middleware(ProtectionMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+# Outermost: fixes request.client before any limiter reads it.
+app.add_middleware(TrustedProxyMiddleware)
 
 
 @app.middleware("http")
@@ -101,6 +117,30 @@ async def frame_policy(request: Request, call_next):
     else:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    return response
+
+
+# Browser caching for static files. Without it every page load re-requested
+# every font, image and script, ~30 requests, each counting towards the
+# 200/minute limit (found in acceptance testing). Vite names /assets/ files by
+# content hash, so they never change under the same URL; public/ files
+# (fonts, images) keep their names, so they get a day; index.html is always
+# revalidated so a deploy is picked up at once.
+_IMMUTABLE = "public, max-age=31536000, immutable"
+_STATIC_PREFIXES = ("/fonts/", "/images/", "/favicon")
+
+
+@app.middleware("http")
+async def cache_policy(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if response.status_code == 200 and "cache-control" not in response.headers:
+        if path.startswith("/assets/"):
+            response.headers["Cache-Control"] = _IMMUTABLE
+        elif path.startswith(_STATIC_PREFIXES):
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        elif not path.startswith(("/api/", "/embed/", "/media/", "/healthz", "/docs", "/redoc", "/openapi.json")):
+            response.headers["Cache-Control"] = "no-cache"
     return response
 
 

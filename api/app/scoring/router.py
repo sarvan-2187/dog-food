@@ -51,6 +51,15 @@ def _rubrics_for_event(session: Session, event_id: int) -> list[Rubric]:
     return rubrics
 
 
+def _existing_event(session: Session, event_id: int) -> Event:
+    """Results and exports for an event id that doesn't exist are a 404, not an
+    empty 200 that reads as "nobody has been scored yet"."""
+    event = session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
+    return event
+
+
 def _combined_criteria(rubrics: list[Rubric]) -> list[dict]:
     """The flat criteria list every submission is actually scored against --
     every rubric in the event's set, concatenated (PLAN.md Open Questions)."""
@@ -242,6 +251,7 @@ def results(
 ) -> list[ResultRow]:
     """Normalised standings. Organizer/admin only -- participants and judges get
     403 here, not a filtered view."""
+    _existing_event(session, event_id)
     return _result_rows(session, event_id)
 
 
@@ -249,11 +259,26 @@ def results(
 # CSV exports -- organizer/admin only, Python csv stdlib only (PLAN.md section 5)
 # --------------------------------------------------------------------------
 
+# A cell starting with one of these is run as a formula when the CSV is opened
+# in Excel, LibreOffice or Google Sheets. Titles, team names, answers, comments
+# and user names are typed by participants, so "=HYPERLINK(...)" in a project
+# title would otherwise execute on the organizer's machine (CSV injection).
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """OWASP's advice: prefix such a text cell with a single quote so it is read
+    as text. Numbers are left alone, so a negative score stays a number."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def _csv_response(filename: str, header: list[str], rows: Iterable[list]) -> Response:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(header)
-    writer.writerows(rows)
+    writer.writerow([_csv_safe(h) for h in header])
+    writer.writerows([_csv_safe(v) for v in row] for row in rows)
     return Response(
         content=buffer.getvalue(),
         media_type="text/csv",
@@ -267,7 +292,19 @@ def export_users(
     _: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> Response:
-    users = session.exec(select(User).order_by(User.id)).all()
+    _existing_event(session, event_id)
+    # The people of THIS event: its team members and its judges. It used to
+    # list every account on the platform, so any organizer could download the
+    # names and emails of people in other organizers' events.
+    team_ids = select(Team.id).where(Team.event_id == event_id)
+    member_ids = select(TeamMembership.user_id).where(TeamMembership.team_id.in_(team_ids))
+    panel_ids = select(EventJudge.user_id).where(EventJudge.event_id == event_id)
+    assigned_ids = select(JudgeAssignment.judge_id).where(JudgeAssignment.event_id == event_id)
+    users = session.exec(
+        select(User)
+        .where(User.id.in_(member_ids) | User.id.in_(panel_ids) | User.id.in_(assigned_ids))
+        .order_by(User.id)
+    ).all()
     return _csv_response(
         f"event-{event_id}-users.csv",
         ["id", "email", "name", "role", "created_at"],
@@ -281,6 +318,7 @@ def export_submissions(
     _: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> Response:
+    _existing_event(session, event_id)
     subs = session.exec(select(Submission).where(Submission.event_id == event_id).order_by(Submission.id)).all()
     event = session.get(Event, event_id)
     # One column per custom question, hidden ones included: an answer given is
@@ -308,10 +346,14 @@ def export_assignments(
     _: User = Depends(require_role(*ORGANIZER)),
     session: Session = Depends(get_session),
 ) -> Response:
+    _existing_event(session, event_id)
     assignments = session.exec(
         select(JudgeAssignment).where(JudgeAssignment.event_id == event_id).order_by(JudgeAssignment.id)
     ).all()
-    scored = {s.assignment_id for s in session.exec(select(Score))}
+    scored = {
+        s.assignment_id
+        for s in session.exec(select(Score).where(Score.assignment_id.in_([a.id for a in assignments] or [0])))
+    }
     rows = []
     for a in assignments:
         judge = session.get(User, a.judge_id)
@@ -339,14 +381,15 @@ def export_scores(
 ) -> Response:
     """Raw per-judge scores. Organizer-only: this is exactly the cross-judge
     detail a judge must not see."""
+    _existing_event(session, event_id)
     keys = [c["key"] for c in _combined_criteria(_rubrics_for_event_or_empty(session, event_id))]
     assignments = {
         a.id: a for a in session.exec(select(JudgeAssignment).where(JudgeAssignment.event_id == event_id))
     }
     rows = []
-    for score in session.exec(select(Score).order_by(Score.id)):
-        if score.assignment_id not in assignments:
-            continue
+    for score in session.exec(
+        select(Score).where(Score.assignment_id.in_(list(assignments) or [0])).order_by(Score.id)
+    ):
         judge = session.get(User, score.judge_id)
         submission = session.get(Submission, score.submission_id)
         rows.append(
@@ -370,6 +413,7 @@ def export_results(
 ) -> Response:
     """Normalised standings, raw mean alongside the normalised value so the
     difference between the two rankings is visible (PLAN.md Phase 4 bonus)."""
+    _existing_event(session, event_id)
     rows = _result_rows(session, event_id)
     return _csv_response(
         f"event-{event_id}-results.csv",

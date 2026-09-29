@@ -14,15 +14,16 @@ from ..ratelimit import (
     forgot_ip_limiter,
     login_account_limiter,
     login_ip_limiter,
+    register_ip_limiter,
     verify_email_limiter,
 )
 from ..timeutil import utcnow
 from . import mailer
 from .deps import get_current_user
-from .models import ResetChannel, Role, User, UserPublic
+from .models import ResetChannel, Role, User, UserPublic, find_user_by_email
 from .recovery import issue_reset, queue_changed_email, reset_email, validate_new_password
 from .security import hash_password, verify_password
-from .session import SESSION_COOKIE_NAME, SESSION_MAX_AGE, SESSION_SECRET, create_session_token
+from .session import COOKIE_SECURE, SESSION_COOKIE_NAME, SESSION_MAX_AGE, SESSION_SECRET, create_session_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -69,18 +70,28 @@ def set_session_cookie(response: Response, user: User) -> None:
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=COOKIE_SECURE,
     )
 
 
 @router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, session: Session = Depends(get_session)) -> UserPublic:
+def register(
+    payload: RegisterRequest, request: Request, response: Response, session: Session = Depends(get_session)
+) -> UserPublic:
     """Public sign-up always creates a participant. Judge/organizer/admin accounts
     are seeded from fixtures only (PLAN.md Open Questions)."""
-    existing = session.exec(select(User).where(User.email == payload.email)).first()
+    allowed, retry_after = register_ip_limiter.check(f"register-ip:{request.client.host if request.client else 'unknown'}")
+    if not allowed:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many sign-ups from this network. Try again in about {max(1, round(retry_after / 60))} minutes.",
+            headers={"Retry-After": str(max(1, round(retry_after)))},
+        )
+    existing = find_user_by_email(session, payload.email)
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists.")
     user = User(
-        email=payload.email,
+        email=payload.email.strip().lower(),
         name=payload.name,
         password_hash=hash_password(payload.password),
         role=Role.participant,
@@ -126,7 +137,7 @@ def login(
         if not allowed:
             raise _throttled(retry_after)
 
-    user = session.exec(select(User).where(User.email == payload.email)).first()
+    user = find_user_by_email(session, payload.email)
     password_ok = verify_password(payload.password, user.password_hash if user else _DUMMY_HASH)
     if not user or not password_ok:
         account_ok, account_retry = login_account_limiter.check(account_key)
@@ -149,7 +160,7 @@ def login(
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(response: Response) -> None:
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    response.delete_cookie(SESSION_COOKIE_NAME, httponly=True, samesite="lax", secure=COOKIE_SECURE)
 
 
 @router.get("/me", response_model=UserPublic)
@@ -206,7 +217,7 @@ def forgot_password(
     ip_ok, _ = forgot_ip_limiter.check(f"forgot-ip:{ip}")
     email_ok, _ = forgot_email_limiter.check(f"forgot-email:{email}")
     if ip_ok and email_ok:
-        user = session.exec(select(User).where(User.email == payload.email)).first()
+        user = find_user_by_email(session, payload.email)
         if user is not None:
             token, _row = issue_reset(session, user, ResetChannel.email)
             session.commit()
