@@ -34,7 +34,8 @@ export function GalleryPage() {
   const voter = useVoter();
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
-  const [order, setOrder] = useState<Order>('recent');
+  // null until the visitor picks an order themselves; see `order` below.
+  const [chosenOrder, setChosenOrder] = useState<Order | null>(null);
   const [items, setItems] = useState<GalleryItem[] | null>(null);
   const [events, setEvents] = useState<EventRecord[] | null>(null);
   const [scopedEvent, setScopedEvent] = useState<EventRecord | null>(null);
@@ -45,6 +46,11 @@ export function GalleryPage() {
   // One seed for the whole browser session, so a shuffled gallery does not
   // rearrange itself every time the visitor comes back (PLAN.md Phase 3 UX).
   const seed = useMemo(() => gallerySeed(), []);
+  // While an event takes votes its ballot is shuffled by default (DOGFOOD T3),
+  // so no entry gets the top of the page just for submitting early or late. The
+  // seed above keeps that shuffle stable for each visitor. Events without voting
+  // keep "Most recent".
+  const order: Order = chosenOrder ?? (scopedEvent?.voting_enabled ? 'random' : 'recent');
 
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedQ(q), 300);
@@ -52,6 +58,7 @@ export function GalleryPage() {
   }, [q]);
 
   useEffect(() => {
+    setChosenOrder(null);
     if (slug) {
       api.get<EventRecord>(`/api/events/${slug}`).then(setScopedEvent).catch(() => setScopedEvent(null));
     } else {
@@ -129,7 +136,7 @@ export function GalleryPage() {
           <SimpleSelect
             label="Order"
             value={order}
-            onChange={(value) => setOrder(value as Order)}
+            onChange={(value) => setChosenOrder(value as Order)}
             options={ORDERS}
             triggerClassName="md:w-44"
           />
