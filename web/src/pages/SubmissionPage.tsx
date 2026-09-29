@@ -4,7 +4,7 @@ import { CertificateButton } from '../components/CertificateButton';
 import { DeadlineCountdown } from '../components/DeadlineCountdown';
 import { ErrorState, InlineStatus, SkeletonRows, Toast, ToastRegion } from '../components/feedback';
 import type { SaveState } from '../components/feedback';
-import { ImageUpload } from '../components/ImageUpload';
+import { SubmissionImages } from '../components/SubmissionImages';
 import { Button, Card } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import type { EventRecord, Submission, Team } from '../types';
@@ -14,7 +14,18 @@ const FIELD_CLASS =
   'focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/20 ' +
   'disabled:bg-surface-100 disabled:text-ink-500';
 
-type Field = 'title' | 'description' | 'track' | 'repo_url' | 'demo_url' | 'video_url';
+type Field = 'title' | 'tagline' | 'description' | 'track' | 'tech_tags' | 'repo_url' | 'demo_url' | 'video_url';
+
+const MAX_TAGLINE = 140;
+const MAX_ANSWER = 1000;
+
+/** Tags are typed as one comma-separated line; the server trims and deduplicates. */
+const tagsToText = (tags: string[]) => tags.join(', ');
+const textToTags = (text: string) =>
+  text
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
 
 const LINKS: { field: 'repo_url' | 'demo_url' | 'video_url'; label: string; placeholder: string; hint: string }[] = [
   { field: 'repo_url', label: 'Code repository', placeholder: 'https://github.com/you/project', hint: 'Where judges can read the code.' },
@@ -35,14 +46,30 @@ function linkError(value: string): string | undefined {
   return 'Enter a full web address starting with https://';
 }
 
+function savedFields(s: Submission): Record<Field, string> {
+  return {
+    title: s.title,
+    tagline: s.tagline,
+    description: s.description,
+    track: s.track,
+    tech_tags: tagsToText(s.tech_tags),
+    repo_url: s.repo_url,
+    demo_url: s.demo_url,
+    video_url: s.video_url,
+  };
+}
+
 export function SubmissionPage() {
   const { teamId = '' } = useParams();
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [event, setEvent] = useState<EventRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
+  const [tagline, setTagline] = useState('');
   const [description, setDescription] = useState('');
   const [track, setTrack] = useState('');
+  const [tags, setTags] = useState('');
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [links, setLinks] = useState({ repo_url: '', demo_url: '', video_url: '' });
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
@@ -52,12 +79,15 @@ export function SubmissionPage() {
   // an edit can be reported as "Unsaved changes" the moment it diverges.
   const saved = useRef<Record<Field, string>>({
     title: '',
+    tagline: '',
     description: '',
     track: '',
+    tech_tags: '',
     repo_url: '',
     demo_url: '',
     video_url: '',
   });
+  const savedAnswers = useRef<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -78,17 +108,14 @@ export function SubmissionPage() {
         if (cancelled) return;
         setSubmission(s);
         setTitle(s.title);
+        setTagline(s.tagline);
         setDescription(s.description);
         setTrack(s.track);
+        setTags(tagsToText(s.tech_tags));
+        setAnswers(s.answers);
+        savedAnswers.current = s.answers;
         setLinks({ repo_url: s.repo_url, demo_url: s.demo_url, video_url: s.video_url });
-        saved.current = {
-          title: s.title,
-          description: s.description,
-          track: s.track,
-          repo_url: s.repo_url,
-          demo_url: s.demo_url,
-          video_url: s.video_url,
-        };
+        saved.current = savedFields(s);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) {
@@ -98,12 +125,16 @@ export function SubmissionPage() {
             team_id: Number(teamId),
             event_id: 0,
             title: '',
+            tagline: '',
             description: '',
             track: '',
+            tech_tags: [],
             status: 'draft',
             created_at: '',
             updated_at: '',
             image_url: null,
+            images: [],
+            answers: {},
             repo_url: '',
             demo_url: '',
             video_url: '',
@@ -123,6 +154,7 @@ export function SubmissionPage() {
   }, [teamId]);
 
   const deadlinePassed = event ? new Date(event.end_at).getTime() <= Date.now() : false;
+  const questions = (event?.questions ?? []).filter((q) => !q.hidden);
 
   const saveField = useCallback(
     async (field: Field, value: string) => {
@@ -131,16 +163,12 @@ export function SubmissionPage() {
       if (field.endsWith('_url') && linkError(value)) return; // shown inline; don't send what the server will refuse
       setSaveState('saving');
       try {
-        const updated = await api.patch<Submission>(`/api/teams/${teamId}/submission`, { [field]: value });
+        const body = field === 'tech_tags' ? { tech_tags: textToTags(value) } : { [field]: value };
+        const updated = await api.patch<Submission>(`/api/teams/${teamId}/submission`, body);
         setSubmission(updated);
-        saved.current = {
-          title: updated.title,
-          description: updated.description,
-          track: updated.track,
-          repo_url: updated.repo_url,
-          demo_url: updated.demo_url,
-          video_url: updated.video_url,
-        };
+        saved.current = savedFields(updated);
+        // Show the cleaned list (trimmed, duplicates dropped) the server kept.
+        if (field === 'tech_tags') setTags(tagsToText(updated.tech_tags));
         setSaveState('saved');
       } catch (err) {
         setSaveState('unsaved');
@@ -150,10 +178,33 @@ export function SubmissionPage() {
     [teamId, deadlinePassed],
   );
 
+  // Answers autosave one question at a time, like every other field.
+  async function saveAnswer(id: string, value: string) {
+    if (!loaded.current || deadlinePassed) return;
+    if ((savedAnswers.current[id] ?? '') === value) return;
+    setSaveState('saving');
+    try {
+      const updated = await api.patch<Submission>(`/api/teams/${teamId}/submission`, { answers: { [id]: value } });
+      setSubmission(updated);
+      savedAnswers.current = updated.answers;
+      setSaveState('saved');
+    } catch (err) {
+      setSaveState('unsaved');
+      setToast({ message: err instanceof ApiError ? err.message : 'Could not save your answer.', ok: false });
+    }
+  }
+
+  function editAnswer(id: string, value: string) {
+    setAnswers((a) => ({ ...a, [id]: value }));
+    setSaveState((savedAnswers.current[id] ?? '') === value ? 'saved' : 'unsaved');
+  }
+
   function edit(field: Field, value: string) {
     if (field === 'title') setTitle(value);
+    if (field === 'tagline') setTagline(value);
     if (field === 'description') setDescription(value);
     if (field === 'track') setTrack(value);
+    if (field === 'tech_tags') setTags(value);
     if (field === 'repo_url' || field === 'demo_url' || field === 'video_url') setLinks((l) => ({ ...l, [field]: value }));
     setSaveState(saved.current[field] === value ? 'saved' : 'unsaved');
   }
@@ -247,6 +298,22 @@ export function SubmissionPage() {
             />
           </label>
           <label className="flex flex-col gap-1.5">
+            <span className="text-label text-ink-800">Tagline</span>
+            <input
+              className={`h-10 ${FIELD_CLASS}`}
+              value={tagline}
+              maxLength={MAX_TAGLINE}
+              placeholder="One line that sells it"
+              disabled={deadlinePassed}
+              aria-describedby="tagline-help"
+              onChange={(e) => edit('tagline', e.target.value)}
+              onBlur={() => saveField('tagline', tagline.trim())}
+            />
+            <span id="tagline-help" className="text-meta text-ink-500">
+              Optional. Shown under the project name on gallery cards. {tagline.length} of {MAX_TAGLINE} characters.
+            </span>
+          </label>
+          <label className="flex flex-col gap-1.5">
             <span className="text-label text-ink-800">Description</span>
             <textarea
               rows={6}
@@ -288,6 +355,22 @@ export function SubmissionPage() {
               />
             )}
           </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-label text-ink-800">Tech tags</span>
+            <input
+              className={`h-10 ${FIELD_CLASS}`}
+              value={tags}
+              placeholder="python, postgres, react"
+              disabled={deadlinePassed}
+              aria-describedby="tech-tags-help"
+              onChange={(e) => edit('tech_tags', e.target.value)}
+              onBlur={() => saveField('tech_tags', tags)}
+            />
+            <span id="tech-tags-help" className="text-meta text-ink-500">
+              Optional. Separate with commas: up to 10, each up to 30 characters. Visitors can filter the gallery by
+              them.
+            </span>
+          </label>
           {/* PLAN.md 10.5: without these a judge scores from a paragraph of text. */}
           <fieldset className="flex flex-col gap-3">
             <legend className="mb-1 text-label text-ink-800">Links for the judges</legend>
@@ -315,15 +398,44 @@ export function SubmissionPage() {
               );
             })}
           </fieldset>
+          {questions.length > 0 && (
+            <fieldset className="flex flex-col gap-3">
+              <legend className="mb-1 text-label text-ink-800">Questions from the organizers</legend>
+              {questions.map((q) => {
+                const value = answers[q.id] ?? '';
+                return (
+                  <label key={q.id} className="flex flex-col gap-1.5">
+                    <span className="text-meta text-ink-700">
+                      {q.prompt}
+                      {q.required && <span className="text-danger-fg"> (required to submit)</span>}
+                    </span>
+                    <textarea
+                      rows={3}
+                      maxLength={MAX_ANSWER}
+                      className={`py-2 ${FIELD_CLASS}`}
+                      value={value}
+                      disabled={deadlinePassed}
+                      onChange={(e) => editAnswer(q.id, e.target.value)}
+                      onBlur={() => saveAnswer(q.id, value.trim())}
+                    />
+                    <span className="text-meta text-ink-500">
+                      {q.public ? 'Shown on your public project page. ' : 'Only the organizers and judges see this. '}
+                      {value.length} of {MAX_ANSWER} characters.
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
           {submission.id !== 0 && !deadlinePassed && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-label text-ink-800">Screenshot</span>
-              <ImageUpload
-                uploadUrl={`/api/teams/${teamId}/submission/image`}
-                currentUrl={submission.image_url}
-                label="screenshot"
-                responseKey="image_url"
-                onUploaded={(url) => setSubmission((s) => (s ? { ...s, image_url: url } : s))}
+              <span className="text-label text-ink-800">Images</span>
+              <SubmissionImages
+                teamId={teamId}
+                images={submission.images}
+                onChange={(images) =>
+                  setSubmission((s) => (s ? { ...s, images, image_url: images[0]?.url ?? null } : s))
+                }
               />
             </div>
           )}

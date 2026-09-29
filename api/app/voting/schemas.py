@@ -32,18 +32,36 @@ class VoteResult(BaseModel):
     votes: Optional[int] = None
 
 
+class GalleryImage(BaseModel):
+    id: int
+    url: str
+
+
+class GalleryAnswer(BaseModel):
+    question_id: str
+    prompt: str
+    answer: str
+
+
 class GalleryItem(BaseModel):
     id: int
     event_id: int
     team_id: int
     title: str
+    tagline: str = ""
     description: str
     track: str
+    tech_tags: list[str] = []
     updated_at: datetime
     comment_count: int
     votes: Optional[int] = None
     voted_by_me: bool = False
     image_url: Optional[str] = None
+    # The whole image gallery, in order; image_url is its first (the thumbnail).
+    # Filled on the project page, left empty on gallery cards.
+    images: list[GalleryImage] = []
+    # Answers to questions the organizer chose to show publicly. Project page only.
+    answers: list[GalleryAnswer] = []
     repo_url: str = ""
     demo_url: str = ""
     video_url: str = ""

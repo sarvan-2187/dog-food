@@ -1,20 +1,25 @@
 """Score submission, normalised results, and CSV exports (PLAN.md Phase 2)."""
 import csv
 import io
+import secrets
 from datetime import datetime
 from typing import Iterable, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..audit.log import record
 from ..auth import Role, User, get_current_user, mailer, require_role
 from ..db import get_session
 from ..events.models import Event
+from ..events.questions import new_question_id
 from ..events.schemas import stages_to_json
 from ..events.visibility import may_see_results, results_are_public
-from ..judging.models import JudgeAssignment, Rubric
+from ..judging.event_judges import assert_in_track, assignment_outside_track
+from ..auth.security import hash_password
+from ..judging.models import EventJudge, JudgeAssignment, Rubric
 from ..submissions.models import Submission, SubmissionStatus, in_competition
 from ..teams.models import Team, TeamMembership
 from ..timeutil import ensure_utc, utcnow
@@ -74,6 +79,7 @@ def submit_score(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found.")
     if assignment.judge_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This submission is assigned to a different judge.")
+    assert_in_track(session, assignment)
     event = session.get(Event, assignment.event_id)
     if event is not None and utcnow() < event.end_at:
         # PLAN.md 10.3: covers assignments made before judging was gated on the deadline.
@@ -144,6 +150,7 @@ def get_my_score(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found.")
     if assignment.judge_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This submission is assigned to a different judge.")
+    assert_in_track(session, assignment)
     score = session.exec(select(Score).where(Score.assignment_id == assignment_id)).first()
     if not score:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "You have not scored this submission yet.")
@@ -169,7 +176,14 @@ def judge_scores(
         record(session, "score.peer_read_refused", actor=user, entity_type="user", entity_id=judge_id)
         session.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Judges can only read their own scores.")
-    scores = session.exec(select(Score).where(Score.judge_id == judge_id).order_by(Score.id))
+    scores = list(session.exec(select(Score).where(Score.judge_id == judge_id).order_by(Score.id)))
+    if user.role == Role.judge:
+        # A track judge never sees an entry outside their track, even their own
+        # score from before the track was set (DOGFOOD T2).
+        scores = [
+            s for s in scores
+            if (a := session.get(JudgeAssignment, s.assignment_id)) is None or not assignment_outside_track(session, a)
+        ]
     return [ScorePublic(**s.model_dump()) for s in scores]
 
 
@@ -268,16 +282,22 @@ def export_submissions(
     session: Session = Depends(get_session),
 ) -> Response:
     subs = session.exec(select(Submission).where(Submission.event_id == event_id).order_by(Submission.id)).all()
+    event = session.get(Event, event_id)
+    # One column per custom question, hidden ones included: an answer given is
+    # part of the record even after the organizer retires the question.
+    questions = (event.questions or []) if event else []
     rows = []
     for s in subs:
         team = session.get(Team, s.team_id)
+        answers = s.answers or {}
         rows.append([
-            s.id, s.title, team.name if team else "", s.track, s.status.value,
-            s.repo_url, s.demo_url, s.video_url, s.updated_at.isoformat(),
-        ])
+            s.id, s.title, s.tagline, team.name if team else "", s.track, "; ".join(s.tech_tags or []),
+            s.status.value, s.repo_url, s.demo_url, s.video_url, s.updated_at.isoformat(),
+        ] + [answers.get(q["id"], "") for q in questions])
     return _csv_response(
         f"event-{event_id}-submissions.csv",
-        ["submission_id", "title", "team", "track", "status", "repo_url", "demo_url", "video_url", "updated_at"],
+        ["submission_id", "title", "tagline", "team", "track", "tech_tags", "status", "repo_url", "demo_url",
+         "video_url", "updated_at"] + [f"Q: {q['prompt']}" for q in questions],
         rows,
     )
 
@@ -409,13 +429,20 @@ def certificate(
 
 
 # --------------------------------------------------------------------------
-# Bulk event export/import (PLAN.md Phase 4 T4). Scoped to what an organizer
-# would actually restore or migrate -- event config, rubric, teams, and
-# submissions. Judge assignments/scores are deliberately NOT round-tripped:
-# they are tied to specific judge accounts, and silently re-creating scores
-# against a re-assigned (necessarily different) judge would misrepresent who
-# actually judged what. An organizer re-runs assignment and judging fresh on
-# the imported event instead.
+# Bulk event export/import (PLAN.md Phase 4 T4; DOGFOOD T4: "leave as easily
+# as they arrived"). The backup carries the event's config, rubrics, teams with
+# their members, submissions, judge panel, assignments and scores, so a whole
+# event moves between installs. People are matched by email:
+#
+# - a team member with an account here is linked to it, its password and role
+#   untouched; one without gets a new participant account with a random
+#   password nobody knows, and the organizer sends them a reset link;
+# - a judge must already hold the judge role here. The role is only ever
+#   granted by invitation, so import never creates or promotes a judge.
+#
+# All or nothing: every judge and rubric criterion a score, assignment or panel
+# row refers to must match, or the import is refused with a 422 that lists
+# what didn't, and nothing is written. Scores are never imported partially.
 # --------------------------------------------------------------------------
 
 @router.get("/api/events/{event_id}/export.json")
@@ -428,9 +455,31 @@ def export_event(
     if not event:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Event not found.")
     rubrics = _rubrics_for_event_or_empty(session, event_id)
-    teams = session.exec(select(Team).where(Team.event_id == event_id)).all()
-    submissions = session.exec(select(Submission).where(Submission.event_id == event_id)).all()
+    teams = session.exec(select(Team).where(Team.event_id == event_id).order_by(Team.id)).all()
+    submissions = session.exec(select(Submission).where(Submission.event_id == event_id).order_by(Submission.id)).all()
     team_names = {t.id: t.name for t in teams}
+    team_of_submission = {s.id: team_names.get(s.team_id, "") for s in submissions}
+    users: dict[int, User] = {}
+
+    def person(user_id: "int | None") -> "User | None":
+        if user_id is not None and user_id not in users:
+            users[user_id] = session.get(User, user_id)
+        return users.get(user_id) if user_id is not None else None
+
+    members_by_team: dict[int, list[TeamMembership]] = {}
+    for m in session.exec(
+        select(TeamMembership).where(TeamMembership.team_id.in_(list(team_names) or [0])).order_by(TeamMembership.id)
+    ):
+        members_by_team.setdefault(m.team_id, []).append(m)
+    panel = session.exec(select(EventJudge).where(EventJudge.event_id == event_id).order_by(EventJudge.id)).all()
+    assignments = session.exec(
+        select(JudgeAssignment).where(JudgeAssignment.event_id == event_id).order_by(JudgeAssignment.id)
+    ).all()
+    scores = (
+        session.exec(select(Score).where(Score.assignment_id.in_([a.id for a in assignments])).order_by(Score.id)).all()
+        if assignments
+        else []
+    )
     return {
         "event": {
             "slug": event.slug,
@@ -446,15 +495,30 @@ def export_event(
             "rules": event.rules,
             "stages": event.stages,
             "certificate_template": event.certificate_template,
+            "questions": event.questions or [],
         },
         "rubrics": [{"name": r.name, "criteria": r.criteria} for r in rubrics],
-        "teams": [{"name": t.name} for t in teams],
+        "teams": [
+            {
+                "name": t.name,
+                "members": [
+                    {"email": u.email, "name": u.name}
+                    for m in members_by_team.get(t.id, [])
+                    if (u := person(m.user_id)) is not None
+                ],
+                "captain_email": captain.email if (captain := person(t.captain_id)) else None,
+            }
+            for t in teams
+        ],
         "submissions": [
             {
                 "team_name": team_names.get(s.team_id, ""),
                 "title": s.title,
+                "tagline": s.tagline,
                 "description": s.description,
                 "track": s.track,
+                "tech_tags": s.tech_tags or [],
+                "answers": s.answers or {},
                 "status": s.status.value,
                 "repo_url": s.repo_url,
                 "demo_url": s.demo_url,
@@ -462,7 +526,114 @@ def export_event(
             }
             for s in submissions
         ],
+        "judges": [
+            {"email": u.email, "name": u.name, "track": j.track}
+            for j in panel
+            if (u := person(j.user_id)) is not None
+        ],
+        "assignments": [
+            {"team_name": team_of_submission.get(a.submission_id, ""), "judge_email": u.email}
+            for a in assignments
+            if (u := person(a.judge_id)) is not None
+        ],
+        "scores": [
+            {
+                "team_name": team_of_submission.get(sc.submission_id, ""),
+                "judge_email": u.email,
+                "values": sc.values,
+                "comment": sc.comment,
+            }
+            for sc in scores
+            if (u := person(sc.judge_id)) is not None
+        ],
     }
+
+
+def _imported_questions(payload: EventImportPayload) -> list[dict]:
+    """A backup's questions keep their ids, so its answers still line up. A
+    question with no id, or a repeated one, gets a fresh id."""
+    out: list[dict] = []
+    for q in payload.questions:
+        qid = q.id if q.id and q.id not in {o["id"] for o in out} else new_question_id()
+        out.append({"id": qid, "prompt": q.prompt, "required": q.required, "hidden": q.hidden, "public": q.public})
+    return out
+
+
+def _account(session: Session, email: str) -> "User | None":
+    return session.exec(select(User).where(func.lower(User.email) == email.strip().lower())).first()
+
+
+def _check_people(session: Session, payload: EventImportPayload) -> tuple[dict[str, User], list[str]]:
+    """Everything the people half of an import refers to, checked before a row
+    is written: (judge accounts by lowercased email, problems). Any problem
+    refuses the whole import."""
+    problems: list[str] = []
+    criteria: dict[str, dict] = {}
+    for r in payload.rubrics:
+        for c in r.criteria:
+            well_formed = isinstance(c, dict) and {"key", "weight", "max_score"} <= set(c)
+            if well_formed and all(isinstance(c[k], (int, float)) for k in ("weight", "max_score")):
+                criteria[c["key"]] = c
+            elif payload.scores:
+                problems.append(f"Rubric {r.name!r} has a criterion without a key, weight and max_score.")
+    submitted_teams = {s.team_name for s in payload.submissions}
+    tracks = set(payload.tracks)
+
+    seen_members: dict[str, str] = {}
+    for t in payload.teams:
+        for m in t.members:
+            email = m.email.strip().lower()
+            if "@" not in email:
+                problems.append(f"Team {t.name!r} has a member with no valid email ({m.email!r}).")
+            elif email in seen_members:
+                problems.append(f"{m.email} is on two teams ({seen_members[email]!r} and {t.name!r}).")
+            else:
+                seen_members[email] = t.name
+
+    judges: dict[str, User] = {}
+    for j in payload.judges:
+        email = j.email.strip().lower()
+        account = _account(session, email)
+        if account is None or account.role != Role.judge:
+            problems.append(f"Judge {j.email} has no judge account here. Invite them as a judge first.")
+        else:
+            judges[email] = account
+        if j.track and j.track not in tracks:
+            problems.append(f"Judge {j.email} is on track {j.track!r}, which this event doesn't have.")
+
+    def check_ref(kind: str, team_name: str, judge_email: str) -> None:
+        if team_name not in submitted_teams:
+            problems.append(f"A {kind} refers to team {team_name!r}, which has no submission in this backup.")
+        if judge_email.strip().lower() not in judges:
+            problems.append(f"A {kind} for {team_name!r} refers to judge {judge_email}, who isn't a matched judge.")
+
+    for a in payload.assignments:
+        check_ref("judge assignment", a.team_name, a.judge_email)
+    for sc in payload.scores:
+        check_ref("score", sc.team_name, sc.judge_email)
+        if set(sc.values) != set(criteria):
+            missing, extra = set(criteria) - set(sc.values), set(sc.values) - set(criteria)
+            detail = "; ".join(
+                part
+                for part in (
+                    f"missing {', '.join(sorted(missing))}" if missing else "",
+                    f"no rubric criterion called {', '.join(sorted(extra))}" if extra else "",
+                )
+                if part
+            )
+            problems.append(f"{sc.judge_email}'s score for {sc.team_name!r} doesn't match the rubrics: {detail}.")
+            continue
+        for key, value in sc.values.items():
+            if not (0 <= value <= float(criteria[key]["max_score"])):
+                problems.append(
+                    f"{sc.judge_email}'s score for {sc.team_name!r} gives {key} {value:g}, "
+                    f"outside 0 to {criteria[key]['max_score']:g}."
+                )
+    # A backup lists each thing once; repeats would violate the unique keys below.
+    pairs = [(sc.team_name, sc.judge_email.strip().lower()) for sc in payload.scores]
+    if len(set(pairs)) != len(pairs):
+        problems.append("The backup has two scores from the same judge for the same team.")
+    return judges, problems
 
 
 @router.post("/api/events/import", response_model=Event, status_code=status.HTTP_201_CREATED)
@@ -473,6 +644,15 @@ def import_event(
 ) -> Event:
     if session.exec(select(Event).where(Event.slug == payload.slug)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "An event with this slug already exists.")
+    judges, problems = _check_people(session, payload)
+    if problems:
+        shown = problems[:10]
+        more = f" (and {len(problems) - 10} more)" if len(problems) > 10 else ""
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Nothing was imported. Fix these and try again: " + " ".join(shown) + more,
+        )
+
     event = Event(
         slug=payload.slug,
         name=payload.name,
@@ -491,39 +671,107 @@ def import_event(
         stages=stages_to_json(payload.stages),
         certificate_template=payload.certificate_template if payload.certificate_template in TEMPLATES else "classic",
         status="draft",  # PLAN.md 10.12: an import is reviewed before it goes public
+        questions=_imported_questions(payload),
     )
     session.add(event)
     session.flush()
 
     for r in payload.rubrics:
         session.add(Rubric(event_id=event.id, name=r.name, criteria=r.criteria))
+    criteria = [c for r in payload.rubrics for c in r.criteria]
 
+    created_accounts = 0
     team_ids_by_name: dict[str, int] = {}
     for t in payload.teams:
         team = Team(event_id=event.id, name=t.name)
         session.add(team)
         session.flush()
         team_ids_by_name[t.name] = team.id
+        member_ids: dict[str, int] = {}
+        for m in t.members:
+            account = _account(session, m.email)
+            if account is None:
+                # Nobody knows this password: the organizer sends a reset link.
+                account = User(
+                    email=m.email.strip(),
+                    name=m.name.strip() or m.email.split("@")[0],
+                    role=Role.participant,
+                    password_hash=hash_password(secrets.token_urlsafe(32)),
+                )
+                session.add(account)
+                session.flush()
+                created_accounts += 1
+                record(
+                    session, "user.created_by_import", actor=user, entity_type="user", entity_id=account.id,
+                    event_id=event.id,
+                )
+            session.add(TeamMembership(team_id=team.id, user_id=account.id))
+            member_ids[m.email.strip().lower()] = account.id
+        captain = (t.captain_email or "").strip().lower()
+        team.captain_id = member_ids.get(captain) or next(iter(member_ids.values()), None)
+        session.add(team)
 
+    question_ids = {q["id"] for q in event.questions}
+    submission_ids: dict[str, int] = {}
     for s in payload.submissions:
         team_id = team_ids_by_name.get(s.team_name)
         if team_id is None:
             continue
+        submission = Submission(
+            team_id=team_id,
+            event_id=event.id,
+            title=s.title,
+            tagline=s.tagline,
+            description=s.description,
+            track=s.track,
+            tech_tags=s.tech_tags,
+            # Only answers to a question this event actually has.
+            answers={k: v for k, v in s.answers.items() if k in question_ids},
+            repo_url=s.repo_url,
+            demo_url=s.demo_url,
+            video_url=s.video_url,
+            status=SubmissionStatus(s.status),
+        )
+        session.add(submission)
+        session.flush()
+        submission_ids[s.team_name] = submission.id
+
+    for j in payload.judges:
+        account = judges[j.email.strip().lower()]
+        session.add(EventJudge(event_id=event.id, user_id=account.id, added_by_id=user.id, track=j.track or None))
+
+    assignment_ids: dict[tuple[int, int], int] = {}
+
+    def assignment_for(team_name: str, judge_email: str) -> tuple[int, int, int]:
+        sub_id, judge_id = submission_ids[team_name], judges[judge_email.strip().lower()].id
+        if (sub_id, judge_id) not in assignment_ids:
+            row = JudgeAssignment(event_id=event.id, submission_id=sub_id, judge_id=judge_id)
+            session.add(row)
+            session.flush()
+            assignment_ids[(sub_id, judge_id)] = row.id
+        return assignment_ids[(sub_id, judge_id)], sub_id, judge_id
+
+    for a in payload.assignments:
+        assignment_for(a.team_name, a.judge_email)
+    for sc in payload.scores:
+        # A score implies its assignment, so a backup missing one still lines up.
+        assignment_id, sub_id, judge_id = assignment_for(sc.team_name, sc.judge_email)
         session.add(
-            Submission(
-                team_id=team_id,
-                event_id=event.id,
-                title=s.title,
-                description=s.description,
-                track=s.track,
-                repo_url=s.repo_url,
-                demo_url=s.demo_url,
-                video_url=s.video_url,
-                status=SubmissionStatus(s.status),
+            Score(
+                assignment_id=assignment_id,
+                submission_id=sub_id,
+                judge_id=judge_id,
+                values=dict(sc.values),
+                comment=sc.comment[:2000],
+                raw_total=_weighted_total(criteria, sc.values),
             )
         )
 
-    record(session, "event.imported", actor=user, entity_type="event", entity_id=event.id, slug=event.slug)
+    record(
+        session, "event.imported", actor=user, entity_type="event", entity_id=event.id, slug=event.slug,
+        teams=len(payload.teams), created_accounts=created_accounts, judges=len(payload.judges),
+        assignments=len(assignment_ids), scores=len(payload.scores),
+    )
     session.commit()
     session.refresh(event)
     return event

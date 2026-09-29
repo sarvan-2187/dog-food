@@ -315,6 +315,10 @@
       "omar@example.com",
       "dana@example.com"
     ],
+    "judge_tracks": {
+      "omar@example.com": "Developer Tools",
+      "dana@example.com": "Productivity"
+    },
     "stages": [
       {
         "name": "Build sprint",

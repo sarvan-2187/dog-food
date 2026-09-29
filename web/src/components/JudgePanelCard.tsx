@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ApiError, api } from '../lib/api';
 import type { EventJudgeRow, EventJudges } from '../types';
-import { Badge, Button, Card, Input } from '../components/ui';
+import { Badge, Button, Card, Input, SimpleSelect } from '../components/ui';
 import { EmptyState, ErrorState, SkeletonRows } from '../components/feedback';
 import { DueBadge } from './DueBadge';
+
+// Radix Select can't hold an empty value, so "no track" gets a sentinel.
+const ANY_TRACK = '__any__';
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -22,12 +25,18 @@ const when = (iso: string) =>
  * the standings. "Add an existing judge" only accepts an account that already
  * holds the judge role, so it is not a second route into the role - an
  * invitation (below) remains the only one.
+ *
+ * A judge can be given one of the event's tracks (DOGFOOD T2). The server is
+ * what enforces it: assignment, the score sheet and scoring all refuse an entry
+ * outside that track, so this selector only chooses, it never hides.
  */
 export function JudgePanelCard({
   eventId,
+  tracks,
   onToast,
 }: {
   eventId: number;
+  tracks: string[];
   onToast: (message: string, ok: boolean) => void;
 }) {
   const [data, setData] = useState<EventJudges | null>(null);
@@ -82,6 +91,25 @@ export function JudgePanelCard({
       load();
     } catch (err) {
       onToast(err instanceof ApiError ? err.message : 'Could not remove that judge.', false);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function setTrack(judge: EventJudgeRow, value: string) {
+    const track = value === ANY_TRACK ? null : value;
+    setBusy(`track-${judge.user_id}`);
+    try {
+      await api.put<{ track: string | null }>(`/api/events/${eventId}/judges/${judge.user_id}/track`, { track });
+      onToast(
+        track
+          ? `${judge.name} now judges ${track} only. Press Assign judges to rebalance unscored work.`
+          : `${judge.name} can now judge any track.`,
+        true,
+      );
+      load();
+    } catch (err) {
+      onToast(err instanceof ApiError ? err.message : 'Could not change that track.', false);
     } finally {
       setBusy(null);
     }
@@ -186,6 +214,19 @@ export function JudgePanelCard({
                       </Button>
                     </span>
                   </div>
+                  {tracks.length > 0 && (
+                    <SimpleSelect
+                      label={`Track for ${j.name}`}
+                      className="sm:w-72"
+                      value={j.track ?? ANY_TRACK}
+                      onChange={(v) => setTrack(j, v)}
+                      disabled={busy === `track-${j.user_id}`}
+                      options={[
+                        { value: ANY_TRACK, label: 'Any track' },
+                        ...tracks.map((t) => ({ value: t, label: t })),
+                      ]}
+                    />
+                  )}
                   {j.last_activity && (
                     <span className="text-meta text-ink-500">Last scored {when(j.last_activity)}</span>
                   )}

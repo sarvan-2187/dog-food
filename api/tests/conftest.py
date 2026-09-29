@@ -51,7 +51,13 @@ def _ensure_test_database(url: str) -> None:
 
 _ensure_test_database(os.environ["DATABASE_URL"])
 
-from app.db import add_guarded_indexes, add_missing_columns, add_vote_voter_index, engine  # noqa: E402
+from app.db import (  # noqa: E402
+    add_guarded_indexes,
+    add_missing_columns,
+    add_vote_voter_index,
+    engine,
+    widen_stored_file_key,
+)
 from app.auth import models as _auth_models  # noqa: E402,F401
 from app.events import models as _event_models  # noqa: E402,F401
 from app.teams import models as _team_models  # noqa: E402,F401
@@ -67,6 +73,7 @@ SQLModel.metadata.create_all(engine)
 # long-lived volume does (app.db.add_missing_columns).
 add_missing_columns()
 add_guarded_indexes()
+widen_stored_file_key()
 add_vote_voter_index()
 
 
@@ -124,3 +131,16 @@ def client(session):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def webhook_deliveries(monkeypatch):
+    """Audited actions queue webhook deliveries that go out after commit on a
+    thread pool (webhooks/service.py). Under test they are captured here
+    instead, so no test ever POSTs to a real URL, and a test can assert on what
+    would have been sent: a list of (url, subscription_id, signed_payload)."""
+    from app.webhooks import service
+
+    sent: list = []
+    monkeypatch.setattr(service, "_submit", lambda url, sub_id, signed: sent.append((url, sub_id, signed)))
+    return sent

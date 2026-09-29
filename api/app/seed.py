@@ -131,8 +131,10 @@ def _seed_submissions(session: Session, slug_to_id: dict[str, int], name_to_id: 
             team_id=team_id,
             event_id=slug_to_id[row["event_slug"]],
             title=row.get("title", ""),
+            tagline=row.get("tagline", ""),
             description=row.get("description", ""),
             track=row.get("track", ""),
+            tech_tags=row.get("tech_tags", []),
             repo_url=row.get("repo_url", ""),
             demo_url=row.get("demo_url", ""),
             video_url=row.get("video_url", ""),
@@ -178,17 +180,19 @@ def _seed_rubrics(session: Session, slug_to_id: dict[str, int]) -> None:
 
 def _seed_event_judges(session: Session, email_to_id: dict[str, int], slug_to_id: dict[str, int]) -> None:
     """PLAN.md 10.1: judges belong to events. Keyed on (event, judge), so re-runs
-    add nothing."""
+    add nothing. `judge_tracks` makes some of them track judges (DOGFOOD T2); set
+    only on first seeding, so an organizer's later change is never undone."""
     from .judging.models import EventJudge
 
     for row in load_fixture("events.json"):
         event_id = slug_to_id[row["slug"]]
+        tracks = row.get("judge_tracks", {})
         for email in row.get("judge_emails", []):
             user_id = email_to_id[email]
             if not session.exec(
                 select(EventJudge).where(EventJudge.event_id == event_id, EventJudge.user_id == user_id)
             ).first():
-                session.add(EventJudge(event_id=event_id, user_id=user_id))
+                session.add(EventJudge(event_id=event_id, user_id=user_id, track=tracks.get(email)))
 
 
 DOGFOOD_EVENT_SLUG = "sample-hack-2026"

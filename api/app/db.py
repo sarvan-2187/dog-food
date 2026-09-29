@@ -30,6 +30,7 @@ def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
     add_missing_columns()
     add_guarded_indexes()
+    widen_stored_file_key()
     run_backfills()
     add_vote_voter_index()
 
@@ -65,6 +66,14 @@ _ADDED_COLUMNS = (
     ("events", "voting_requires_verified", "boolean NOT NULL DEFAULT false"),
     ("events", "voting_account_cutoff", "timestamptz"),
     ("users", "email_verified_at", "timestamptz"),
+    # Track judges (DOGFOOD T2): NULL means the judge takes any track.
+    ("event_judges", "track", "varchar DEFAULT NULL"),
+    # The full T1 submission field set (DOGFOOD T1)
+    ("submissions", "tagline", "varchar NOT NULL DEFAULT ''"),
+    ("submissions", "tech_tags", "json NOT NULL DEFAULT '[]'"),
+    ("submissions", "answers", "json NOT NULL DEFAULT '{}'"),
+    ("events", "questions", "json NOT NULL DEFAULT '[]'"),
+    ("stored_files", "position", "integer NOT NULL DEFAULT 0"),
 )
 
 
@@ -150,6 +159,26 @@ def add_guarded_indexes() -> None:
         return
     with engine.begin() as conn:
         conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {name} ON team_memberships (event_id, user_id)"))
+
+
+def widen_stored_file_key() -> None:
+    """Image galleries (DOGFOOD T1): a volume from before them has one image per
+    owner, enforced by uq_stored_file_owner. Every existing row sits at position
+    0, so swapping that for a unique (owner_type, owner_id, position) can't fail.
+    Checked in pg_constraint first, so a booted volume takes no lock."""
+    with engine.begin() as conn:
+        old = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_stored_file_owner'")
+        ).first()
+        if old is None:
+            return
+        conn.execute(text("ALTER TABLE stored_files DROP CONSTRAINT uq_stored_file_owner"))
+        conn.execute(
+            text(
+                "ALTER TABLE stored_files ADD CONSTRAINT uq_stored_file_owner_position "
+                "UNIQUE (owner_type, owner_id, position)"
+            )
+        )
 
 
 def add_vote_voter_index() -> None:

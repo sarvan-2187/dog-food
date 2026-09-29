@@ -2,7 +2,9 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, and_
+from typing import Dict, List
+
+from sqlalchemy import JSON, Column, DateTime, and_
 from sqlmodel import Field, SQLModel
 
 from ..timeutil import utcnow
@@ -27,8 +29,20 @@ class Submission(SQLModel, table=True):
     team_id: int = Field(foreign_key="teams.id", unique=True, index=True)
     event_id: int = Field(foreign_key="events.id", index=True)
     title: str = ""
+    # One line under the title on cards and the project page (DOGFOOD T1).
+    tagline: str = ""
     description: str = ""
     track: str = ""
+    # Free-text tech tags, at most 10 of 30 characters each, kept as typed and
+    # deduplicated case-insensitively (schemas.clean_tags). Matched lowercased.
+    tech_tags: List[str] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]")
+    )
+    # Answers to the event's custom questions, keyed by question id
+    # (Event.questions). Plain text, never rendered as HTML.
+    answers: Dict[str, str] = Field(
+        default_factory=dict, sa_column=Column(JSON, nullable=False, server_default="{}")
+    )
     # Where judges can actually look at the project (PLAN.md Phase 10.5). Optional,
     # http(s) only - validated in SubmissionUpdate - and shown as links, never embedded.
     repo_url: str = ""
