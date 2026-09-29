@@ -464,6 +464,14 @@ event page as a numbered timeline, with the current stage highlighted.
 Stages inform; they don't enforce. When submissions close is still decided by the event's
 own dates above them.
 
+### Certificate design
+
+**Event settings → Certificate design** shows eight looks as real sample certificates:
+Classic, Classic gold, Midnight tech, Modern gradient, Emerald prestige, Minimal mono, Royal
+blue and Retro pixel. Click one and it is saved; every team's certificate uses it from then on,
+even ones downloaded after results are out. The text, serial and verification link are the same
+in every design.
+
 ### Helping someone sign in
 
 When a participant or judge is locked out and the email reset isn't working for them, use

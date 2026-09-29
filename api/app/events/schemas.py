@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, field_validator, model_validator
 
+from ..scoring.certificate import TEMPLATES
 from ..timeutil import ensure_utc
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -127,6 +128,14 @@ class EventUpdate(BaseModel):
     voting_account_cutoff: Optional[datetime] = None
     rules: Optional[str] = None
     stages: Optional[List[Stage]] = None
+    certificate_template: Optional[str] = None
+
+    @field_validator("certificate_template")
+    @classmethod
+    def known_template(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in TEMPLATES:
+            raise ValueError(f"Unknown certificate design. Choose one of: {', '.join(TEMPLATES)}.")
+        return v
 
     @field_validator("name")
     @classmethod
