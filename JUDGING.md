@@ -114,25 +114,73 @@ normalize_scores(raw_scores_by_judge) -> dict[submission_id, float]
 ```
 mu_j    = mean of judge j's raw totals across their assigned submissions
 sigma_j = population stddev of judge j's raw totals
-z_{j,i} = (x_{j,i} - mu_j) / sigma_j          # if sigma_j == 0, z_{j,i} = 0 for all i from that judge
-z_bar_i = mean of z_{j,i} over all judges j who scored submission i
+judge j is INFORMATIVE when sigma_j > 1e-9 * max(1, |mu_j|)   # scored 2+ entries, not all equal
+z_{j,i} = (x_{j,i} - mu_j) / sigma_j                        # informative judges only
+z_bar_i = mean of z_{j,i} over the informative judges who scored i
+          (0 if none did: "no evidence either way")
 display_i = clamp(50 + 10 * z_bar_i, 0, 100)  # for UI display only; keep z_bar_i as the ranking value
 ```
 
-This cancels out a judge's individual harshness or leniency — a judge who scores
-everything low still ranks submissions correctly relative to each other, because it's
-their own mean and spread doing the normalizing, not an absolute scale. `display_i` is
-cosmetic (a 0–100 number a human reads); `z_bar_i` is what actually determines rank.
+This cancels out a judge's individual harshness or leniency. A judge who scores everything
+low still ranks submissions correctly relative to each other, because it's their own mean
+and spread doing the normalizing, not an absolute scale. `display_i` is cosmetic (a 0–100
+number a human reads); `z_bar_i` is what actually determines rank. The full analysis,
+measured on the official fixtures, is in
+[`docs/NORMALIZATION-ANALYSIS.md`](docs/NORMALIZATION-ANALYSIS.md).
 
-**Why the raw total is `sum(weight × value)`.** Section 8 specifies normalization over
-"raw totals" without saying how a raw total is formed from rubric criteria. The weighted
-sum keeps the total on the same 0–`max_score` scale as the individual criteria, so "7.8
-out of 10" means something to a human reading the CSV export.
+**How the raw total is formed.** Section 8 specifies normalization over "raw totals"
+without saying how a raw total comes from rubric criteria. It is
+
+```
+raw_total = ( sum_c w_c * v_c / max_c ) / ( sum_c w_c ) * M        M = the largest max_score
+```
+
+Each value counts as a fraction of its own criterion's maximum before it is weighted, so a
+weight means what the organizer set. With Technical scored 0–10 at 70% and Presentation
+scored 0–100 at 30%, a plain `sum(w × v)` would give Presentation about 81% of the total,
+just because its numbers are bigger (fixed 2026-09-29; test
+`test_weighted_total_respects_weights_across_different_max_scores`). When every criterion
+shares one `max_score` and the weights add to 1, which is true of every rubric the fixtures
+ship, the formula is exactly `sum(w × v)`. The total stays on the familiar 0–`max_score`
+scale, so "7.8 out of 10" still means something in the CSV export.
+
+### Zero-information judges
+
+A judge with a single score, or one who gave everything the same score, has σ = 0. Their
+marks carry no information about *relative* order. They are **left out of z̄**, not averaged
+in as a 0.
+
+Until 2026-09-29 they were averaged in as a 0. That looks neutral, but it isn't. It shrinks
+every other judge's signal for that project by a factor that depends only on how many
+uninformative judges the project happened to draw. Two projects with identical informative
+evidence could land on different ranks. On the fixtures, 3 of 30 judges are uninformative,
+and removing the dilution moves 12 projects by 1–2 places (Small Relay from 30th to 32nd,
+Dry Harbour from 10th to 9th). The top 8 are unchanged. The test
+`test_an_uninformative_judge_does_not_change_a_projects_rank` pins the new behavior.
+
+σ is compared against a small relative tolerance rather than exactly 0, so float noise in a
+weighted total (`0.1 × 3` against `0.3`) can't turn identical marks into z = ±1
+(`test_float_noise_is_not_mistaken_for_spread`).
+
+### Partial data: normalization while judging is under way
+
+Normalization is **recomputed on every read** from whatever scores exist. It is never cached
+or frozen. So standings are live during judging, and they only settle once every assigned
+judge has scored. Each result row says how complete it is:
+
+- `judges` is the number of scores in;
+- `assigned_judges` is the number of judges assigned to the project;
+- `informative_judges` is how many of those scores actually moved z̄.
+
+`judges < assigned_judges` means the row is still provisional. The results CSV carries all
+three columns. Results stay hidden from everyone but organizers until the reveal time
+(below), so nobody outside the organizing team ever sees provisional standings. The judging
+progress card says who is behind.
 
 Edge cases, each with a dedicated unit test in `api/tests/test_scoring.py`:
-- A judge with only one assignment → `sigma_j == 0`, guarded the same way as any
-  zero-variance judge: their `z` contributes 0, not a division error.
-- A submission scored by only one judge → still produces a valid `z_bar_i`.
+- A judge with only one assignment → uninformative, left out of z̄, never a division error.
+- A submission scored by only one informative judge → takes that judge's z.
+- A submission scored only by uninformative judges → z̄ = 0, `informative_judges = 0`.
 - A dataset of judges with different harshness → the raw-mean ranking and the
   normalized ranking genuinely disagree, which is the point of normalizing at all.
 
@@ -142,44 +190,42 @@ The fixture event (`sample-hack-2026`) has 40 submissions, 30 judges and 123 sco
 with 2 to 6 judges per project. Its criteria are `functionality`, `quality` and
 `innovation`, on a 1–5 scale and weighted equally. The table is the unedited
 `GET /api/events/10/export/results.csv` from a fresh `docker compose up`. *Raw rank*
-orders the same rows by plain raw mean. *Move* is raw rank minus normalized rank, so a
-positive number means normalizing moved the project up.
+orders the same rows by plain raw mean (ties by id). *Move* is raw rank minus normalized
+rank, so a positive number means normalizing moved the project up.
 
-| Normalized rank | Raw rank | Move | Project | Judges | Raw mean | z̄ | Display |
+| Normalized rank | Raw rank | Move | Project | Judges (informative) | Raw mean | z̄ | Display |
 |---|---|---|---|---|---|---|---|
-| 1 | 2 | +1 | Iron Switch | 3 | 4.33 | +1.232 | 62.3 |
-| 2 | 7 | +5 | Slow Trail | 3 | 4.00 | +0.918 | 59.2 |
-| 3 | 1 | −2 | Salt Ledger | 4 | 4.33 | +0.867 | 58.7 |
-| 4 | 5 | +1 | Salt Loom | 4 | 4.08 | +0.768 | 57.7 |
-| 5 | 6 | +1 | Salt Kiln | 3 | 4.00 | +0.688 | 56.9 |
-| 6 | 4 | −2 | Dry Relay | 3 | 4.11 | +0.609 | 56.1 |
-| 7 | 3 | −4 | Still Beacon | 2 | 4.17 | +0.595 | 56.0 |
-| 8 | 19 | +11 | Paper Anchor | 2 | 3.50 | +0.324 | 53.2 |
-| 9 | 26 | +17 | Glass Signal | 3 | 3.44 | +0.288 | 52.9 |
-| 10 | 31 | +21 | Dry Harbour | 6 | 3.33 | +0.263 | 52.6 |
+| 1 | 2 | +1 | Iron Switch | 3 (3) | 4.33 | +1.232 | 62.3 |
+| 2 | 7 | +5 | Slow Trail | 3 (3) | 4.00 | +0.918 | 59.2 |
+| 3 | 1 | −2 | Salt Ledger | 4 (4) | 4.33 | +0.867 | 58.7 |
+| 4 | 5 | +1 | Salt Loom | 4 (4) | 4.08 | +0.768 | 57.7 |
+| 5 | 6 | +1 | Salt Kiln | 3 (3) | 4.00 | +0.688 | 56.9 |
+| 6 | 4 | −2 | Dry Relay | 3 (3) | 4.11 | +0.609 | 56.1 |
+| 7 | 3 | −4 | Still Beacon | 2 (2) | 4.17 | +0.595 | 56.0 |
+| 8 | 19 | +11 | Paper Anchor | 2 (2) | 3.50 | +0.324 | 53.2 |
+| 9 | 31 | +22 | Dry Harbour | 6 (5) | 3.33 | +0.316 | 53.2 |
+| 10 | 27 | +17 | Glass Signal | 3 (3) | 3.44 | +0.288 | 52.9 |
 
-Only 2 of the 40 projects keep their raw rank. Every project in the top ten moves, and
-the largest move is 21 places. Two of the fixture's deliberate awkward cases explain the
-biggest moves:
+Only 2 of the 40 projects keep their raw rank, and the largest move is 22 places. Two of the
+fixture's deliberate awkward cases explain the biggest moves:
 
-- **Small Relay drops from 13th to 30th.** It was scored by `jdg_07`, the judge who gave
-  every project 4/4/4, and by `jdg_29`. A judge who gives everything the same score has
-  σ = 0, so their 4.0 carries no information about *this* project and contributes z = 0,
-  not a +4. `jdg_29`'s 3.33 is below that judge's own average (about 3.5), so the
-  project's z̄ is negative (−0.238), even though its raw mean of 3.67 looks
-  above average.
-- **Dry Harbour rises from 31st to 10th.** Its raw mean is pulled down by `jdg_01`'s
-  2/2/2, but that is the only project `jdg_01` scored. With one score, a judge's σ is 0,
-  and nothing shows whether 2.0 is harsh or just that judge's normal. So it counts as
-  z = 0, and the other five judges, each measured against their own average, place it
-  above average. Dry Harbour is also the fixture's duplicate submission (`prj_07` and
-  `prj_41`). Merging the two gives it 6 judges (README).
+- **Small Relay drops from 12th to 32nd.** It was scored by `jdg_07`, the judge who gave
+  every project 4/4/4, and by `jdg_29`. `jdg_07` has σ = 0, so their 4.0 says nothing
+  about *this* project and is left out. `jdg_29`'s 3.33 is below that judge's own average
+  (about 3.5), so the project's z̄ is that judge's −0.476, even though its raw mean of 3.67
+  looks above average.
+- **Dry Harbour rises from 31st to 9th.** Its raw mean is pulled down by `jdg_01`'s
+  2/2/2, but that is the only project `jdg_01` scored. With one score there is no spread,
+  and nothing shows whether 2.0 is harsh or just that judge's normal. So `jdg_01` is left
+  out, and the other five judges, each measured against their own average, place it above
+  average. Dry Harbour is also the fixture's duplicate submission (`prj_07` and `prj_41`).
+  Merging the two gives it 6 judges (README).
 
-**The trade-off.** A judge's scores only count for something once that judge has scored
-more than one project. That is deliberate: without a spread there is no scale to
-normalize against. It is also the cost of this method. An organizer who wants every
-judge to count should assign at least two projects each. The assignment run's
-`judges_per_submission` makes that the normal case.
+**The trade-off.** A judge's scores only count once that judge has scored more than one
+project. That is deliberate: without a spread there is no scale to normalize against. It is
+also the cost of this method. An organizer who wants every judge to count should assign at
+least two projects each. The assignment run's `judges_per_submission` makes that the normal
+case. The rows' `informative_judges` column shows where it didn't happen.
 
 ## Role isolation
 
