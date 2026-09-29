@@ -40,6 +40,20 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
+      # Security and integration settings (docs/SECURITY-AUDIT.md). All optional.
+      # WEBHOOK_ALLOW_PRIVATE=1 lets webhooks reach an app on this machine or LAN,
+      # e.g. the Raptor Relay demo (docs/USER-MANUAL.md, Integrations); keep it
+      # unset on a public server. TRUSTED_PROXY_HOPS=1 behind one reverse proxy.
+      WEBHOOK_ALLOW_PRIVATE: ${WEBHOOK_ALLOW_PRIVATE:-}
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-600}
+      RATE_LIMIT_WRITES_PER_MINUTE: ${RATE_LIMIT_WRITES_PER_MINUTE:-120}
+      RATE_LIMIT_API_KEY_PER_MINUTE: ${RATE_LIMIT_API_KEY_PER_MINUTE:-1200}
+    # Lets a webhook reach an app on the host as http://host.docker.internal:PORT
+    # on Linux too (Docker Desktop already provides the name).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     volumes:

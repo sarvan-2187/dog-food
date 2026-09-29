@@ -200,6 +200,13 @@ def upsert_submission(
             )
         # Merged, and a new dict so the JSON column sees the change.
         changes["answers"] = {**(sub.answers or {}), **changes["answers"]}
+    if changes.get("track") and changes["track"] not in (event.tracks or []):
+        # A made-up track would dodge both the "No track chosen" eligibility
+        # flag and track-judge assignment (JUDGING.md rule 8).
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"This event has no track called {changes['track']!r}. Pick one of: {', '.join(event.tracks or []) or 'none'}.",
+        )
     for key, value in changes.items():
         setattr(sub, key, value)
     sub.updated_at = utcnow()
@@ -240,9 +247,9 @@ def submit_submission(
 def gallery(
     request: Request,
     event_id: "int | None" = None,
-    q: "str | None" = Query(default=None),
-    track: "str | None" = Query(default=None, description="Only entries in this track."),
-    tag: "str | None" = Query(default=None, description="Only entries with this tech tag (any case)."),
+    q: "str | None" = Query(default=None, max_length=100),
+    track: "str | None" = Query(default=None, max_length=100, description="Only entries in this track."),
+    tag: "str | None" = Query(default=None, max_length=60, description="Only entries with this tech tag (any case)."),
     order: str = Query(default="recent", pattern="^(recent|random|votes)$"),
     seed: "int | None" = Query(
         default=None,

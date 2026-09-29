@@ -291,7 +291,9 @@ def create_reset_link(
     """The raw link exists in this one response and nowhere else. An organizer
     looking an email up is not an enumeration leak: users.csv already lists
     every address to them."""
-    target = session.exec(select(User).where(User.email == payload.email)).first()
+    from .router import user_by_email  # router imports this module
+
+    target = user_by_email(session, payload.email)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No HackFlow account uses that email address.")
     if target.id == issuer.id:

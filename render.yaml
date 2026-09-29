@@ -19,6 +19,12 @@ services:
           property: connectionString
       - key: SESSION_SECRET
         generateValue: true
+      # Render's proxy appends the visitor's address to X-Forwarded-For; without
+      # this every visitor would share one rate-limit bucket.
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+      - key: COOKIE_SECURE
+        value: "1"
       # Set in the dashboard after first deploy, e.g. https://hackflow.onrender.com
       - key: APP_BASE_URL
         sync: false

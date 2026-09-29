@@ -89,6 +89,13 @@ app = FastAPI(
 )
 
 
+# Rate limits, body-size caps and security headers for every request
+# (protection.py). Added before the frame policy below, so it sits inside it.
+from .protection import ProtectionMiddleware  # noqa: E402
+
+app.add_middleware(ProtectionMiddleware)
+
+
 @app.middleware("http")
 async def frame_policy(request: Request, call_next):
     """Clickjacking (THREAT-MODEL): no other site may frame HackFlow - a framed
