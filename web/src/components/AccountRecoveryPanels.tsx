@@ -77,18 +77,20 @@ export function HelpSignInPanel() {
           If someone can't get into their account and the email reset isn't working for them, create a one-time
           link here and send it through your event's usual channel. It works once, for an hour.
         </p>
-        <form className="flex flex-col gap-3 sm:flex-row sm:items-start" onSubmit={create} noValidate>
+        {/* Stacked, not side by side: the dashboard puts this card in a narrow
+            side column, where a fixed-width field pushed the button off the card. */}
+        <form className="flex flex-col items-start gap-3" onSubmit={create} noValidate>
           <Input
             label="Their email"
             type="email"
-            className="sm:w-80"
+            className="self-stretch"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onBlur={() => email && setTouched(true)}
             error={emailError}
             placeholder="jordan@example.com"
           />
-          <Button type="submit" variant="primary" loading={creating} loadingLabel="Creating..." className="sm:mt-7">
+          <Button type="submit" variant="primary" loading={creating} loadingLabel="Creating...">
             Create reset link
           </Button>
         </form>
