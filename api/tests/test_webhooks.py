@@ -108,7 +108,7 @@ def test_delivery_sends_a_signed_payload_that_verifies(session, monkeypatch):
     test's own session directly is the seam _deliver() exists for."""
     calls = []
 
-    def fake_post(url, json, timeout):
+    def fake_post(url, json, timeout, **_kwargs):
         calls.append((url, json))
         return _FakeResponse(ok=True)
 
@@ -134,7 +134,9 @@ def test_delivery_sends_a_signed_payload_that_verifies(session, monkeypatch):
     assert webhook.last_status == "delivered"
 
 
-def test_an_unreachable_webhook_does_not_raise_and_records_failed(session):
+def test_an_unreachable_webhook_does_not_raise_and_records_failed(session, monkeypatch):
+    # A local receiver is only reachable with the demo opt-in (SSRF guard).
+    monkeypatch.setenv("WEBHOOK_ALLOW_PRIVATE", "1")
     organizer = _user(session, "wh-fail-org@example.com", Role.organizer)
     event = _event(session, "wh-fail", organizer)
     webhook = WebhookSubscription(event_id=event.id, url="http://127.0.0.1:1/unreachable", created_by_id=organizer.id)
@@ -153,7 +155,7 @@ def test_deleting_a_webhook_stops_further_deliveries(client, session, monkeypatc
     calls = []
     monkeypatch.setattr(
         "app.webhooks.service.httpx.post",
-        lambda url, json, timeout: (calls.append(url), _FakeResponse(ok=True))[1],
+        lambda url, json, timeout, **_kw: (calls.append(url), _FakeResponse(ok=True))[1],
     )
 
     organizer = _login_as(client, session, "wh-stop-org@example.com", Role.organizer)
@@ -268,3 +270,72 @@ def test_vote_details_never_leave_in_a_payload(session, webhook_deliveries):
     body = webhook_deliveries[0][2]["record"]
     assert body["topic"] == "vote.voided"
     assert not {"vote_id", "voter_user_id", "voter_key", "fingerprint_hash"} & set(body)
+
+
+# ---------------------------------------------------------------------------
+# SSRF guard, caps and the test ping (docs/SECURITY-AUDIT.md).
+# ---------------------------------------------------------------------------
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1:5432/",
+        "http://localhost:8000/api/events",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://10.0.0.5/hook",
+        "http://[::1]/hook",
+        "http://db.internal/hook",
+    ],
+)
+def test_a_webhook_to_a_private_address_is_refused(client, session, url):
+    organizer = _login_as(client, session, "wh-ssrf-org@example.com", Role.organizer)
+    event = _event(session, "wh-ssrf", organizer)
+    r = client.post(f"/api/events/{event.id}/webhooks", json={"url": url})
+    assert r.status_code == 422, r.text
+
+
+def test_delivery_rechecks_the_address_and_never_posts_to_a_private_one(session, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "app.webhooks.service.httpx.post", lambda url, json, timeout, **_kw: (calls.append(url), _FakeResponse(ok=True))[1]
+    )
+    organizer = _user(session, "wh-rebind-org@example.com", Role.organizer)
+    event = _event(session, "wh-rebind", organizer)
+    # Written straight to the table, as if DNS changed after creation.
+    webhook = WebhookSubscription(event_id=event.id, url="http://169.254.169.254/", created_by_id=organizer.id)
+    session.add(webhook)
+    session.commit()
+    _deliver(webhook.url, webhook.id, {"record": {}}, session=session)
+    session.refresh(webhook)
+    assert calls == [] and webhook.last_status == "blocked"
+
+
+def test_webhooks_per_event_are_capped_and_deduplicated(client, session):
+    organizer = _login_as(client, session, "wh-cap-org@example.com", Role.organizer)
+    event = _event(session, "wh-cap", organizer)
+    for i in range(10):
+        assert client.post(f"/api/events/{event.id}/webhooks", json={"url": f"https://example.com/h{i}"}).status_code == 201
+    assert client.post(f"/api/events/{event.id}/webhooks", json={"url": "https://example.com/h0"}).status_code == 409
+    assert client.post(f"/api/events/{event.id}/webhooks", json={"url": "https://example.com/h10"}).status_code == 409
+
+
+def test_test_ping_sends_a_signed_webhook_test_delivery(client, session, monkeypatch):
+    calls = []
+
+    def fake_post(url, json, timeout, **kwargs):
+        calls.append((url, json, kwargs.get("headers", {})))
+        return _FakeResponse(ok=True)
+
+    monkeypatch.setattr("app.webhooks.service.httpx.post", fake_post)
+    organizer = _login_as(client, session, "wh-ping-org@example.com", Role.organizer)
+    event = _event(session, "wh-ping", organizer)
+    hook = client.post(f"/api/events/{event.id}/webhooks", json={"url": "https://example.com/ping"}).json()
+    r = client.post(f"/api/events/{event.id}/webhooks/{hook['id']}/test")
+    assert r.status_code == 200 and r.json()["last_status"] == "delivered"
+    _url, body, headers = calls[0]
+    assert body["record"]["topic"] == "webhook.test" and body["record"]["delivery_id"]
+    assert headers["X-HackFlow-Topic"] == "webhook.test"
+    assert verify_record(body["record"], body["signature"], body["public_key"])

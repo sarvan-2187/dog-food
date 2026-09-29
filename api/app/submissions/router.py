@@ -200,6 +200,13 @@ def upsert_submission(
             )
         # Merged, and a new dict so the JSON column sees the change.
         changes["answers"] = {**(sub.answers or {}), **changes["answers"]}
+    if changes.get("track") and changes["track"] not in (event.tracks or []):
+        # A made-up track would dodge both the "No track chosen" eligibility
+        # flag and track-judge assignment (JUDGING.md rule 8).
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"This event has no track called {changes['track']!r}. Pick one of: {', '.join(event.tracks or []) or 'none'}.",
+        )
     for key, value in changes.items():
         setattr(sub, key, value)
     sub.updated_at = utcnow()

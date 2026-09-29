@@ -12,6 +12,7 @@ from ..audit.log import record
 from ..auth import Role, User, require_role
 from ..db import get_session
 from ..events.models import Event
+from ..ratelimit import webhook_test_limiter
 from .models import WebhookSubscription
 from .targets import refusal
 
@@ -31,6 +32,9 @@ class WebhookCreate(BaseModel):
             raise ValueError("Webhook URL must start with http:// or https://.")
         if len(v) > 500:
             raise ValueError("Webhook URL must be 500 characters or fewer.")
+        # No DNS lookup at validation time; delivery re-checks with one.
+        if reason := blocked_reason(v, resolve=False):
+            raise ValueError(reason)
         return v
 
 
@@ -98,3 +102,38 @@ def delete_webhook(
     session.flush()
     record(session, "webhook.deleted", actor=user, entity_type="event", entity_id=event_id, webhook_id=webhook_id)
     session.commit()
+
+
+class WebhookTestResult(BaseModel):
+    id: int
+    last_status: str
+
+
+@router.post("/api/events/{event_id}/webhooks/{webhook_id}/test", response_model=WebhookTestResult)
+def test_webhook(
+    event_id: int,
+    webhook_id: int,
+    user: User = Depends(require_role(*ORGANIZER)),
+    session: Session = Depends(get_session),
+) -> WebhookTestResult:
+    """Send one signed `webhook.test` delivery now and report how it went, so an
+    organizer wiring up an integration doesn't have to wait for a real action."""
+    webhook = session.get(WebhookSubscription, webhook_id)
+    if not webhook or webhook.event_id != event_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such webhook on this event.")
+    allowed, retry_after = webhook_test_limiter.check(f"webhook-test:{user.id}")
+    if not allowed:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"That's a lot of test pings - try again in about {max(1, round(retry_after))} seconds.",
+        )
+    payload = {
+        "topic": "webhook.test",
+        "event_id": event_id,
+        "issued_at": utcnow().isoformat(),
+        "delivery_id": uuid.uuid4().hex,
+        "webhook_id": webhook_id,
+    }
+    _deliver(webhook.url, webhook.id, crypto.sign_record(payload), session=session)
+    session.refresh(webhook)
+    return WebhookTestResult(id=webhook.id, last_status=webhook.last_status)

@@ -1,7 +1,7 @@
 # HackFlow by Hackathon Raptors
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-3ddc84?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-559%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
+[![Tests](https://img.shields.io/badge/tests-588%20passing-3ddc84?style=flat-square)](acceptance-report.txt)
 [![Python](https://img.shields.io/badge/python-3.12-1F2426?style=flat-square&logo=python&logoColor=white)](api/requirements.txt)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-1F2426?style=flat-square&logo=fastapi&logoColor=white)](api/requirements.txt)
 [![React](https://img.shields.io/badge/React-18-1F2426?style=flat-square&logo=react&logoColor=white)](web/package.json)
@@ -35,7 +35,7 @@ dog-food/
 ├── DATA-MODEL.md            ← the schema, and the ways data gets in and out
 ├── JUDGING.md               ← assignment, weighted scoring, normalization, defended
 ├── LICENSE                  ← MIT
-├── api/                     ← our backend: FastAPI + SQLModel, with api/tests/ (428 tests)
+├── api/                     ← our backend: FastAPI + SQLModel, with api/tests/ (457 tests)
 ├── web/                     ← our frontend: React + TypeScript, with web/tests/ (121 browser tests)
 ├── docs/                    ← everything else: manual, threat model, credits, screenshots
 ├── fixtures.json, run.py    ← the organizers' dataset and checker, unchanged
@@ -50,7 +50,12 @@ Every document, and what it is for:
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System shape, the modular-monolith rationale, auth, storage, webhooks, testing |
 | [DATA-MODEL.md](DATA-MODEL.md) | Every table and column, relationships, CSV exports, JSON import and export |
 | [JUDGING.md](JUDGING.md) | Conflict-aware assignment, weighted rubrics, per-judge z-score normalization and why |
-| [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | 31 attacks (sybil votes, ballot stuffing, judge collusion, deadline gaming, leaked keys...), each with what stops it and the file that enforces it |
+| [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | 36 attacks (sybil votes, ballot stuffing, judge collusion, deadline gaming, leaked keys, request floods, webhook SSRF...), each with what stops it and the file that enforces it |
+| [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) | The 2026-09-29 audit: 18 findings (DDoS, rate limits, SSRF, input bounds...) with fixes and tests, measured flood results, every rate limit in one table, residual risks |
+| [docs/NORMALIZATION-ANALYSIS.md](docs/NORMALIZATION-ANALYSIS.md) | How scoring and normalization work step by step, the logic errors fixed, and measured behavior on the fixtures (invariance, stability, limitations) |
+| [docs/FLOW-ANALYSIS.md](docs/FLOW-ANALYSIS.md) | The ten stages, gate by gate: what the server enforces, what could go wrong, and which test proves it |
+| [docs/COMPLIANCE.md](docs/COMPLIANCE.md) | Every T1–T4 requirement and deliverable in the brief, with status and evidence |
+| [docs/ACCEPTANCE-REPORT.md](docs/ACCEPTANCE-REPORT.md) | The full acceptance run: official checker, all three test suites, the third-party integration, live security checks |
 | [docs/USER-MANUAL.md](docs/USER-MANUAL.md) | Illustrated, plain-language guide for participants, judges, organizers and admins |
 | [docs/CREDITS.md](docs/CREDITS.md) | Hackathon Raptors' details and posters, photo licences, third-party software, contributors |
 | [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Design tokens and component rules the UI is built from |
@@ -224,6 +229,13 @@ create **API keys** on the Integrations page, and a third-party server sends
 `Authorization: Bearer hf_...` to act with exactly that organizer's role. Signed webhooks
 push events out.
 
+**See it from the outside:** [Raptor Relay](https://github.com/sarvan-2187/hackflow-third-party)
+is a separate app that connects with an API key, registers its own webhook, verifies every
+signed delivery (and rejects forged or replayed ones), pulls the standings and posts
+announcements back. The user manual's
+[Integrations section](docs/USER-MANUAL.md#integrations-api-keys-and-webhooks) walks
+through connecting it in five minutes.
+
 ![The Integrations page](docs/screenshots/walkthrough/11-integrations.png)
 
 ## Quickstart
@@ -333,6 +345,11 @@ The site answers on port 8000. For a public deployment, first:
 - Set a real `SESSION_SECRET` and change the Postgres password.
 - Set `APP_BASE_URL` to your public address, and put HTTPS in front (Caddy or Cloudflare).
 - Change the seeded account passwords.
+- Behind a reverse proxy (Caddy, nginx, a tunnel), set `TRUSTED_PROXY_HOPS=1` so rate limits
+  see each visitor's own address. `render.yaml` already does.
+- Put a CDN or your host's DDoS protection in front for floods that fill the network link.
+  HackFlow's own limits (600 requests a minute per person, 120 writes, 1,200 per API key)
+  stop floods at the app, not at the link. See [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 
 **Pick a region near your users.** For the DOGFOOD judging panel, which is mostly US-based
 with the rest in Europe, US East (Virginia / New York) gives the best latency overall.
@@ -455,8 +472,12 @@ prints a one-time reset link for any account.
   track, oversized team, flagged on the Eligibility card for the organizer to rule on.
 - **Archive**: the Events page filters to Open now / Upcoming / Past events and searches by
   name, theme or track.
+- **Request protection**: every request passes a generous rate limit (per signed-in account,
+  or per address when anonymous; separate budgets for writes and API keys), a body-size
+  cap and security headers before any route runs (`api/app/protection.py`).
 - **Outbound webhooks**: organizers opt an event into signed HTTP callbacks for every
-  action taken in that event, 47 topics named after the audit action
+  action taken in that event (private and internal addresses refused, at most 10 per event,
+  each delivery with a unique `delivery_id` against replays, plus a **Send test** button), 47 topics named after the audit action
   (`event.updated`, `vote.cast`, `score.submitted`, ...; full list in ARCHITECTURE.md),
   each payload signed with the same Ed25519 key used for judge
   participation records, so a receiver can verify it without trusting the network.
@@ -482,6 +503,12 @@ that lives only in the frontend.
 
 ## Status
 
+588 tests passing across three suites, run live against this exact stack (plus 5 in the
+Raptor Relay repo; see [docs/ACCEPTANCE-REPORT.md](docs/ACCEPTANCE-REPORT.md)):
+
+| Suite | Command | Result |
+|---|---|---|
+| Backend | `docker compose exec api pytest tests/ -v` | 457 passed |
 715 tests passing across three suites (2026-09-28, [docs/audit/ACCEPTANCE-REPORT.md](docs/audit/ACCEPTANCE-REPORT.md)):
 
 | Suite | Command | Result |

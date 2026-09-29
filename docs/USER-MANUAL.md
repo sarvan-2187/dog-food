@@ -485,30 +485,186 @@ directly. The link is shown only once, works once, and expires after an hour. Or
 reset participants and judges; resetting another organizer takes an admin. Every link is
 recorded with your name on it.
 
-### Optional: notifications to other systems
+### Integrations: API keys and webhooks
 
-Further down the **Event settings** screen you can give HackFlow a web address to notify when
-something happens: a project is submitted, judging is assigned, a score arrives, an
-announcement is posted, or results go live. It is useful for feeding a Discord or Slack
-channel.
+HackFlow connects to other software in two directions:
 
-Each notification is cryptographically signed, so the system receiving it can confirm it
-genuinely came from your HackFlow and was not altered on the way. This is entirely optional.
-Leave it empty and HackFlow never contacts anything outside itself.
+- **API keys** let other software *call into* HackFlow: a Discord bot that posts new
+  submissions, a spreadsheet that pulls results, your own scripts.
+- **Webhooks** let HackFlow *call out* to other software the moment something happens.
 
-### Integrations: connecting other tools
+A companion app, **[Raptor Relay](https://github.com/sarvan-2187/hackflow-third-party)**,
+uses both. It was built to show integration from the outside, the way any third party would
+do it. The walkthrough further down sets it up in about five minutes.
 
-Everything you can do in HackFlow is also available to other software through its API: a
-Discord bot that posts new submissions, a spreadsheet that pulls results, your own scripts.
+#### Create an API key
 
-1. Open **Integrations** in the sidebar.
+1. Open **Integrations** in the sidebar (organizers and admins only).
 2. Give the key a name that says what uses it ("Discord bot") and choose **Create key**.
-3. **Copy** the key now. It is shown once and never again.
-4. Give it to the tool, which sends it with every request as `Authorization: Bearer hf_...`.
+3. **Copy** the key now. It starts with `hf_`, and it is shown once and never again.
+   HackFlow keeps only a scrambled fingerprint of it, so nobody can look it up later,
+   including you.
+4. Give it to the tool, which sends it with every request as a header:
+   `Authorization: Bearer hf_...`.
 
-A key can do exactly what you can do, nothing more. Make one per tool, so you can **Revoke**
-one without breaking the others; the list shows when each key was last used. The full list of
-endpoints is linked from the same page (**Interactive API reference**).
+What a key can and can't do:
+
+- **Exactly what you can do, nothing more.** A key acts as the organizer who made it,
+  through the same permission checks as the web app. An organizer's key can't read a
+  judge's private screens, and no key can submit a score.
+- **One key per tool.** Then you can **Revoke** one without breaking the others. The list
+  shows when each key was last used, so a key nobody uses is easy to spot and remove.
+- **Revoking works immediately**, and so does deactivating the owner or removing their
+  organizer role. You can have up to 20 live keys.
+- **Keys are rate-limited**: 1,200 requests a minute per key by default, with the minute's
+  budget usable as a burst. A tool that goes over gets `429 Too Many Requests` and a
+  `Retry-After` header telling it how many seconds to wait.
+
+The full list of endpoints, with a "try it out" button for each, is at **`/docs`** on your
+HackFlow (linked from the Integrations page as **Interactive API reference**). A few useful
+ones:
+
+| What | Call |
+|---|---|
+| Who is this key? | `GET /api/auth/me` |
+| Events | `GET /api/events` |
+| Public gallery | `GET /api/gallery?event_id=10` |
+| Normalized standings | `GET /api/events/10/results` |
+| Raw scores as CSV | `GET /api/events/10/export/scores.csv` |
+| Post an announcement | `POST /api/events/10/announcements` with `{"title": "...", "body": "..."}` |
+| Whole event as JSON | `GET /api/events/10/export.json` |
+
+```bash
+curl -H "Authorization: Bearer hf_your_key" https://your-hackflow.example/api/events/10/results
+```
+
+#### Add a webhook
+
+1. Open the event, then **Event settings → Webhooks**.
+2. Paste the address that should be notified (it must start with `http://` or `https://`) and
+   choose **Add webhook**.
+3. Choose **Send test**. HackFlow sends a signed `webhook.test` notification right away. The
+   badge next to the address then shows **delivered**, **failed** (the address didn't answer
+   with success) or **blocked** (see below).
+
+From then on, every action in the event is sent to that address as it happens:
+submissions, team changes, judge assignments, scores, votes, comments, announcements,
+settings changes and results going live. Each notification's **topic** is the action's
+name, for example `submission.submitted`, `score.submitted`, `event.updated`,
+`announcement.posted` or `event.results_revealed`.
+
+Notifications carry ids and the action's name only, never scores, emails or vote details. A
+tool that wants more fetches it through the API with a key. An event can have up to 10
+webhooks, and removing one stops deliveries at once. With none, HackFlow never contacts
+anything outside itself.
+
+**Blocked addresses.** HackFlow refuses to send webhooks to private or internal addresses
+(`localhost`, `127.0.0.1`, `10.x`, `192.168.x`, cloud metadata addresses and the like). That
+stops anyone with an organizer login from using webhooks to probe the server's own network.
+For a **local demo** where the receiving app runs on the same machine, put
+`WEBHOOK_ALLOW_PRIVATE=1` in `.env` and restart. Don't set it on a public server.
+
+#### For developers: checking a webhook is genuine
+
+Each notification is a `POST` with a JSON body:
+
+```json
+{
+  "record": {
+    "topic": "announcement.posted",
+    "event_id": 10,
+    "issued_at": "2026-09-29T08:28:21.802770+00:00",
+    "delivery_id": "0193c61c9e2f4f7b8a1d2c3b4a5f6e7d",
+    "announcement_id": 1
+  },
+  "signature": "<base64 Ed25519 signature>",
+  "public_key": "<base64 public key>",
+  "algorithm": "ed25519"
+}
+```
+
+It also has the headers `X-HackFlow-Topic`, `X-HackFlow-Delivery` and
+`User-Agent: HackFlow-Webhooks/1.0`. To accept a notification, the receiver should:
+
+1. **Fetch HackFlow's public key once** from `GET /api/public-key`, over https, and keep it.
+   **Never** verify against the `public_key` inside the notification: anyone forging one
+   would put their own key there.
+2. **Verify the signature** over the *canonical JSON* of `record`: keys sorted, no spaces,
+   non-ASCII characters escaped as `\uXXXX`. In Python that is
+   `json.dumps(record, sort_keys=True, separators=(",", ":")).encode()`.
+3. **Reject replays.** Drop anything whose `issued_at` is more than a few minutes old, or
+   whose `delivery_id` has already been seen.
+4. **Answer quickly with any 2xx.** HackFlow waits up to 5 seconds, tries once and never
+   follows redirects. The result shows on the webhook's badge.
+
+Python receiver, complete:
+
+```python
+import base64, json, urllib.request
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+KEY = base64.b64decode(json.load(urllib.request.urlopen("https://your-hackflow.example/api/public-key"))["public_key"])
+
+def is_genuine(body: dict) -> bool:
+    message = json.dumps(body["record"], sort_keys=True, separators=(",", ":")).encode()
+    try:
+        Ed25519PublicKey.from_public_bytes(KEY).verify(base64.b64decode(body["signature"]), message)
+        return True
+    except Exception:
+        return False
+```
+
+A Node.js version is in Raptor Relay's
+[`lib/hackflow.mjs`](https://github.com/sarvan-2187/hackflow-third-party/blob/main/lib/hackflow.mjs)
+(`verifyDelivery`), with tests that include a forged notification and a replayed one.
+
+#### Walkthrough: connect Raptor Relay to your HackFlow
+
+Raptor Relay is a separate app. It shows a live feed of your event's verified webhooks, pulls
+the gallery and the normalized standings over the API, and can post announcements, all
+using one organizer API key.
+
+![Raptor Relay connected to HackFlow](screenshots/manual/27-raptor-relay.png)
+
+1. **Start HackFlow with local webhooks allowed**, since the demo runs on your machine:
+
+   ```bash
+   echo "WEBHOOK_ALLOW_PRIVATE=1" > .env
+   docker compose up --build
+   ```
+
+2. **Create a key.** Sign in as the organizer (`alice@example.com` / `organizer-pass1`),
+   open **Integrations**, create a key named "Raptor Relay" and copy it.
+
+3. **Start Raptor Relay** (Node.js 20.10 or newer, nothing to install):
+
+   ```bash
+   git clone https://github.com/sarvan-2187/hackflow-third-party.git
+   cd hackflow-third-party
+   cp .env.example .env      # paste the key into HACKFLOW_API_KEY
+   npm start                 # opens on http://localhost:4000
+   ```
+
+   `.env.example` already sets `PUBLIC_URL=http://host.docker.internal:4000`, which is how
+   HackFlow, running inside Docker, reaches an app on your computer.
+
+4. **Connect.** On Raptor Relay's page, pick an event and press **Register webhook + test
+   ping**. Raptor Relay adds its own webhook through the API, and a verified `webhook.test`
+   appears in its feed. You will also see the new webhook under **Event settings →
+   Webhooks** in HackFlow.
+
+5. **Try it.** Change something in HackFlow, for example edit the event's rules or post an
+   announcement, and watch it arrive in Raptor Relay's feed. Press **Pull gallery +
+   results** to read the standings over the API, or **Post** to send an announcement from
+   Raptor Relay into HackFlow.
+
+To see a forged notification refused, send one by hand:
+
+```bash
+curl -X POST http://localhost:4000/webhooks/hackflow -H "Content-Type: application/json" \
+  -d '{"record":{"topic":"event.results_revealed","event_id":10,"issued_at":"2026-09-29T08:30:00+00:00"},"signature":"AAAA","algorithm":"ed25519"}'
+# {"error":"bad signature"}, and the "Rejected" counter on the page goes up
+```
 
 ---
 

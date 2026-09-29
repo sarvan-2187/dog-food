@@ -321,7 +321,7 @@ platform does not need").
 | `url` | str | Must start with `http://` or `https://`, max 500 chars |
 | `created_by_id` | int, FK → `users.id` | Must be `organizer` or `admin` |
 | `active` | bool | Default `true`; there is no separate deactivate toggle — deleting the row is how a subscription is turned off |
-| `last_status` | str | `"never fired"` \| `"delivered"` \| `"failed"`, updated after each delivery attempt |
+| `last_status` | str | `"never fired"` \| `"delivered"` \| `"failed"` \| `"blocked"` (a private or internal address, refused by the SSRF guard), updated after each delivery attempt |
 | `created_at` | timestamptz | |
 
 Payload topics: every audited action that belongs to the event, named exactly as its audit
@@ -389,7 +389,8 @@ events ──< webhook_subscriptions
 - **CSV export** (`api/app/scoring/router.py`, stdlib `csv` only): `users.csv`,
   `submissions.csv` (including `tagline`, `tech_tags`, `repo_url`, `demo_url`, `video_url`,
   and one `Q: <prompt>` column per custom question, hidden ones included), `assignments.csv`,
-  `scores.csv`, `results.csv` per event, organizer/admin only (see
+  `scores.csv`, `results.csv` (rank, z̄, display, and `informative_judges` and
+  `assigned_judges` so a provisional row is visible, JUDGING.md) per event, organizer/admin only (see
   `test_role_isolation.py`).
 - **Event backup** (`GET /api/events/{id}/export.json` / `POST /api/events/import`): the
   event's config (including `rules` and custom `questions`, ids kept), rubrics, teams and
