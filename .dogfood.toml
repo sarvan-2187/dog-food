@@ -8,7 +8,7 @@ base_url = "http://localhost:8000"
 
 [tiers]
 claimed = ["T1", "T2", "T3", "T4"]  # T3 and T4 are judged by hand; run.py only checks T1 and T2
-pitch = "HackFlow: a self-hosted hackathon portal with weighted rubrics, z-score normalised judging and backend-enforced role isolation."
+pitch = "HackFlow by Hackathon Raptors: a self-hosted, API-first hackathon portal with weighted rubrics, z-score normalised judging and backend-enforced role isolation."
 
 [auth]
 # Fixed demo sessions from DEMO_SESSION_TOKENS in docker-compose.yml.

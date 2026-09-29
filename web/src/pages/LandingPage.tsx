@@ -552,7 +552,7 @@ export function LandingPage() {
             <a href="mailto:hello@raptors.dev" className="underline underline-offset-2">hello@raptors.dev</a> ·{' '}
             <a href="https://www.raptors.dev" target="_blank" rel="noreferrer" className="underline underline-offset-2">raptors.dev</a>
           </address>
-          <p className="mt-2">Built by Team CodeHawk for DOGFOOD 2026. Posters © Hackathon Raptors, see CREDITS.md.</p>
+          <p className="mt-2">Built by Team CodeHawk for DOGFOOD 2026. Posters © Hackathon Raptors, see docs/CREDITS.md.</p>
         </div>
       </footer>
     </div>

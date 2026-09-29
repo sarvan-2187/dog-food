@@ -78,7 +78,7 @@ erased.
 
 ### Logging in
 
-![The login screen](docs/screenshots/manual/01-login.png)
+![The login screen](screenshots/manual/01-login.png)
 
 Enter your email and password and choose **Log in**.
 
@@ -94,7 +94,7 @@ kind of account, so you can see how the site changes depending on who you are:
 
 ### Creating your own account
 
-![The sign-up screen](docs/screenshots/manual/02-register.png)
+![The sign-up screen](screenshots/manual/02-register.png)
 
 Choose **Sign up** if you do not have an account. You need a name, an email address, and a
 password of at least eight characters.
@@ -106,7 +106,7 @@ by invitation link; see sections 7 and 8.)
 
 ### Forgot your password?
 
-![The forgot-password screen](docs/screenshots/manual/19-forgot-password.png)
+![The forgot-password screen](screenshots/manual/19-forgot-password.png)
 
 Choose **Forgot password?** under the password box on the login page.
 
@@ -141,20 +141,20 @@ The first time you log in, HackFlow offers a short tour of the screens you will 
 tailored to your kind of account: a participant, a judge and an organizer are each shown
 different things.
 
-![The guided tour welcoming a new participant](docs/screenshots/manual/03-tour-participant-welcome.png)
+![The guided tour welcoming a new participant](screenshots/manual/03-tour-participant-welcome.png)
 
 - **Next** and **Back** move through it.
 - **Escape**, or the **×**, leaves at any point.
 - It highlights the real thing it is describing, like the **My teams** tab here:
 
-![The tour highlighting the My teams tab](docs/screenshots/manual/04-tour-participant-teams.png)
+![The tour highlighting the My teams tab](screenshots/manual/04-tour-participant-teams.png)
 
 Organizers get a longer tour (ten steps, covering judging progress, winners and
 announcements), and judges get one about scoring alone and fairly:
 
 | Organizer tour | Judge tour |
 |---|---|
-| ![The organizer tour](docs/screenshots/manual/10-tour-organizer.png) | ![The judge tour](docs/screenshots/manual/15-tour-judge.png) |
+| ![The organizer tour](screenshots/manual/10-tour-organizer.png) | ![The judge tour](screenshots/manual/15-tour-judge.png) |
 
 You only get it automatically once. To see it again at any time, open **Profile** and choose
 **Replay the guided tour**.
@@ -167,7 +167,7 @@ You only get it automatically once. To see it again at any time, open **Profile*
 
 Choose **Events** in the menu, then click the hackathon you are entering.
 
-![An event page showing dates, tracks, prizes and announcements](docs/screenshots/manual/05-event-detail.png)
+![An event page showing dates, tracks, prizes and announcements](screenshots/manual/05-event-detail.png)
 
 This page is the hackathon's front page. It shows:
 
@@ -201,7 +201,7 @@ says so plainly, rather than failing silently.
 
 The **Your team** card on the event page is where the team is managed:
 
-![The Your team card with captain controls](docs/screenshots/manual/20-your-team.png)
+![The Your team card with captain controls](screenshots/manual/20-your-team.png)
 
 - **Copy** the invite link to share it. **New link** replaces it, so the old one stops
   working immediately. Useful if it was posted somewhere public.
@@ -213,7 +213,7 @@ The **Your team** card on the event page is where the team is managed:
 
 You can see all your teams at any time under **My teams**:
 
-![The My teams screen](docs/screenshots/manual/06-my-teams.png)
+![The My teams screen](screenshots/manual/06-my-teams.png)
 
 The `2 / 4 members` on each card is the team's current size against the limit.
 
@@ -221,7 +221,7 @@ The `2 / 4 members` on each card is the team's current size against the limit.
 
 From your team, choose **Go to your submission**. Each team gets exactly one project page.
 
-![The project submission screen](docs/screenshots/manual/07-submission.png)
+![The project submission screen](screenshots/manual/07-submission.png)
 
 Important things about this screen:
 
@@ -242,12 +242,12 @@ gallery. You can still edit it until the deadline passes.
 **Gallery** shows everything that has been submitted. Pick the hackathon, then browse,
 search, or change the order.
 
-![The public gallery](docs/screenshots/manual/08-gallery.png)
+![The public gallery](screenshots/manual/08-gallery.png)
 
 Click any project to read it in full and, if the organizer has turned voting on, to vote
 for it and leave a comment:
 
-![A project page with voting and comments](docs/screenshots/manual/18-submission-detail-voting.png)
+![A project page with voting and comments](screenshots/manual/18-submission-detail-voting.png)
 
 A few things are deliberately true here:
 
@@ -270,7 +270,7 @@ is genuine at **/verify** on the same HackFlow, with no account needed.
 **Profile** holds your name, email, photo, password change, the log-out button, and the tour
 replay button.
 
-![The profile screen](docs/screenshots/manual/09-profile.png)
+![The profile screen](screenshots/manual/09-profile.png)
 
 - **Name → Edit** changes how you appear.
 - **Change password** signs you out on every other device.
@@ -289,7 +289,7 @@ and accept. Your account becomes a judge account, you join that event's judging 
 
 **Judging** is your home base.
 
-![The judge dashboard](docs/screenshots/manual/14-judge-dashboard.png)
+![The judge dashboard](screenshots/manual/14-judge-dashboard.png)
 
 - **Coming up** lists events you judge whose submissions have not closed yet, and when
   judging opens for each. Judging never starts while teams can still edit, so you always
@@ -301,7 +301,7 @@ Choose **Score now** on any of them.
 
 ### Step 3: Score a project
 
-![The scoring form](docs/screenshots/manual/16-score-form.png)
+![The scoring form](screenshots/manual/16-score-form.png)
 
 The top of the form shows the project and the team's links (code, demo, video). Below it,
 the form is built from the scorecard the organizer wrote. Each item shows:
@@ -343,7 +343,7 @@ way that feels honest to you. You do not need to guess what the other judges are
 
 Choose **Create event**.
 
-![The create-event form](docs/screenshots/manual/17-create-event.png)
+![The create-event form](screenshots/manual/17-create-event.png)
 
 You give it a name, a web address slug, a description, start and end dates, the themes teams
 may enter under, the prizes, and the largest team you will allow. Only the name, slug, and
@@ -357,7 +357,7 @@ event** on the **Events** page.)
 
 From the event page, choose **Event settings**.
 
-![The event settings screen](docs/screenshots/manual/11-event-settings.png)
+![The event settings screen](screenshots/manual/11-event-settings.png)
 
 - **Visibility**: **Publish event** makes it visible so participants can find and join it.
   **Move back to draft** hides it again.
@@ -374,7 +374,7 @@ larger than a reduced limit is left alone rather than having someone thrown out.
 
 From the event page, choose **Judging rubric**.
 
-![The rubric builder](docs/screenshots/manual/12-rubric-builder.png)
+![The rubric builder](screenshots/manual/12-rubric-builder.png)
 
 A scorecard is a list of things judges mark on, each with a weight, a maximum and an
 optional description. The weights must add up to 100%, and the page tells you live whether
@@ -392,7 +392,7 @@ against the same thing.
 The **Announcements** card on the event page is how you reach participants once the event is
 running: a moved deadline, a demo schedule, a room change.
 
-![Posting an announcement](docs/screenshots/manual/21-announcements.png)
+![Posting an announcement](screenshots/manual/21-announcements.png)
 
 Write a title and a message and choose **Post announcement**. It appears on the event page
 and on the dashboard of everyone on a team in the event, and **Delete** takes it down again.
@@ -404,7 +404,7 @@ Discord or Slack channel.
 
 From the event page, choose **Assignments & results**.
 
-![The assignments and results screen](docs/screenshots/manual/13-assignments-results.png)
+![The assignments and results screen](screenshots/manual/13-assignments-results.png)
 
 **To bring in judges**, use the *Judges* card further down: fill in the small form and
 choose **Create invitation**. You get a link to send them. You can set how long it stays
@@ -418,7 +418,7 @@ submissions close.
 
 **Judging progress** shows who has scored what:
 
-![The judging progress card](docs/screenshots/manual/22-judging-progress.png)
+![The judging progress card](screenshots/manual/22-judging-progress.png)
 
 - Each judge's **scored / assigned** count, and when they last scored.
 - **Remove** takes someone who dropped out off the panel; their unscored projects go back
@@ -431,7 +431,7 @@ submissions close.
 
 The same screen controls the public side:
 
-![The community voting card](docs/screenshots/manual/24-community-voting.png)
+![The community voting card](screenshots/manual/24-community-voting.png)
 
 - **Open voting** or **Close voting** at any time.
 - **Who can vote**:
@@ -448,7 +448,7 @@ The same screen controls the public side:
 
 ### Step 7: Pick the winners
 
-![The winners card](docs/screenshots/manual/23-winners.png)
+![The winners card](screenshots/manual/23-winners.png)
 
 Each prize comes with a **suggestion** from the standings: overall prizes in rank order, a
 track prize from that track's best entry. Choose **Use suggestion** or pick another project.
@@ -469,7 +469,7 @@ own dates above them.
 When a participant or judge is locked out and the email reset isn't working for them, use
 **Dashboard → Help someone sign in**:
 
-![The help someone sign in card](docs/screenshots/manual/25-help-someone-sign-in.png)
+![The help someone sign in card](screenshots/manual/25-help-someone-sign-in.png)
 
 Type their email, choose **Create reset link**, then **Copy link**, and send it to them
 directly. The link is shown only once, works once, and expires after an hour. Organizers can
@@ -507,7 +507,7 @@ endpoints is linked from the same page (**Interactive API reference**).
 
 Admins get everything organizers have, plus a **Users** tab.
 
-![The users screen](docs/screenshots/manual/26-admin-users.png)
+![The users screen](screenshots/manual/26-admin-users.png)
 
 - **Search** by name or email, or filter by role.
 - **Change a role** from the drop-down on any account, for example to make an existing

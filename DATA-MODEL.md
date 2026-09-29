@@ -30,7 +30,7 @@ See ARCHITECTURE.md. `docker compose down -v` is only needed for a clean slate.
 | `created_at` | timestamptz | |
 | `session_version` | int, default 0 | Signed into every session cookie; incremented on each password change or reset, which invalidates every older cookie at once (PLAN.md Phase 9.1) |
 | `is_active` | bool, default true | False blocks sign-in and, with a `session_version` bump, ends every session at once. Admin accounts can't be deactivated (Phase 10.10) |
-| `email_verified_at` | timestamptz, nullable | Set when the owner follows a signed 24-hour link from `POST /api/auth/verify-email`; fixture accounts are seeded verified. An event can require it to vote (THREAT-MODEL.md entry 25) |
+| `email_verified_at` | timestamptz, nullable | Set when the owner follows a signed 24-hour link from `POST /api/auth/verify-email`; fixture accounts are seeded verified. An event can require it to vote (docs/THREAT-MODEL.md entry 25) |
 
 ### `password_resets` (`api/app/auth/models.py`)
 
@@ -71,7 +71,7 @@ A request authenticates with `Authorization: Bearer hf_...` instead of the sessi
 | `prize_config` | JSON dict | Shape: `{"prizes": [{"rank": "1st Place", "reward": "$500"}, ...]}`. A product convention, not a schema constraint — the column is a free-form `JSON` and nothing validates the inner shape server-side, so this is documented here rather than in a migration (PLAN.md Phase 7.1) |
 | `max_team_size` | int | Default `4`, matching the hackathon's own "Team Size: 1–4" rule; enforced server-side in `teams/router.py`'s `join_team` (PLAN.md Phase 7.2) |
 | `voting_enabled` | bool | Gates the Phase 3 vote/comment endpoints |
-| `voting_access` | str | `authenticated` (default), `email` or `open` - who may vote; see `voting/voter.py` and THREAT-MODEL.md entry 25. `email` is refused while SMTP is off |
+| `voting_access` | str | `authenticated` (default), `email` or `open` - who may vote; see `voting/voter.py` and docs/THREAT-MODEL.md entry 25. `email` is refused while SMTP is off |
 | `voting_requires_verified` | bool, default false | Account voters need `users.email_verified_at`. Refused (409) while SMTP is off, since nobody could verify |
 | `voting_account_cutoff` | timestamptz, nullable | Accounts created at or after this can't vote. Needs no email |
 | `results_hidden_until` | timestamptz, nullable | Gates who may see vote counts and standings — enforced in the API response itself, not just hidden in the UI |
@@ -282,7 +282,7 @@ user) has at most one current file — uploading a replacement deletes the old o
 lives on local disk behind the `StorageService` interface (`api/app/storage/service.py`);
 this table only tracks metadata. Keys are server-generated (`uuid4().hex` + an extension
 derived from the validated content-type), never taken from the client's filename, so a
-client can't path-traverse or overwrite an arbitrary key (see THREAT-MODEL.md).
+client can't path-traverse or overwrite an arbitrary key (see docs/THREAT-MODEL.md).
 
 | Column | Type | Notes |
 |---|---|---|
