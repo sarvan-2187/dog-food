@@ -92,7 +92,14 @@ def test_full_fixture_dataset_normalises():
     """Section 8 asks for a test over the full fixture dataset. Build a realistic
     3-judge x 3-submission matrix over the seeded submissions and check the
     pipeline produces a complete, ranked, clamped table."""
-    fixtures = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "submissions.json").read_text())
+    # /app/fixtures inside the container (api/Dockerfile copies it there); the
+    # repo root's fixtures/ in a plain checkout.
+    here = Path(__file__).resolve()
+    path = next(
+        p for p in (here.parents[1] / "fixtures" / "submissions.json", here.parents[2] / "fixtures" / "submissions.json")
+        if p.exists()
+    )
+    fixtures = json.loads(path.read_text())
     submitted = [f for f in fixtures if f.get("status") == "submitted" and f["event_slug"] == "dogfood-2026"]
     assert len(submitted) == 3, "fixture set changed; update this test deliberately"
 

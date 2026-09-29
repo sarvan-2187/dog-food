@@ -17,3 +17,9 @@ web/playwright-report/
 
 # Scratch output of web/scripts/readme-walkthrough.mjs (the README uses the PNG)
 docs/screenshots/walkthrough/certificate.pdf
+
+# runtime state: generated signing key and session secret, uploaded images
+keys/
+api/keys/
+uploads/
+api/uploads/

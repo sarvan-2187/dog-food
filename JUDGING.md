@@ -192,40 +192,51 @@ with 2 to 6 judges per project. Its criteria are `functionality`, `quality` and
 `GET /api/events/10/export/results.csv` from a fresh `docker compose up`. *Raw rank*
 orders the same rows by plain raw mean (ties by id). *Move* is raw rank minus normalized
 rank, so a positive number means normalizing moved the project up.
+orders the same rows by plain raw mean; equal raw means share a rank (`=`), the best one
+of the tie. *Move* is raw rank minus normalized rank, so a positive number means
+normalizing moved the project up. `api/tests/test_normalization_properties.py` recomputes
+this table from `fixtures.json` with an independent implementation of the formula and
+checks the live `/results` endpoint against it; `docs/audit/NORMALIZATION-ANALYSIS.md`
+has the full 40 rows.
 
 | Normalized rank | Raw rank | Move | Project | Judges (informative) | Raw mean | z̄ | Display |
 |---|---|---|---|---|---|---|---|
-| 1 | 2 | +1 | Iron Switch | 3 (3) | 4.33 | +1.232 | 62.3 |
-| 2 | 7 | +5 | Slow Trail | 3 (3) | 4.00 | +0.918 | 59.2 |
-| 3 | 1 | −2 | Salt Ledger | 4 (4) | 4.33 | +0.867 | 58.7 |
-| 4 | 5 | +1 | Salt Loom | 4 (4) | 4.08 | +0.768 | 57.7 |
-| 5 | 6 | +1 | Salt Kiln | 3 (3) | 4.00 | +0.688 | 56.9 |
-| 6 | 4 | −2 | Dry Relay | 3 (3) | 4.11 | +0.609 | 56.1 |
-| 7 | 3 | −4 | Still Beacon | 2 (2) | 4.17 | +0.595 | 56.0 |
-| 8 | 19 | +11 | Paper Anchor | 2 (2) | 3.50 | +0.324 | 53.2 |
-| 9 | 31 | +22 | Dry Harbour | 6 (5) | 3.33 | +0.316 | 53.2 |
-| 10 | 27 | +17 | Glass Signal | 3 (3) | 3.44 | +0.288 | 52.9 |
+| 1 | =1 | 0 | Iron Switch | 3 | 4.33 | +1.232 | 62.3 |
+| 2 | =6 | +4 | Slow Trail | 3 | 4.00 | +0.918 | 59.2 |
+| 3 | =1 | −2 | Salt Ledger | 4 | 4.33 | +0.867 | 58.7 |
+| 4 | 5 | +1 | Salt Loom | 4 | 4.08 | +0.768 | 57.7 |
+| 5 | =6 | +1 | Salt Kiln | 3 | 4.00 | +0.688 | 56.9 |
+| 6 | 4 | −2 | Dry Relay | 3 | 4.11 | +0.609 | 56.1 |
+| 7 | 3 | −4 | Still Beacon | 2 | 4.17 | +0.595 | 56.0 |
+| 8 | =19 | +11 | Paper Anchor | 2 | 3.50 | +0.324 | 53.2 |
+| 9 | =24 | +15 | Glass Signal | 3 | 3.44 | +0.288 | 52.9 |
+| 10 | =31 | +21 | Dry Harbour | 6 | 3.33 | +0.263 | 52.6 |
 
-Only 2 of the 40 projects keep their raw rank, and the largest move is 22 places. Two of the
-fixture's deliberate awkward cases explain the biggest moves:
+Only 5 of the 40 projects keep their raw rank, 9 of the top ten move, and the largest
+move is 21 places. (An earlier version of this table showed Iron Switch and Salt Ledger
+at raw ranks 2 and 1: they are tied at 4.33. The seeded weights were rounded to
+0.3333/0.3333/0.3334, which split genuine ties by a ten-thousandth. The seeder now uses
+exact thirds.) Two of the fixture's deliberate awkward cases explain the
+biggest moves:
 
-- **Small Relay drops from 12th to 32nd.** It was scored by `jdg_07`, the judge who gave
-  every project 4/4/4, and by `jdg_29`. `jdg_07` has σ = 0, so their 4.0 says nothing
-  about *this* project and is left out. `jdg_29`'s 3.33 is below that judge's own average
-  (about 3.5), so the project's z̄ is that judge's −0.476, even though its raw mean of 3.67
-  looks above average.
-- **Dry Harbour rises from 31st to 9th.** Its raw mean is pulled down by `jdg_01`'s
-  2/2/2, but that is the only project `jdg_01` scored. With one score there is no spread,
-  and nothing shows whether 2.0 is harsh or just that judge's normal. So `jdg_01` is left
-  out, and the other five judges, each measured against their own average, place it above
-  average. Dry Harbour is also the fixture's duplicate submission (`prj_07` and `prj_41`).
-  Merging the two gives it 6 judges (README).
+- **Small Relay drops from 13th to 30th.** It was scored by `jdg_07`, the judge who gave
+  every project 4/4/4, and by `jdg_29`. A judge who gives everything the same score has
+  σ = 0, so their 4.0 carries no information about *this* project and contributes z = 0,
+  not a +4. `jdg_29`'s 3.33 is below that judge's own average (about 3.5), so the
+  project's z̄ is negative (−0.238), even though its raw mean of 3.67 looks
+  above average.
+- **Dry Harbour rises from 31st to 10th.** Its raw mean is pulled down by `jdg_01`'s
+  2/2/2, but that is the only project `jdg_01` scored. With one score, a judge's σ is 0,
+  and nothing shows whether 2.0 is harsh or just that judge's normal. So it counts as
+  z = 0, and the other five judges, each measured against their own average, place it
+  above average. Dry Harbour is also the fixture's duplicate submission (`prj_07` and
+  `prj_41`). Merging the two gives it 6 judges (README).
 
-**The trade-off.** A judge's scores only count once that judge has scored more than one
-project. That is deliberate: without a spread there is no scale to normalize against. It is
-also the cost of this method. An organizer who wants every judge to count should assign at
-least two projects each. The assignment run's `judges_per_submission` makes that the normal
-case. The rows' `informative_judges` column shows where it didn't happen.
+**The trade-off.** A judge's scores only count for something once that judge has scored
+more than one project. That is deliberate: without a spread there is no scale to
+normalize against. It is also the cost of this method. An organizer who wants every
+judge to count should assign at least two projects each. The assignment run's
+`judges_per_submission` makes that the normal case.
 
 ## Role isolation
 

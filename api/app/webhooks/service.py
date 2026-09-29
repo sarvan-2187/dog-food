@@ -13,10 +13,8 @@ new code to verify a webhook too.
 """
 from __future__ import annotations
 
-import ipaddress
-import os
-import socket
-import uuid
+import logging
+import secrets
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -30,6 +28,7 @@ from sqlmodel import Session, select
 from .. import crypto
 from ..timeutil import utcnow
 from .models import WebhookSubscription
+from .targets import refusal
 
 TIMEOUT_SECONDS = 5.0
 USER_AGENT = "HackFlow-Webhooks/1.0"
@@ -93,6 +92,14 @@ def blocked_reason(url: str, *, resolve: bool = True) -> Optional[str]:
             continue
     return None
 
+log = logging.getLogger("hackflow.webhooks")
+
+
+def _delivery_id() -> str:
+    """Unique per payload and inside the signed record, so a receiver can
+    de-duplicate and refuse a replayed delivery."""
+    return secrets.token_hex(12)
+
 
 def _deliver(url: str, subscription_id: int, signed_payload: dict, *, session: "Session | None" = None) -> None:
     """Runs in a background task, after the response that triggered it has
@@ -106,25 +113,20 @@ def _deliver(url: str, subscription_id: int, signed_payload: dict, *, session: "
     against `engine`. Tests that need to see the status update within their
     own transaction pass their own session directly instead."""
     status_text = "failed"
-    if blocked_reason(url):
-        status_text = "blocked"
-    else:
-        record = signed_payload.get("record") or {}
-        headers = {
-            "User-Agent": USER_AGENT,
-            "X-HackFlow-Topic": str(record.get("topic", "")),
-            "X-HackFlow-Delivery": str(record.get("delivery_id", "")),
-        }
-        try:
-            # Redirects are never followed (httpx's default, stated here): a
-            # public URL answering 302 to http://169.254.169.254/ must not work.
-            response = httpx.post(
-                url, json=signed_payload, timeout=TIMEOUT_SECONDS, headers=headers, follow_redirects=False
-            )
-            if response.is_success:
-                status_text = "delivered"
-        except httpx.HTTPError:
-            status_text = "failed"
+    try:
+        # Checked again at delivery, not only at creation: DNS may have changed.
+        if problem := refusal(url):
+            raise ValueError(problem)
+        # httpx.post does not follow redirects by default: a 3xx is a failed
+        # delivery, never a hop to another host (tests pin this).
+        response = httpx.post(url, json=signed_payload, timeout=TIMEOUT_SECONDS)
+        if response.is_success:
+            status_text = "delivered"
+    except Exception:  # noqa: BLE001 - any failure is "failed", never an unhandled error in a worker
+        # Not only httpx.HTTPError: a malformed URL raises httpx.InvalidURL,
+        # which is not one, and used to escape here without recording anything.
+        log.info("webhook %s delivery failed", subscription_id, exc_info=True)
+        status_text = "failed"
 
     def _record_status(s: Session) -> None:
         row = s.get(WebhookSubscription, subscription_id)
@@ -157,6 +159,9 @@ def notify(session: Session, background_tasks: BackgroundTasks, event_id: int, t
     ).all()
     if not subscriptions:
         return
+    payload = {"topic": topic, "event_id": event_id, "issued_at": utcnow().isoformat(),
+               "delivery_id": _delivery_id(), **detail}
+    signed = crypto.sign_record(payload)
     for sub in subscriptions:
         # One signed payload per subscription, each with its own delivery_id,
         # so a receiver can drop a replayed or duplicated delivery.
@@ -259,6 +264,7 @@ def queue_audited(
         "issued_at": utcnow().isoformat(),
         "entity_type": entity_type,
         "entity_id": entity_id,
+        "delivery_id": _delivery_id(),
     }
     for key, value in detail.items():
         if key.endswith("_id") and isinstance(value, int) and key not in _PRIVATE_ID_KEYS and key != "event_id":

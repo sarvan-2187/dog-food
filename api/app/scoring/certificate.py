@@ -31,7 +31,9 @@ from reportlab.lib.units import inch
 from reportlab.lib.utils import simpleSplit
 from reportlab.pdfgen import canvas
 
-_SECRET = os.getenv("SESSION_SECRET", "dev-only-not-a-real-secret").encode()
+from ..auth.session import SESSION_SECRET
+
+_SECRET = SESSION_SECRET.encode()
 _SERIAL_RE = re.compile(r"^HF-(\d{1,9})-([0-9A-F]{10})$")
 _BACKGROUNDS = Path(__file__).parent / "certificate_templates"
 

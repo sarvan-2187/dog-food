@@ -301,11 +301,13 @@ def _seed_dogfood(session: Session, path: Path) -> None:
         submissions[row["id"]] = by_team[team_id] = submission.id
 
     # The fixture names its criteria only inside the scores; weight them
-    # equally on its own 1-5 scale, with the rounding remainder on the last so
-    # the weights sum to exactly 1.0 as the assignment run requires.
+    # equally on its own 1-5 scale. Exactly 1/n each, not rounded: weights of
+    # 0.3333/0.3333/0.3334 made 5/4/3 total 3.9999 against 4/4/4's 4.0, so
+    # equal raw means stopped being ties and their order was decided by the
+    # rounding (docs/audit/NORMALIZATION-ANALYSIS.md). Three thirds sum to
+    # exactly 1.0; any n is within the assignment run's weight tolerance.
     keys = list(dict.fromkeys(k for s in data["scores"] for k in s["criteria"]))
-    weights = [round(1 / len(keys), 4)] * len(keys)
-    weights[-1] = round(1 - sum(weights[:-1]), 4)
+    weights = [1 / len(keys)] * len(keys)
     criteria = [
         {"key": k, "label": k.capitalize(), "weight": w, "max_score": 5} for k, w in zip(keys, weights)
     ]

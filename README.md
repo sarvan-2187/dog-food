@@ -509,8 +509,13 @@ Raptor Relay repo; see [docs/ACCEPTANCE-REPORT.md](docs/ACCEPTANCE-REPORT.md)):
 | Suite | Command | Result |
 |---|---|---|
 | Backend | `docker compose exec api pytest tests/ -v` | 457 passed |
+715 tests passing across three suites (2026-09-28, [docs/audit/ACCEPTANCE-REPORT.md](docs/audit/ACCEPTANCE-REPORT.md)):
+
+| Suite | Command | Result |
+|---|---|---|
+| Backend | `docker compose exec api pytest tests/ -v` | 584 passed |
 | Frontend unit | `cd web && npm test` | 10 passed |
-| Browser E2E | `cd web && npx playwright test` | 121 passed, 1 skipped |
+| Browser E2E | `cd web && npx playwright test` (stack started with `RATE_LIMIT_PER_MINUTE=0`) | 121 passed, 1 skipped |
 
 The skipped spec is the emailed password-reset flow. It needs the local test inbox, so
 it runs only when the stack is started with `docker-compose.mail.yml` (see "Email"
@@ -542,7 +547,10 @@ docker compose exec api pytest tests/ -v
 # Frontend unit tests
 cd web && npm ci && npm test
 
-# Browser end-to-end tests (needs the stack up)
+# Browser end-to-end tests (needs the stack up). Every client is limited to
+# 200 requests a minute; a parallel Playwright run from one machine can exceed
+# that, so start the stack with the global limit off for it:
+#   RATE_LIMIT_PER_MINUTE=0 docker compose up -d
 cd web && npx playwright install --with-deps chromium
 npx playwright test
 

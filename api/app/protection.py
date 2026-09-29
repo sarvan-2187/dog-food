@@ -1,262 +1,243 @@
-"""Request-level protection: the layer every request passes before a route runs.
+"""Denial-of-service hardening at the application edge (pure ASGI).
 
-What it does, in the order a request meets it:
+What one Uvicorn process can do on its own, with no external service
+(PLAN.md: nothing hosted, `docker compose up` works offline):
 
-1. **Client address.** `client_ip()` is the one place the app decides who a
-   request came from. Behind a reverse proxy (Render, Caddy, Cloudflare) the
-   socket address is the proxy's, so every visitor would share one rate-limit
-   bucket. `TRUSTED_PROXY_HOPS=N` says "N proxies I control sit in front of
-   me": the client is then the Nth address from the *right* of
-   X-Forwarded-For. Counting from the right matters: the left end is whatever
-   the client chose to send, so trusting it would let anyone pick their own
-   bucket. The default, 0, ignores the header entirely.
+- **Body cap.** A request body over MAX_BODY_BYTES is refused with 413 before
+  the app reads it. Content-Length is checked up front, and chunked bodies are
+  counted as they stream in, so a client cannot dodge the cap by leaving the
+  header out.
+- **Load shedding.** At most MAX_IN_FLIGHT requests are handled at once; the
+  next one gets an immediate 503 with Retry-After instead of queueing behind a
+  flood until every request times out. Cheap refusals keep the process alive.
+- **Deadline.** A request that has not started its response within
+  REQUEST_TIMEOUT_SECONDS gets a 504, so slow handlers cannot pile up.
+- **Security headers** that cost nothing and close off whole classes of abuse
+  (MIME sniffing, referrer leaks).
 
-2. **Body size cap.** A request body over its route's cap is refused with 413
-   before it is read into memory, whether it declares a Content-Length or
-   streams chunks. Uploads get 6 MB (5 MB image + multipart overhead), the event
-   import 10 MB, everything else 1 MB - far above any real form.
+Slow-loris style attacks (headers trickled in byte by byte, idle keep-alive
+sockets) are handled below the app by Uvicorn's own limits, set in the
+Dockerfile: --limit-concurrency, --timeout-keep-alive, --backlog and
+--h11-max-incomplete-event-size.
 
-3. **Generous global rate limit.** Per signed-in account (a verified session
-   cookie), or per client address for anonymous traffic, a token bucket of
-   `RATE_LIMIT_PER_MINUTE` requests (default 600, i.e. 10 a second sustained,
-   with the whole minute's budget available as a burst), and a tighter
-   `RATE_LIMIT_WRITES_PER_MINUTE` (default 120) for POST/PUT/PATCH/DELETE. An
-   API key gets its own, larger bucket (`RATE_LIMIT_API_KEY_PER_MINUTE`,
-   default 1200) so an integration behind a shared NAT is not throttled by its
-   neighbours. Static files and /healthz are never counted. A person clicking
-   through the app never comes near these; a script flooding the API does.
-   Endpoint-specific limits (login, voting, password reset...) still apply on
-   top, in ratelimit.py.
-
-4. **Security headers** on every response: nosniff, a strict referrer policy,
-   a permissions policy that turns off sensors HackFlow never uses, and HSTS
-   when the public address is https.
-
-Pure ASGI (no BaseHTTPMiddleware), so the size cap can wrap `receive` and stop
-a streamed body mid-flight. Everything is process-local like the rest of the
-rate limiting (ratelimit.py explains why). Volumetric floods that saturate the
-network link itself are out of any app's reach; put a CDN or the host's DDoS
-protection in front for that (docs/SECURITY-AUDIT.md).
+The honest limit: no application can make itself immune to a volumetric
+attack that saturates the network link before a request ever reaches it.
+That needs an upstream edge (a CDN/WAF such as Cloudflare, or the host's own
+DDoS protection). docs/THREAT-MODEL.md says so; this module makes sure that
+whatever does reach the process is refused as cheaply as possible.
 """
 from __future__ import annotations
 
-import hashlib
+import asyncio
 import json
+import logging
 import os
-from typing import Awaitable, Callable
 
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
-from .ratelimit import TokenBucketLimiter
-
-Scope = dict
-Message = dict
-Receive = Callable[[], Awaitable[Message]]
-Send = Callable[[Message], Awaitable[None]]
-ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
+log = logging.getLogger("hackflow.protection")
 
 
-def _int_env(name: str, default: int) -> int:
+def _env_int(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, str(default)))
     except ValueError:
         return default
 
 
-TRUSTED_PROXY_HOPS = max(0, _int_env("TRUSTED_PROXY_HOPS", 0))
+# Uploads are capped at 5 MB by storage.service; leave room for multipart framing.
+MAX_BODY_BYTES = _env_int("MAX_BODY_BYTES", 6 * 1024 * 1024)
+# JSON bodies are small forms; an event import is the largest legitimate one.
+MAX_JSON_BODY_BYTES = _env_int("MAX_JSON_BODY_BYTES", 4 * 1024 * 1024)
+MAX_IN_FLIGHT = _env_int("MAX_IN_FLIGHT", 100)
+REQUEST_TIMEOUT_SECONDS = float(_env_int("REQUEST_TIMEOUT_SECONDS", 30))
 
-RATE_LIMIT_PER_MINUTE = _int_env("RATE_LIMIT_PER_MINUTE", 600)
-RATE_LIMIT_WRITES_PER_MINUTE = _int_env("RATE_LIMIT_WRITES_PER_MINUTE", 120)
-RATE_LIMIT_API_KEY_PER_MINUTE = _int_env("RATE_LIMIT_API_KEY_PER_MINUTE", 1200)
-
-MB = 1024 * 1024
-DEFAULT_BODY_LIMIT = 1 * MB
-UPLOAD_BODY_LIMIT = 6 * MB
-IMPORT_BODY_LIMIT = 10 * MB
-
-# 0 turns a limiter off (e.g. a load test against your own install).
-request_limiter = TokenBucketLimiter(capacity=max(1, RATE_LIMIT_PER_MINUTE), per_seconds=60.0)
-write_limiter = TokenBucketLimiter(capacity=max(1, RATE_LIMIT_WRITES_PER_MINUTE), per_seconds=60.0)
-api_key_limiter = TokenBucketLimiter(capacity=max(1, RATE_LIMIT_API_KEY_PER_MINUTE), per_seconds=60.0)
-
-WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-# Never counted: the health probe and files the browser fetches in bulk.
-UNLIMITED_PREFIXES = ("/healthz", "/assets/", "/fonts/", "/favicon", "/media/")
+# Liveness must answer even while the app is shedding load, or the orchestrator
+# restarts a healthy-but-busy container in the middle of an attack.
+EXEMPT_PATHS = frozenset({"/healthz"})
 
 
-def _header(scope: Scope, name: bytes) -> str:
-    for key, value in scope.get("headers") or ():
-        if key == name:
-            return value.decode("latin-1")
-    return ""
+class BodyTooLarge(Exception):
+    pass
 
 
-def client_ip_from_scope(scope: Scope) -> str:
-    socket_ip = (scope.get("client") or ("unknown", 0))[0] or "unknown"
-    if TRUSTED_PROXY_HOPS <= 0:
-        return socket_ip
-    forwarded = [part.strip() for part in _header(scope, b"x-forwarded-for").split(",") if part.strip()]
-    if len(forwarded) >= TRUSTED_PROXY_HOPS:
-        return forwarded[-TRUSTED_PROXY_HOPS]
-    # Fewer entries than proxies we were told about: the request skipped a
-    # proxy (or it is a health check), so the socket is the best we know.
-    return socket_ip
-
-
-def client_ip(request) -> str:
-    """The caller's address, proxy-aware. Use this, never request.client.host."""
-    return client_ip_from_scope(request.scope)
-
-
-def body_limit_for(path: str) -> int:
-    if path == "/api/events/import":
-        return IMPORT_BODY_LIMIT
-    if path.startswith("/api/users/me/avatar") or "/submission/image" in path:
-        return UPLOAD_BODY_LIMIT
-    return DEFAULT_BODY_LIMIT
-
-
-def _cookie(scope: Scope, name: str) -> str:
-    for part in _header(scope, b"cookie").split(";"):
-        key, _, value = part.strip().partition("=")
-        if key == name:
-            return value
-    return ""
-
-
-def _session_bucket(scope: Scope) -> str | None:
-    """A signed-in browser is counted per account, not per address: a whole
-    hackathon venue often shares one public IP, and 200 participants must not
-    share one bucket. Only a cookie whose signature verifies counts (an HMAC
-    check, no database), so a forged cookie falls back to the address bucket."""
-    from .auth.deps import DEMO_SESSION_TOKENS  # local: auth imports ratelimit
-    from .auth.session import SESSION_COOKIE_NAME, read_session_token
-
-    token = _cookie(scope, SESSION_COOKIE_NAME)
-    if not token:
-        return None
-    if token in DEMO_SESSION_TOKENS:
-        return "demo:" + hashlib.sha256(token.encode()).hexdigest()[:16]
-    parsed = read_session_token(token)
-    return f"user:{parsed[0]}" if parsed else None
-
-
-def _api_key_bucket(scope: Scope) -> str | None:
-    scheme, _, credential = _header(scope, b"authorization").partition(" ")
-    if scheme.lower() == "bearer" and credential.strip():
-        # Hashed so the limiter's memory never holds a usable key.
-        return "key:" + hashlib.sha256(credential.strip().encode()).hexdigest()[:24]
-    return None
-
-
-async def _reply(send: Send, status: int, detail: str, headers: list[tuple[bytes, bytes]] | None = None) -> None:
+async def send_json_error(send, status: int, detail: str, headers: "list[tuple[bytes, bytes]] | None" = None) -> None:
     body = json.dumps({"detail": detail}).encode()
     await send(
         {
             "type": "http.response.start",
             "status": status,
-            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
-            + (headers or []),
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+                *(headers or []),
+            ],
         }
     )
     await send({"type": "http.response.body", "body": body})
 
 
-def _security_headers(path: str, https: bool) -> list[tuple[bytes, bytes]]:
-    headers = [
-        (b"x-content-type-options", b"nosniff"),
-        (b"referrer-policy", b"strict-origin-when-cross-origin"),
-        (b"permissions-policy", b"camera=(), microphone=(), geolocation=(), payment=(), usb=()"),
-        (b"cross-origin-opener-policy", b"same-origin"),
-    ]
-    if https:
-        headers.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains"))
-    return headers
-
-
-class _BodyTooLarge(StarletteHTTPException):
-    """Raised from inside the app while it reads the body, so Starlette's own
-    exception handling turns it into a normal 413 JSON response."""
-
-    def __init__(self, limit: int) -> None:
-        super().__init__(413, f"Request body is too large (limit {limit // MB} MB).")
+def _body_limit_for(scope) -> int:
+    for name, value in scope.get("headers", []):
+        if name == b"content-type":
+            if value.split(b";", 1)[0].strip().lower() == b"application/json":
+                return MAX_JSON_BODY_BYTES
+            break
+    return MAX_BODY_BYTES
 
 
 class ProtectionMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
+    """Body cap, load shedding and a per-request deadline, in that order."""
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+    def __init__(self, app, *, max_in_flight: "int | None" = None, timeout: "float | None" = None) -> None:
+        self.app = app
+        self.max_in_flight = max_in_flight if max_in_flight is not None else MAX_IN_FLIGHT
+        self.timeout = timeout if timeout is not None else REQUEST_TIMEOUT_SECONDS
+        self.in_flight = 0
+
+    async def __call__(self, scope, receive, send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        from .auth.mailer import APP_BASE_URL  # local: mailer reads env at import
-
-        path: str = scope.get("path", "")
-        method: str = scope.get("method", "GET")
-        https = APP_BASE_URL.startswith("https://")
-
-        # 1. Rate limit (before anything touches the database).
-        if not path.startswith(UNLIMITED_PREFIXES):
-            key_bucket = _api_key_bucket(scope)
-            if key_bucket is not None and RATE_LIMIT_API_KEY_PER_MINUTE > 0:
-                checks = [(api_key_limiter, key_bucket)]
-            else:
-                who = _session_bucket(scope) or f"ip:{client_ip_from_scope(scope)}"
-                checks = []
-                if RATE_LIMIT_PER_MINUTE > 0:
-                    checks.append((request_limiter, who))
-                if method in WRITE_METHODS and RATE_LIMIT_WRITES_PER_MINUTE > 0:
-                    checks.append((write_limiter, who))
-            for limiter, key in checks:
-                allowed, retry_after = limiter.check(key)
-                if not allowed:
-                    wait = max(1, round(retry_after))
-                    await _reply(
-                        send,
-                        429,
-                        f"Too many requests from this address - slow down and try again in about {wait} seconds.",
-                        [(b"retry-after", str(wait).encode())] + _security_headers(path, https),
-                    )
-                    return
-
-        # 2. Body size cap: refuse a declared oversize body outright...
-        limit = body_limit_for(path)
-        declared = _header(scope, b"content-length")
-        if declared.isdigit() and int(declared) > limit:
-            await _reply(send, 413, f"Request body is too large (limit {limit // MB} MB).", _security_headers(path, https))
+        if scope.get("path") in EXEMPT_PATHS:
+            await self.app(scope, receive, send)
             return
 
-        # ...and stop a streamed one the moment it passes the cap.
-        received = 0
+        limit = _body_limit_for(scope)
+        for name, value in scope.get("headers", []):
+            if name == b"content-length":
+                try:
+                    declared = int(value)
+                except ValueError:
+                    await send_json_error(send, 400, "Invalid Content-Length header.")
+                    return
+                if declared > limit:
+                    await send_json_error(send, 413, f"Request body too large (limit {limit // 1024} KB).")
+                    return
+                break
 
-        async def capped_receive() -> Message:
-            nonlocal received
+        if self.in_flight >= self.max_in_flight:
+            log.warning("shedding load: %d requests in flight", self.in_flight)
+            await send_json_error(
+                send, 503, "The server is busy right now - try again in a few seconds.", [(b"retry-after", b"5")]
+            )
+            return
+
+        received = 0
+        too_large = False
+
+        async def limited_receive():
+            nonlocal received, too_large
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > limit:
-                    raise _BodyTooLarge(limit)
+                    too_large = True
+                    raise BodyTooLarge()
             return message
 
-        started = False
+        started = asyncio.Event()
 
-        async def send_with_headers(message: Message) -> None:
-            nonlocal started
+        async def tracking_send(message):
+            # A framework may catch BodyTooLarge while reading the body and
+            # answer with its own error (FastAPI: a 400 "error parsing the
+            # body"). The real reason is the size, so the client gets the 413.
+            if too_large:
+                if message["type"] == "http.response.start" and not started.is_set():
+                    started.set()
+                    await send_json_error(send, 413, f"Request body too large (limit {limit // 1024} KB).")
+                return
             if message["type"] == "http.response.start":
-                started = True
-                existing = {k.lower() for k, _ in message.get("headers", [])}
-                extra = [(k, v) for k, v in _security_headers(path, https) if k not in existing]
-                message = {**message, "headers": list(message.get("headers", [])) + extra}
+                started.set()
             await send(message)
 
+        self.in_flight += 1
         try:
-            await self.app(scope, capped_receive, send_with_headers)
-        except _BodyTooLarge:
-            if not started:
-                await _reply(send, 413, f"Request body is too large (limit {limit // MB} MB).")
+            handler = asyncio.ensure_future(self.app(scope, limited_receive, tracking_send))
+            waiter = asyncio.ensure_future(started.wait())
+            # The deadline covers the time to a first response byte only: once
+            # the response has started, background tasks (webhooks, email) that
+            # FastAPI runs after it are left to finish.
+            await asyncio.wait({handler, waiter}, timeout=self.timeout, return_when=asyncio.FIRST_COMPLETED)
+            waiter.cancel()
+            if not handler.done() and not started.is_set():
+                handler.cancel()
+                log.warning("request timed out: %s %s", scope.get("method"), scope.get("path"))
+                await send_json_error(send, 504, "The request took too long and was stopped.")
+                return
+            try:
+                await handler
+            except BodyTooLarge:
+                if not started.is_set():
+                    await send_json_error(send, 413, f"Request body too large (limit {limit // 1024} KB).")
+        finally:
+            self.in_flight -= 1
 
 
-def reset() -> None:
-    for limiter in (request_limiter, write_limiter, api_key_limiter):
-        limiter.reset()
+class SecurityHeadersMiddleware:
+    """Headers every response gets. frame_policy in main.py owns the framing ones."""
+
+    HEADERS = [
+        (b"x-content-type-options", b"nosniff"),
+        (b"referrer-policy", b"strict-origin-when-cross-origin"),
+        (b"cross-origin-opener-policy", b"same-origin"),
+        (b"permissions-policy", b"camera=(), microphone=(), geolocation=(), payment=()"),
+    ]
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # HSTS only on HTTPS (as seen after --proxy-headers): browsers ignore it
+        # over plain HTTP anyway, and localhost must stay reachable over http.
+        https = scope.get("scheme") == "https"
+        framable = scope.get("path", "").startswith("/embed/")
+
+        async def with_headers(message):
+            if message["type"] == "http.response.start":
+                present = {name.lower() for name, _ in message.get("headers", [])}
+                extra = [(n, v) for n, v in self.HEADERS if n not in present]
+                # Refusals sent before a route runs (413/429/503) skip main.py's
+                # frame_policy; they are never framable either. The widget is.
+                if not framable and b"x-frame-options" not in present:
+                    extra.append((b"x-frame-options", b"DENY"))
+                if https and b"strict-transport-security" not in present:
+                    extra.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains"))
+                message = {**message, "headers": [*message.get("headers", []), *extra]}
+            await send(message)
+
+        await self.app(scope, receive, with_headers)
+
+
+class TrustedProxyMiddleware:
+    """Take the client address from X-Forwarded-For only as far as trusted
+    proxies vouch for it.
+
+    Behind a platform proxy (Render, a load balancer) every connection comes
+    from the proxy, so per-IP limits would lump all visitors together. Uvicorn's
+    FORWARDED_ALLOW_IPS="*" is not the answer: it takes the LEFTMOST entry,
+    which the client writes itself, so anyone could pick their own address and
+    step around every per-IP limit. Each proxy appends the address it saw, so
+    with TRUST_PROXY_HOPS=N the Nth entry from the RIGHT is the one the
+    outermost trusted proxy recorded, and nothing the client sends can move it.
+
+    Unset or 0 (the default, and right for `docker compose up`, where browsers
+    connect directly): the header is ignored entirely.
+    """
+
+    def __init__(self, app, hops: "int | None" = None) -> None:
+        self.app = app
+        self.hops = hops if hops is not None else _env_int("TRUST_PROXY_HOPS", 0)
+
+    async def __call__(self, scope, receive, send) -> None:
+        if self.hops > 0 and scope["type"] in ("http", "websocket"):
+            forwarded = [
+                v.decode("latin-1") for n, v in scope.get("headers", []) if n == b"x-forwarded-for"
+            ]
+            hops = [h.strip() for h in ",".join(forwarded).split(",") if h.strip()]
+            if len(hops) >= self.hops:
+                port = scope["client"][1] if scope.get("client") else 0
+                scope = {**scope, "client": (hops[-self.hops], port)}
+        await self.app(scope, receive, send)

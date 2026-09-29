@@ -74,3 +74,16 @@ class UserPublic(SQLModel):
     role: Role
     avatar_url: Optional[str] = None
     email_verified: bool = False
+
+
+def find_user_by_email(session, email: str) -> "User | None":
+    """Email addresses are matched case-insensitively everywhere a person types
+    one (sign-up, sign-in, recovery, judge lookup). An exact match let
+    "Alice@x.org" and "alice@x.org" become two accounts, and a person who
+    signed up with a capital letter could not sign in without it."""
+    from sqlalchemy import func
+    from sqlmodel import select
+
+    return session.exec(
+        select(User).where(func.lower(User.email) == email.strip().lower()).order_by(User.id)
+    ).first()
