@@ -238,20 +238,64 @@ The result: `docker compose up` on an old volume upgrades it in place, and
 
 ## Outbound webhooks: fire-and-forget, signed, opt-in
 
-An organizer can subscribe an event to a URL (`WebhookSubscription`, DATA-MODEL.md) for
-five topics: `submission.submitted`, `assignments.run`, `score.submitted`,
-`event.results_revealed`, and `announcement.posted`, so organizer announcements reach a
-Discord or Slack channel automatically. `webhooks/service.py`'s `notify()` looks up that event's active
-subscriptions and, for each one, schedules delivery via FastAPI `BackgroundTasks` so the
-triggering request (a submission, an assignment run, a score, a results read) never waits
-on a third party's server. Delivery is single-attempt with no retry queue — a deliberate
-scope cut, since a durable retry system is real infrastructure a hackathon-scale platform
-does not need. Every payload is signed with the same Ed25519 key already built for judge
-participation records (`api/app/crypto.py`), so a receiver can verify authenticity offline
-against `GET /api/public-key` without trusting the network path. The `event.results_
-revealed` topic fires exactly once per event, guarded by a one-shot flag checked lazily
-the next time results are actually read (not by a background scheduler), and gated on
-results being *publicly* visible so an organizer's own early access can't trigger it.
+An organizer can subscribe an event to a URL (`WebhookSubscription`, DATA-MODEL.md), and
+from then on it hears about every action taken in that event (DOGFOOD T4: "webhooks
+covering every action the UI can take"). There is no per-subscription topic filter: every
+active subscription gets every topic for its event. Deliveries come from two places, and
+each topic comes from exactly one of them, so nothing is sent twice.
+
+**1. Every audited action, from one place.** `audit/log.py`'s `record()` is already called
+by every consequential action, in the same transaction. It now also calls
+`webhooks/service.py`'s `queue_audited()`, which:
+
+- works out the action's event from the audit entry (`entity_type` of `event`, or the
+  event of the `submission`, `team`, `comment` or `judge_invite` it names, or an
+  `event_id` in the detail). Actions with no event (accounts, sign-ins, password resets,
+  API keys, role changes, platform-wide organizer invitations) send nothing, since
+  webhooks are per event;
+- skips the topics `notify()` sends itself (below);
+- signs a payload with the topic set to the audit action string exactly, plus ids only:
+  `{topic, event_id, issued_at, entity_type, entity_id}` and any integer `*_id` from the
+  audit detail. Never scores, emails, names, free text or vote details (`vote_id`,
+  `voter_user_id`, voter keys and fingerprints are dropped). A receiver that wants more
+  fetches it through the API with a key;
+- parks it on the SQLAlchemy session. An `after_commit` listener hands it to a small
+  thread pool for delivery, and `after_rollback` drops it, so a receiver never hears about
+  an action that did not commit, and no call site changed.
+
+**2. The original topics, from `notify()`.** `submission.submitted`,
+`submission.disqualified`, `submission.reinstated`, `assignments.run`, `score.submitted`,
+`event.results_revealed` and `announcement.posted` are sent by `notify()` at their own
+call sites, after the commit, via FastAPI `BackgroundTasks`, with the same payload shape
+as before (for example `announcement.posted` still carries the title and body, so an
+announcement reaches a Discord or Slack channel automatically).
+
+The full topic list, by area:
+
+| Area | Topics |
+|---|---|
+| Event | `event.updated`, `event.published`, `event.unpublished`, `event.deleted`, `event.imported`, `event.results_revealed` |
+| Announcements | `announcement.posted`, `announcement.edited`, `announcement.deleted` |
+| Teams | `team.created`, `team.renamed`, `team.captain_changed`, `team.invite_code_changed`, `team.invite_redeemed`, `team.member_removed`, `team.left` |
+| Submissions | `submission.submitted`, `submission.image_uploaded`, `submission.disqualified`, `submission.reinstated` |
+| Judging setup | `rubric.created`, `rubric.updated`, `rubric.deleted`, `judge_invite.created`, `judge_invite.revoked`, `judge_invite.redeemed`, `event_judge.added`, `event_judge.removed`, `event_judge.reminded`, `event_judge.track_set`, `assignments.run` |
+| Judging | `judge.conflict_declared`, `score.submitted` |
+| Awards | `award.set`, `award.cleared` |
+| Voting and comments | `vote.cast`, `vote.withdrawn`, `vote.voided`, `vote.duplicate_fingerprint_flagged`, `voter.email_link_sent`, `comment.added`, `comment.deleted` |
+| Webhooks | `webhook.created`, `webhook.deleted` |
+
+`event.created` is audited too, but an event has no subscriptions at the moment it is
+created, so it never reaches one. A new `record()` call gets its webhook with no extra code,
+so this table is the list as of this build, not a limit.
+
+Delivery is single-attempt with no retry queue, a deliberate scope cut, since a durable
+retry system is real infrastructure a hackathon-scale platform does not need. Every
+payload is signed with the same Ed25519 key already built for judge participation records
+(`api/app/crypto.py`), so a receiver can verify authenticity offline against
+`GET /api/public-key` without trusting the network path. The `event.results_revealed`
+topic fires exactly once per event, guarded by a one-shot flag checked lazily the next
+time results are actually read (not by a background scheduler), and gated on results
+being *publicly* visible so an organizer's own early access can't trigger it.
 
 ## Testing architecture
 
