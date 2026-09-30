@@ -1,7 +1,6 @@
 # HackFlow by Hackathon Raptors
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-3ddc84?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-660%20passing%20%C2%B7%2048%20failing-e0a030?style=flat-square)](acceptance-report.txt)
 [![Python](https://img.shields.io/badge/python-3.12-1F2426?style=flat-square&logo=python&logoColor=white)](src/api/requirements.txt)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-1F2426?style=flat-square&logo=fastapi&logoColor=white)](src/api/requirements.txt)
 [![React](https://img.shields.io/badge/React-18-1F2426?style=flat-square&logo=react&logoColor=white)](src/web/package.json)
